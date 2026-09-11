@@ -1,0 +1,7 @@
+<RCC>
+  <qresource prefix="/">
+    <file>qml/Panel.qml</file>
+    <file>qml/Preferences.qml</file>
+    <file>qml/Overlay.qml</file>
+  </qresource>
+</RCC>
