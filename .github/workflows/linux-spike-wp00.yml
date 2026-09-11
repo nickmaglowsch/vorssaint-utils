@@ -17,6 +17,12 @@ on:
 permissions:
   contents: read
 
+defaults:
+  run:
+    # The container's default shell is `sh`; the steps use bash arrays
+    # (PIPESTATUS) and process substitution.
+    shell: bash
+
 jobs:
   swift-6-1:
     name: swift 6.1 (noble)
@@ -30,16 +36,14 @@ jobs:
         run: |
           swift --version
           uname -a
-          cat /etc/os-release | head -3
+          head -3 /etc/os-release
 
       - name: sync vendored sources
         working-directory: spikes/wp00-swift-core
         run: |
           ./sync.sh
-          echo "--- vendored (spike/clean set) ---"
-          ls Sources/VorssaintCoreSpike/Vendored | wc -l
-          echo "--- vendored (wide/all set) ---"
-          ls Sources/VorssaintCoreWide/Vendored | wc -l
+          echo "core candidate set: $(ls Sources/VorssaintCoreSpike/Vendored | wc -l) files"
+          echo "full census set:    $(ls Sources/VorssaintCoreWide/Vendored | wc -l) files"
 
       - name: resolve dependencies (OpenCombine)
         working-directory: spikes/wp00-swift-core
@@ -48,31 +52,23 @@ jobs:
           swift package resolve 2>&1 | tee resolve.log
           cat Package.resolved || true
 
-      - name: build VorssaintCoreSpike (the 93 census-clean files)
-        id: build_clean
+      - name: build VorssaintCoreSpike (core candidate set)
         working-directory: spikes/wp00-swift-core
         continue-on-error: true
         run: |
           set +e
           swift build -v --target VorssaintCoreSpike 2>&1 | tee build.log
-          echo "exit=${PIPESTATUS[0]}"
-          echo "--- full build.log ---"
-          cat build.log
-          echo "--- error census ---"
-          grep -c ': error:' build.log || true
+          echo "swift build exit=${PIPESTATUS[0]}"
+          ./classify-errors.sh build.log
 
       - name: build VorssaintCoreWide (all 120 census files)
-        id: build_wide
         working-directory: spikes/wp00-swift-core
         continue-on-error: true
         run: |
           set +e
           swift build -v --target VorssaintCoreWide 2>&1 | tee build-wide.log
-          echo "exit=${PIPESTATUS[0]}"
-          echo "--- full build-wide.log ---"
-          cat build-wide.log
-          echo "--- error census ---"
-          grep -c ': error:' build-wide.log || true
+          echo "swift build exit=${PIPESTATUS[0]}"
+          ./classify-errors.sh build-wide.log
 
       - name: static link probe (--static-swift-stdlib) + ldd
         working-directory: spikes/wp00-swift-core
@@ -86,11 +82,11 @@ jobs:
           echo "--- run ---"
           "$bin"
           echo "--- ldd ---"
-          ldd "$bin" || true
-          echo "--- file ---"
-          file "$bin" || true
+          ldd "$bin"
+          echo "--- dynamic swift/Foundation libraries still referenced ---"
+          ldd "$bin" | grep -iE 'swift|foundation|icu|curl|xml' || echo "(none)"
           echo "--- size ---"
-          du -h "$bin" || true
+          du -h "$bin"
 
       - name: swift test (URLCleaning + CommandBarMath)
         working-directory: spikes/wp00-swift-core
@@ -98,8 +94,8 @@ jobs:
         run: |
           set +e
           swift test 2>&1 | tee test.log
-          echo "exit=${PIPESTATUS[0]}"
-          cat test.log
+          echo "swift test exit=${PIPESTATUS[0]}"
+          grep -E "Test Suite|Executed [0-9]+ test|error:" test.log | tail -40
 
       - name: upload logs
         if: always()
@@ -135,11 +131,20 @@ jobs:
         run: |
           set +e
           swift build -v --target VorssaintCoreSpike 2>&1 | tee build-62.log
-          echo "--- full build-62.log ---"
-          cat build-62.log
-          grep -c ': error:' build-62.log || true
+          echo "core candidate exit=${PIPESTATUS[0]}"
+          ./classify-errors.sh build-62.log
           swift build -v --target VorssaintCoreWide 2>&1 | tee build-wide-62.log
-          grep -c ': error:' build-wide-62.log || true
+          echo "wide exit=${PIPESTATUS[0]}"
+          ./classify-errors.sh build-wide-62.log
+
+      - name: swift test
+        working-directory: spikes/wp00-swift-core
+        continue-on-error: true
+        run: |
+          set +e
+          swift test 2>&1 | tee test-62.log
+          echo "swift test exit=${PIPESTATUS[0]}"
+          grep -E "Test Suite|Executed [0-9]+ test|error:" test-62.log | tail -40
 
       - name: upload logs
         if: always()

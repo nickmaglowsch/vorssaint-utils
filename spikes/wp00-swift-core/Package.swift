@@ -46,11 +46,16 @@ let package = Package(
         .target(name: "Combine", dependencies: ["VorssaintCombine"], path: "Sources/CombineShim"),
 
         // --- The thing under test ------------------------------------------
-        // 93 files the static census calls Foundation-only (or
-        // Foundation + the CGFloat/CGPoint/CGSize/CGRect family).
+        // The core candidate set: the 101 files the census does not call
+        // "not portable", plus Defaults.swift and GlobalShortcut.swift,
+        // which the rest of the set needs in scope (`DefaultsKey`,
+        // `GlobalShortcut`) and which are pure logic behind a Carbon key
+        // table.
         .target(
             name: "VorssaintCoreSpike",
-            dependencies: ["CoreGraphics", "Combine", "VorssaintCombine"]
+            dependencies: [
+                "CoreGraphics", "Carbon", "AppKit", "Combine", "VorssaintCombine"
+            ]
         ),
         // All 120 census files, including the ones the census calls not
         // portable. Expected to fail; its log is the error census.

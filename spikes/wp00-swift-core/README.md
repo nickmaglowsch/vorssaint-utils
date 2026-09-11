@@ -6,13 +6,13 @@ top-level `Package.swift` does not reference it.
 
 ```
 ./sync.sh                                   # vendor the sources listed in files-*.txt
-swift build --target VorssaintCoreSpike     # the 93 files the census calls Foundation-only
+swift build --target VorssaintCoreSpike     # the 103-file core candidate set
 swift build --target VorssaintCoreWide      # all 120 census files, errors expected
 swift build -c release --static-swift-stdlib --product hello-spike
 swift test
 ```
 
-- `files-clean.txt` — the 93 census-clean files; this target is the go/no-go.
+- `files-core.txt` — the core candidate set: the 101 census-portable files plus `Defaults.swift` and `GlobalShortcut.swift`, which the rest need to resolve.
 - `files-all.txt` — all 120 candidate files; this target *is* the error census.
 - `Sources/*Shim` — stand-ins for Apple frameworks, named so that vendored
   sources keep their unmodified `import`. Every symbol in them is a
