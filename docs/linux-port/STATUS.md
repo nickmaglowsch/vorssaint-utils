@@ -41,5 +41,5 @@ downloads. Consequences for Phase 0:
 | WP-00 | merged | plan branch | GO WITH CONDITIONS; QA approved with nits (fixed) |
 | WP-01 | in progress | worktree | |
 | WP-02 | in progress | worktree | |
-| WP-03 | in progress | worktree | |
+| WP-03 | merged | plan branch | QA found a grab-release defect, fixed with a mutation-tested regression test; real uinput still needs hardware (WP-S1) |
 | WP-04 | todo | | blocked by WP-01 |
