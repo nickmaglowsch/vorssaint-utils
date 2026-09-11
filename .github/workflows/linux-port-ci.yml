@@ -18,8 +18,13 @@ permissions:
   contents: read
 
 concurrency:
-  group: linux-port-ci-${{ github.ref }}
-  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+  # Per-commit, not per-branch: several port agents push to the shared
+  # integration branch, and a branch-keyed group with cancel-in-progress
+  # cancels a green gate run the moment the next agent pushes (observed on
+  # run 1, cancelled mid-flight by an unrelated WP-04 commit). Every commit
+  # on the branch is a gate and must produce its own verdict.
+  group: linux-port-ci-${{ github.sha }}
+  cancel-in-progress: false
 
 jobs:
   linux-core:
