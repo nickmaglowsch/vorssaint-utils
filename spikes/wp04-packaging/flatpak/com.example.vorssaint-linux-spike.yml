@@ -1,0 +1,106 @@
+# WP-04: Flatpak manifest, FULL permission set.
+#
+# This is the manifest that would let the Linux port behave the way the macOS
+# app does. It is NOT Flathub-acceptable and is not meant to be: see
+# `com.example.vorssaint-linux-spike.flathub.yml` for the reduced set and
+# `docs/linux-port/spikes/04-packaging.md` for the feature-by-feature cost.
+#
+# The app id is a placeholder. Branding (name, id, icon, update feed) is
+# undecided and is the lead's call per PLAN.md section 10 / TRADEMARKS.md.
+#
+# Runtime: org.kde.Platform, because the shell is Qt 6 Quick (WP-01 winner).
+# The KDE runtime carries Qt 6, QtDeclarative, QtWayland and the Breeze style,
+# so the Flatpak does not bundle Qt at all -- that is the single biggest
+# difference from the AppImage, and the reason the Flatpak payload is a
+# fraction of the AppImage's size.
+app-id: com.example.vorssaint-linux-spike
+runtime: org.kde.Platform
+runtime-version: '6.8'
+sdk: org.kde.Sdk
+command: vorssaint-qt-spike
+
+finish-args:
+  # --- display, audio, network -------------------------------------------
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --socket=pulseaudio          # PipeWire is reached through its pulse shim
+  - --share=network              # update feed, speed test, feedback
+
+  # --- the permissions Flathub will refuse --------------------------------
+  # --device=all: /dev/uinput and /dev/input/event* for the input relay,
+  # /dev/i2c-* for DDC/CI external-monitor brightness. There is no narrower
+  # Flatpak device permission that covers either.
+  - --device=all
+  # --filesystem=host: the cleaner walks ~/.cache, ~/.local/share/Trash and
+  # ~/.var/app/*/cache; the uninstaller removes leftovers anywhere under
+  # $HOME; fan control writes /sys/class/hwmon/*/pwm*; the monitor reads
+  # /proc and /sys. (host does NOT include /sys or /proc -- see the report;
+  # those come from the sandbox's own /proc and a host mount is still needed
+  # for hwmon writes, which is why this manifest also takes --device=all.)
+  - --filesystem=host
+  - --filesystem=/sys:ro
+  # Unfiltered bus access. --socket=session-bus subsumes every --talk-name
+  # below and --socket=system-bus subsumes every --system-talk-name; both are
+  # listed anyway so the reduced manifest can be diffed against this one and
+  # so the intent of each name is recorded.
+  - --socket=session-bus
+  - --socket=system-bus
+
+  # --- session bus names the port uses ------------------------------------
+  - --talk-name=org.kde.StatusNotifierWatcher      # tray item
+  - --talk-name=org.freedesktop.Notifications
+  - --talk-name=org.freedesktop.portal.*           # all portals
+  - --talk-name=org.freedesktop.secrets
+  - --talk-name=org.mpris.MediaPlayer2.*           # radial menu now-playing
+  - --talk-name=org.gnome.Shell                    # our GNOME extension
+  - --talk-name=org.gnome.Shell.Extensions
+  - --talk-name=org.kde.KWin                       # KWin scripting: windows
+  - --talk-name=org.kde.KWin.Scripting
+  - --talk-name=org.freedesktop.Flatpak            # host command execution
+
+  # --- system bus names the port uses -------------------------------------
+  - --system-talk-name=org.freedesktop.login1      # inhibitors, backlight, lock
+  - --system-talk-name=org.freedesktop.UPower      # battery, kbd backlight
+  - --system-talk-name=org.bluez                   # bluetooth sleep toggle
+  - --system-talk-name=org.freedesktop.PackageKit  # Packages, updates
+  - --system-talk-name=org.freedesktop.UDisks2     # eject, disk monitor
+  - --system-talk-name=com.example.VorssaintHelper # our privileged helper
+
+  # --- environment --------------------------------------------------------
+  - --env=QT_QPA_PLATFORM=wayland;xcb
+
+modules:
+  - name: vorssaint-qt-spike
+    buildsystem: cmake-ninja
+    subdir: qt-quick
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+    sources:
+      # The WP-01 spike tree: qt-quick/CMakeLists.txt reaches sideways into
+      # ../corebridge-stub, so the whole wp01-toolkit directory is the source.
+      - type: dir
+        path: ../../wp01-toolkit
+    post-install:
+      - install -Dm755 vorssaint-qt-spike /app/bin/vorssaint-qt-spike
+
+  - name: sandbox-probe
+    buildsystem: simple
+    build-commands:
+      - install -Dm755 sandbox-probe.sh /app/bin/sandbox-probe
+    sources:
+      - type: file
+        path: sandbox-probe.sh
+
+  - name: metadata
+    buildsystem: simple
+    build-commands:
+      - install -Dm644 com.example.vorssaint-linux-spike.desktop
+          /app/share/applications/com.example.vorssaint-linux-spike.desktop
+      - install -Dm644 com.example.vorssaint-linux-spike.svg
+          /app/share/icons/hicolor/scalable/apps/com.example.vorssaint-linux-spike.svg
+    sources:
+      - type: file
+        path: com.example.vorssaint-linux-spike.desktop
+      - type: file
+        path: com.example.vorssaint-linux-spike.svg

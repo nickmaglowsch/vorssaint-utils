@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Placeholder mark for the WP-04 spike only. Branding is undecided
+     (PLAN.md section 10 / TRADEMARKS.md); this must not be mistaken for a
+     product icon. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <rect width="64" height="64" rx="14" fill="#1e222b"/>
+  <rect x="10" y="10" width="44" height="44" rx="10" fill="#4a90d9"/>
+  <polyline points="20,42 27,26 36,36 46,18" fill="none" stroke="#ffffff"
+            stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

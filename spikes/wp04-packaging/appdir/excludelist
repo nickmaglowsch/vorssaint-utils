@@ -1,0 +1,93 @@
+# AppImage library excludelist (WP-04)
+#
+# One SONAME per line; '#' starts a comment. Libraries named here are NOT
+# copied into the AppDir: they must come from the host, because bundling them
+# either breaks (the loader/glibc family must match the kernel and each other)
+# or defeats hardware acceleration (the GL/EGL stack must be the host driver's).
+#
+# This file is a hand-curated copy of the well-known AppImage excludelist
+# (AppImage/pkg2appimage `excludelist`). github.com is blocked from the spike
+# container, so it could not be fetched here; the CI job
+# `.github/workflows/linux-spike-wp04.yml` downloads the canonical upstream
+# list and prints a `diff` against this file, so any drift is visible in the
+# run log rather than assumed away.
+
+# --- glibc and the dynamic loader -------------------------------------------
+# Bundling any part of glibc means bundling all of it plus the loader; a
+# mismatch between the bundled loader and the host's NSS/vDSO is a hard crash.
+ld-linux.so.2
+ld-linux-x86-64.so.2
+libanl.so.1
+libBrokenLocale.so.1
+libc.so.6
+libdl.so.2
+libm.so.6
+libmvec.so.1
+libnsl.so.1
+libnss_compat.so.2
+libnss_db.so.2
+libnss_dns.so.2
+libnss_files.so.2
+libnss_hesiod.so.2
+libnss_nis.so.2
+libnss_nisplus.so.2
+libpthread.so.0
+libresolv.so.2
+librt.so.1
+libthread_db.so.1
+libutil.so.1
+libcrypt.so.1
+
+# --- compiler runtimes ------------------------------------------------------
+# Newer than the host is fine (the AppDir is built on the oldest glibc), older
+# than the host breaks host libraries that the AppDir also loads.
+libgcc_s.so.1
+libstdc++.so.6
+
+# --- graphics stack ---------------------------------------------------------
+# Must be the host driver's: a bundled libGL cannot talk to the host's DRM
+# kernel interface or the host's proprietary driver.
+libGL.so.1
+libGLX.so.0
+libGLdispatch.so.0
+libEGL.so.1
+libOpenGL.so.0
+libGLESv2.so.2
+libglapi.so.0
+libgbm.so.1
+libdrm.so.2
+
+# --- X11 core ---------------------------------------------------------------
+# The client libraries negotiate with the host's X server and its extensions.
+libX11.so.6
+libX11-xcb.so.1
+libxcb.so.1
+libxcb-dri2.so.0
+libxcb-dri3.so.0
+libxcb-glx.so.0
+libxcb-present.so.0
+libxcb-sync.so.1
+libxcb-shm.so.0
+libxcb-xfixes.so.0
+libICE.so.6
+libSM.so.6
+
+# --- glib, fonts, misc host-integration -------------------------------------
+# glib carries a GType registry that must be shared with host modules (GIO
+# modules, GTK portals); fontconfig/freetype must match the host font cache.
+libglib-2.0.so.0
+libgobject-2.0.so.0
+libgio-2.0.so.0
+libgmodule-2.0.so.0
+libgthread-2.0.so.0
+libfontconfig.so.1
+libfreetype.so.6
+libharfbuzz.so.0
+libexpat.so.1
+libselinux.so.1
+libuuid.so.1
+libcom_err.so.2
+libasound.so.2
+libjack.so.0
+libp11-kit.so.0
+libgpg-error.so.0

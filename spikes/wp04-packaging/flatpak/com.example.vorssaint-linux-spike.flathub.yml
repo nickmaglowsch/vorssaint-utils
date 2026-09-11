@@ -1,0 +1,97 @@
+# WP-04: Flatpak manifest, REDUCED ("Flathub-acceptable") permission set.
+#
+# Same app, same runtime, same modules; only `finish-args` differs. Every
+# permission Flathub's review guidelines call out as requiring a strong
+# justification (`--device=all`, `--filesystem=host`, `--socket=session-bus`,
+# `--socket=system-bus`, wildcard `--talk-name`) is gone, and everything that
+# can go through a portal does.
+#
+# What this costs is in `docs/linux-port/spikes/04-packaging.md`; the app must
+# detect the reduced build at run time and say so in the feature hub on first
+# launch (PLAN.md section 4.3).
+app-id: com.example.vorssaint-linux-spike
+runtime: org.kde.Platform
+runtime-version: '6.8'
+sdk: org.kde.Sdk
+command: vorssaint-qt-spike
+
+finish-args:
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --socket=pulseaudio
+  - --share=network
+  # The GPU, not every device node.
+  - --device=dri
+
+  # User directories the app genuinely writes to, instead of the whole host.
+  # Everything else (opening a file the user picked, saving a screenshot
+  # somewhere else) goes through the FileChooser portal, which needs no
+  # filesystem permission at all.
+  - --filesystem=xdg-pictures
+  - --filesystem=xdg-videos
+  - --filesystem=xdg-download
+  # The cleaner's only in-sandbox target: per-app Flatpak caches.
+  - --filesystem=~/.var/app:rw
+
+  # Named session-bus peers only; no --socket=session-bus.
+  - --talk-name=org.kde.StatusNotifierWatcher
+  - --talk-name=org.freedesktop.Notifications
+  - --talk-name=org.mpris.MediaPlayer2.*
+  - --talk-name=org.freedesktop.secrets
+
+  # Two system-bus names, read-mostly, each with a user-visible feature behind
+  # it. Both are commonly accepted on Flathub; if a reviewer refuses them the
+  # battery page falls back to /sys/class/power_supply (not visible in the
+  # sandbox) and keep-awake falls back to the Inhibit portal, which is weaker
+  # (no lid-switch inhibit).
+  - --system-talk-name=org.freedesktop.UPower
+  - --system-talk-name=org.freedesktop.login1
+
+  - --env=QT_QPA_PLATFORM=wayland;xcb
+
+# Portals used instead of direct access (no finish-args entry needed; the
+# portal socket is always available inside the sandbox):
+#   ScreenCast, Screenshot        capture, recorder, colour picker, OCR
+#   GlobalShortcuts               hotkeys (GNOME 48+, KDE 6, Hyprland)
+#   Inhibit                       keep awake (idle + suspend, no lid switch)
+#   Background                    autostart
+#   Notification                  notifications
+#   OpenURI / Email               share sheet
+#   Settings                      dark-mode read
+#   Camera                        camera preview
+#   FileChooser                   every user-chosen path
+#   Clipboard (RemoteDesktop)     clipboard history on GNOME
+
+modules:
+  - name: vorssaint-qt-spike
+    buildsystem: cmake-ninja
+    subdir: qt-quick
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+    sources:
+      - type: dir
+        path: ../../wp01-toolkit
+    post-install:
+      - install -Dm755 vorssaint-qt-spike /app/bin/vorssaint-qt-spike
+
+  - name: sandbox-probe
+    buildsystem: simple
+    build-commands:
+      - install -Dm755 sandbox-probe.sh /app/bin/sandbox-probe
+    sources:
+      - type: file
+        path: sandbox-probe.sh
+
+  - name: metadata
+    buildsystem: simple
+    build-commands:
+      - install -Dm644 com.example.vorssaint-linux-spike.desktop
+          /app/share/applications/com.example.vorssaint-linux-spike.desktop
+      - install -Dm644 com.example.vorssaint-linux-spike.svg
+          /app/share/icons/hicolor/scalable/apps/com.example.vorssaint-linux-spike.svg
+    sources:
+      - type: file
+        path: com.example.vorssaint-linux-spike.desktop
+      - type: file
+        path: com.example.vorssaint-linux-spike.svg

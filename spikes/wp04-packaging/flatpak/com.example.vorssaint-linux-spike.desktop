@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Vorssaint (Linux spike)
+Comment=WP-04 packaging proof for the Vorssaint Linux port
+Exec=vorssaint-qt-spike
+Icon=com.example.vorssaint-linux-spike
+Categories=Utility;
+Terminal=false

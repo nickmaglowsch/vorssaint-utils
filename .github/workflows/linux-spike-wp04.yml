@@ -1,0 +1,387 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Vorssaint
+#
+# WP-04 spike: packaging. Evidence-gathering, not a gate -- build steps are
+# `continue-on-error` so a failure still produces a readable log and the
+# branch never goes red because a spike did not link.
+#
+# Why this exists at all: the spike container that produced
+# `docs/linux-port/spikes/04-packaging.md` cannot reach github.com (403 from
+# its egress proxy), so `linuxdeploy`, `linuxdeploy-plugin-qt`, `appimagetool`,
+# the AppImage type2 runtime and the Flathub runtimes are unreachable there.
+# Actions has full internet, so everything that needs a GitHub release
+# download or a Flatpak runtime happens here.
+#
+# The AppDir itself is built by the same `spikes/wp04-packaging/appdir/
+# build-appdir.sh` that was run locally, so the two results are comparable.
+
+name: linux-spike-wp04
+
+on:
+  push:
+    branches:
+      - 'claude/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  # ---------------------------------------------------------------------
+  # (a) Build the AppImage on the oldest supported glibc.
+  # ---------------------------------------------------------------------
+  appimage:
+    name: appimage (ubuntu-22.04, glibc 2.35)
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: toolchain versions
+        run: |
+          ldd --version | head -1
+          cmake --version | head -1
+          echo "--- os"; cat /etc/os-release | head -2
+
+      - name: install Qt 6 and packaging tools from apt
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            qt6-base-dev qt6-base-dev-tools qt6-declarative-dev \
+            qt6-declarative-dev-tools qt6-wayland qt6-wayland-dev \
+            qml6-module-qtquick qml6-module-qtquick-controls \
+            qml6-module-qtquick-layouts qml6-module-qtquick-window \
+            qml6-module-qtquick-templates qml6-module-qtqml-workerscript \
+            libgl1-mesa-dev libvulkan-dev \
+            cmake ninja-build patchelf squashfs-tools file desktop-file-utils
+          echo "--- Qt version on this runner (jammy ships 6.2; noble ships 6.4)"
+          qmake6 -query QT_VERSION
+
+      - name: excludelist drift check against upstream
+        continue-on-error: true
+        run: |
+          # The committed excludelist is a hand-curated copy: github.com is
+          # blocked from the spike container, so it could not be fetched
+          # there. Fetch the canonical one here and show the difference.
+          curl -fsSL -o /tmp/excludelist.upstream \
+            https://raw.githubusercontent.com/AppImage/pkg2appimage/master/excludelist || \
+          curl -fsSL -o /tmp/excludelist.upstream \
+            https://raw.githubusercontent.com/AppImageCommunity/pkg2appimage/master/excludelist
+          grep -v '^#' /tmp/excludelist.upstream | grep -v '^\s*$' | sort -u > /tmp/up.txt
+          grep -v '^#' spikes/wp04-packaging/appdir/excludelist | grep -v '^\s*$' | sort -u > /tmp/ours.txt
+          echo "upstream entries: $(wc -l < /tmp/up.txt)   ours: $(wc -l < /tmp/ours.txt)"
+          echo "--- in upstream but not ours (we would bundle these):"
+          comm -23 /tmp/up.txt /tmp/ours.txt
+          echo "--- in ours but not upstream (we leave these to the host):"
+          comm -13 /tmp/up.txt /tmp/ours.txt
+
+      - name: build the WP-01 Qt Quick spike (Release)
+        continue-on-error: true
+        run: |
+          cmake -S spikes/wp01-toolkit/qt-quick -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release
+          cmake --build build -j"$(nproc)"
+          ls -la build/vorssaint-qt-spike
+
+      - name: hand-built AppDir
+        continue-on-error: true
+        run: |
+          bash spikes/wp04-packaging/appdir/build-appdir.sh \
+            build/vorssaint-qt-spike "$PWD/AppDir-hand" | tee appdir-hand.log
+          echo "--- ldd closure of the main binary"
+          ldd AppDir-hand/usr/bin/vorssaint-qt-spike
+          echo "--- squashfs payload size (what an AppImage's payload costs)"
+          mksquashfs AppDir-hand payload.squashfs -root-owned -noappend \
+            -comp zstd -Xcompression-level 19 -b 128K -no-progress | tail -5
+          ls -la payload.squashfs
+
+      - name: fetch appimagetool, the type2 runtime and linuxdeploy
+        continue-on-error: true
+        run: |
+          set -x
+          base=https://github.com/AppImage/appimagetool/releases/download/continuous
+          curl -fsSL -o appimagetool "$base/appimagetool-x86_64.AppImage" || \
+            curl -fsSL -o appimagetool \
+              https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage
+          curl -fsSL -o runtime-x86_64 \
+            https://github.com/AppImage/type2-runtime/releases/download/continuous/runtime-x86_64
+          curl -fsSL -o linuxdeploy \
+            https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
+          curl -fsSL -o linuxdeploy-plugin-qt \
+            https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-x86_64.AppImage
+          chmod +x appimagetool linuxdeploy linuxdeploy-plugin-qt
+          ls -la appimagetool runtime-x86_64 linuxdeploy linuxdeploy-plugin-qt
+          file runtime-x86_64
+
+      - name: AppImage 1 -- hand AppDir + appimagetool --runtime-file
+        continue-on-error: true
+        env:
+          APPIMAGE_EXTRACT_AND_RUN: '1'
+          ARCH: x86_64
+        run: |
+          ./appimagetool --runtime-file runtime-x86_64 \
+            AppDir-hand vorssaint-spike-hand-x86_64.AppImage
+          ls -la vorssaint-spike-hand-x86_64.AppImage
+
+      - name: AppImage 2 -- linuxdeploy + linuxdeploy-plugin-qt
+        continue-on-error: true
+        env:
+          APPIMAGE_EXTRACT_AND_RUN: '1'
+          ARCH: x86_64
+          QML_SOURCES_PATHS: ${{ github.workspace }}/spikes/wp01-toolkit/qt-quick/qml
+          EXTRA_QT_PLUGINS: wayland-decoration-client;wayland-graphics-integration-client;wayland-shell-integration;platformthemes
+        run: |
+          mkdir -p AppDir-ld/usr/bin AppDir-ld/usr/share/applications \
+                   AppDir-ld/usr/share/icons/hicolor/256x256/apps
+          cp build/vorssaint-qt-spike AppDir-ld/usr/bin/
+          cp AppDir-hand/com.example.vorssaint-linux-spike.desktop \
+             AppDir-ld/usr/share/applications/
+          cp AppDir-hand/com.example.vorssaint-linux-spike.png \
+             AppDir-ld/usr/share/icons/hicolor/256x256/apps/
+          ./linuxdeploy --appdir AppDir-ld --plugin qt \
+            -d AppDir-ld/usr/share/applications/com.example.vorssaint-linux-spike.desktop \
+            -i AppDir-ld/usr/share/icons/hicolor/256x256/apps/com.example.vorssaint-linux-spike.png
+          ./appimagetool --runtime-file runtime-x86_64 \
+            AppDir-ld vorssaint-spike-linuxdeploy-x86_64.AppImage
+          ls -la vorssaint-spike-linuxdeploy-x86_64.AppImage
+
+      - name: size comparison
+        continue-on-error: true
+        run: |
+          echo "=== AppDir sizes"
+          du -sh AppDir-hand AppDir-ld 2>/dev/null || true
+          du -sb AppDir-hand AppDir-ld 2>/dev/null || true
+          echo "=== AppImage sizes"
+          ls -la *.AppImage
+          echo "=== bundled library count"
+          echo "hand:       $(find AppDir-hand/usr/lib -maxdepth 1 -name '*.so*' | wc -l)"
+          echo "linuxdeploy: $(find AppDir-ld/usr/lib -maxdepth 1 -name '*.so*' 2>/dev/null | wc -l)"
+          echo "=== top 15 largest, hand-built"
+          find AppDir-hand -type f -printf '%s %p\n' | sort -rn | head -15
+          echo "=== top 15 largest, linuxdeploy"
+          find AppDir-ld -type f -printf '%s %p\n' 2>/dev/null | sort -rn | head -15
+          echo "=== libraries the hand AppDir leaves to the host"
+          cat host-provided.txt 2>/dev/null || true
+
+      - name: upload AppImages
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: wp04-appimages
+          path: |
+            *.AppImage
+            appdir-hand.log
+            payload.squashfs
+          if-no-files-found: warn
+          retention-days: 7
+
+  # ---------------------------------------------------------------------
+  # (b) Per-distro smoke, both AppImage launch modes.
+  # ---------------------------------------------------------------------
+  smoke:
+    name: smoke ${{ matrix.image }} (${{ matrix.mode }})
+    needs: appimage
+    if: always()
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    strategy:
+      fail-fast: false
+      matrix:
+        image: ['ubuntu:24.04', 'ubuntu:22.04', 'fedora:42', 'archlinux:latest']
+        mode: [extract, fuse]
+    container:
+      image: ${{ matrix.image }}
+      # /dev/fuse is what the FUSE mode needs; the job reports honestly when
+      # the container cannot get it rather than silently falling back.
+      options: --device /dev/fuse --cap-add SYS_ADMIN
+    steps:
+      - name: install runtime deps
+        continue-on-error: true
+        run: |
+          set -x
+          if command -v apt-get >/dev/null; then
+            export DEBIAN_FRONTEND=noninteractive
+            apt-get update -qq
+            apt-get install -y --no-install-recommends \
+              xvfb x11-utils imagemagick libgl1 libegl1 libopengl0 \
+              libgl1-mesa-dri libglx-mesa0 libegl-mesa0 \
+              libglib2.0-0 libfontconfig1 libfreetype6 libharfbuzz0b \
+              fonts-dejavu-core libice6 libsm6 libx11-xcb1 libxcb-glx0 \
+              libxcb-shm0 libxcb-sync1 libxcb-xfixes0 dbus-x11 \
+              fuse libfuse2 ca-certificates file || true
+          elif command -v dnf >/dev/null; then
+            dnf -y install --setopt=install_weak_deps=False \
+              xorg-x11-server-Xvfb xorg-x11-utils ImageMagick \
+              mesa-libGL mesa-libEGL mesa-dri-drivers libglvnd-opengl \
+              glib2 fontconfig freetype harfbuzz dejavu-sans-fonts \
+              libICE libSM libX11-xcb libxcb dbus-x11 fuse fuse-libs \
+              file findutils || true
+          elif command -v pacman >/dev/null; then
+            pacman -Sy --noconfirm --needed \
+              xorg-server-xvfb xorg-xwd imagemagick mesa libglvnd \
+              glib2 fontconfig freetype2 harfbuzz ttf-dejavu \
+              libice libsm libxcb dbus fuse2 file || true
+          fi
+          echo "--- glibc"; ldd --version | head -1
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: wp04-appimages
+          path: /tmp/art
+
+      - name: prepare
+        run: |
+          ls -la /tmp/art
+          chmod +x /tmp/art/*.AppImage || true
+          ls -l /dev/fuse 2>&1 || echo "/dev/fuse: absent"
+
+      - name: run under Xvfb (${{ matrix.mode }} mode)
+        continue-on-error: true
+        run: |
+          mkdir -p /tmp/shots
+          export XDG_RUNTIME_DIR=/tmp/xdg; mkdir -p $XDG_RUNTIME_DIR; chmod 700 $XDG_RUNTIME_DIR
+          if [ "${{ matrix.mode }}" = extract ]; then
+            export APPIMAGE_EXTRACT_AND_RUN=1
+          else
+            unset APPIMAGE_EXTRACT_AND_RUN
+          fi
+          Xvfb :95 -screen 0 1280x800x24 >/tmp/xvfb.log 2>&1 &
+          sleep 3
+          export DISPLAY=:95
+          for img in /tmp/art/*.AppImage; do
+            name="$(basename "$img" .AppImage)"
+            echo "===================== $name (${{ matrix.mode }})"
+            "$img" --screen panel --quit-after 5000 > "/tmp/$name.log" 2>&1 &
+            pid=$!
+            sleep 4
+            if command -v import >/dev/null; then
+              import -window root -display :95 "/tmp/shots/${{ matrix.mode }}-$name.png" 2>/dev/null || true
+            elif command -v xwd >/dev/null; then
+              xwd -root -display :95 -out "/tmp/shots/${{ matrix.mode }}-$name.xwd" || true
+            fi
+            wait $pid; echo "exit=$?"
+            echo "--- log"
+            cat "/tmp/$name.log" || true
+            echo "--- missing-library / platform-plugin diagnostics"
+            grep -Ei 'cannot open shared object|not found|qt.qpa|platform plugin|symbol lookup|GLIBC_|libfuse|dlopen' \
+              "/tmp/$name.log" || echo "(none)"
+          done
+          ls -la /tmp/shots || true
+
+      - name: upload screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: wp04-smoke-${{ strategy.job-index }}
+          path: |
+            /tmp/shots/**
+            /tmp/*.log
+          if-no-files-found: warn
+          retention-days: 7
+
+  # ---------------------------------------------------------------------
+  # (c) Flatpak: both permission sets, plus the sandbox probes.
+  # ---------------------------------------------------------------------
+  flatpak:
+    name: flatpak (ubuntu-24.04)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: install flatpak
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            flatpak flatpak-builder xvfb x11-utils imagemagick dbus-x11 \
+            python3-yaml
+          flatpak --version; flatpak-builder --version
+
+      - name: validate both manifests
+        run: |
+          python3 - <<'PY'
+          import yaml
+          for f in ("spikes/wp04-packaging/flatpak/com.example.vorssaint-linux-spike.yml",
+                    "spikes/wp04-packaging/flatpak/com.example.vorssaint-linux-spike.flathub.yml"):
+              d = yaml.safe_load(open(f))
+              print(f, "->", d["app-id"], d["runtime"], d["runtime-version"],
+                    "finish-args:", len(d["finish-args"]),
+                    "modules:", [m["name"] for m in d["modules"]])
+          PY
+
+      - name: add Flathub and install the KDE runtime
+        continue-on-error: true
+        run: |
+          flatpak remote-add --user --if-not-exists flathub \
+            https://dl.flathub.org/repo/flathub.flatpakrepo
+          ver=$(python3 -c "import yaml;print(yaml.safe_load(open('spikes/wp04-packaging/flatpak/com.example.vorssaint-linux-spike.yml'))['runtime-version'])")
+          echo "manifest pins org.kde.Platform//$ver"
+          flatpak install --user -y flathub org.kde.Platform//$ver org.kde.Sdk//$ver
+          flatpak list --user
+
+      - name: build and install -- FULL permission set
+        continue-on-error: true
+        working-directory: spikes/wp04-packaging/flatpak
+        run: |
+          flatpak-builder --user --install --force-clean --disable-rofiles-fuse \
+            build-full com.example.vorssaint-linux-spike.yml 2>&1 | tail -60
+
+      - name: permissions and sandbox probe -- FULL
+        continue-on-error: true
+        run: |
+          echo "===== flatpak info --show-permissions (FULL)"
+          flatpak info --show-permissions com.example.vorssaint-linux-spike
+          echo "===== sandbox probe (FULL)"
+          flatpak run --command=sandbox-probe com.example.vorssaint-linux-spike 2>&1 | tee /tmp/probe-full.txt
+
+      - name: run under Xvfb -- FULL
+        continue-on-error: true
+        run: |
+          export XDG_RUNTIME_DIR=/tmp/xdg; mkdir -p $XDG_RUNTIME_DIR; chmod 700 $XDG_RUNTIME_DIR
+          Xvfb :96 -screen 0 1280x800x24 >/tmp/xvfb.log 2>&1 & sleep 3
+          export DISPLAY=:96
+          eval "$(dbus-launch --sh-syntax)"
+          mkdir -p /tmp/shots
+          flatpak run --env=QT_QPA_PLATFORM=xcb com.example.vorssaint-linux-spike \
+            --screen panel --quit-after 5000 > /tmp/flatpak-full.log 2>&1 &
+          pid=$!; sleep 4
+          import -window root -display :96 /tmp/shots/flatpak-full.png || true
+          wait $pid; echo "exit=$?"
+          cat /tmp/flatpak-full.log
+
+      - name: build and install -- REDUCED permission set
+        continue-on-error: true
+        working-directory: spikes/wp04-packaging/flatpak
+        run: |
+          flatpak-builder --user --install --force-clean --disable-rofiles-fuse \
+            build-reduced com.example.vorssaint-linux-spike.flathub.yml 2>&1 | tail -60
+
+      - name: permissions and sandbox probe -- REDUCED
+        continue-on-error: true
+        run: |
+          echo "===== flatpak info --show-permissions (REDUCED)"
+          flatpak info --show-permissions com.example.vorssaint-linux-spike
+          echo "===== sandbox probe (REDUCED)"
+          flatpak run --command=sandbox-probe com.example.vorssaint-linux-spike 2>&1 | tee /tmp/probe-reduced.txt
+          echo "===== diff FULL vs REDUCED probe"
+          diff -u /tmp/probe-full.txt /tmp/probe-reduced.txt || true
+
+      - name: flatpak payload size
+        continue-on-error: true
+        run: |
+          du -sh ~/.local/share/flatpak/app/com.example.vorssaint-linux-spike || true
+          flatpak list --user --columns=application,size,runtime || true
+
+      - name: upload flatpak evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: wp04-flatpak
+          path: |
+            /tmp/probe-*.txt
+            /tmp/flatpak-*.log
+            /tmp/shots/**
+          if-no-files-found: warn
+          retention-days: 7
