@@ -1,0 +1,150 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Vorssaint
+#
+# WP-00 spike: the only place a Linux Swift compiler is reachable. This
+# workflow is evidence-gathering, not a gate — every build step is
+# continue-on-error so the log is always produced and the branch never fails
+# because the spike does not compile yet.
+
+name: linux-spike-wp00
+
+on:
+  push:
+    branches:
+      - 'claude/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  swift-6-1:
+    name: swift 6.1 (noble)
+    runs-on: ubuntu-24.04
+    container:
+      image: swift:6.1-noble
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: swift --version
+        run: |
+          swift --version
+          uname -a
+          cat /etc/os-release | head -3
+
+      - name: sync vendored sources
+        working-directory: spikes/wp00-swift-core
+        run: |
+          ./sync.sh
+          echo "--- vendored (spike/clean set) ---"
+          ls Sources/VorssaintCoreSpike/Vendored | wc -l
+          echo "--- vendored (wide/all set) ---"
+          ls Sources/VorssaintCoreWide/Vendored | wc -l
+
+      - name: resolve dependencies (OpenCombine)
+        working-directory: spikes/wp00-swift-core
+        continue-on-error: true
+        run: |
+          swift package resolve 2>&1 | tee resolve.log
+          cat Package.resolved || true
+
+      - name: build VorssaintCoreSpike (the 93 census-clean files)
+        id: build_clean
+        working-directory: spikes/wp00-swift-core
+        continue-on-error: true
+        run: |
+          set +e
+          swift build -v --target VorssaintCoreSpike 2>&1 | tee build.log
+          echo "exit=${PIPESTATUS[0]}"
+          echo "--- full build.log ---"
+          cat build.log
+          echo "--- error census ---"
+          grep -c ': error:' build.log || true
+
+      - name: build VorssaintCoreWide (all 120 census files)
+        id: build_wide
+        working-directory: spikes/wp00-swift-core
+        continue-on-error: true
+        run: |
+          set +e
+          swift build -v --target VorssaintCoreWide 2>&1 | tee build-wide.log
+          echo "exit=${PIPESTATUS[0]}"
+          echo "--- full build-wide.log ---"
+          cat build-wide.log
+          echo "--- error census ---"
+          grep -c ': error:' build-wide.log || true
+
+      - name: static link probe (--static-swift-stdlib) + ldd
+        working-directory: spikes/wp00-swift-core
+        continue-on-error: true
+        run: |
+          set +e
+          swift build -c release --static-swift-stdlib --product hello-spike 2>&1 | tee static.log
+          bin="$(swift build -c release --static-swift-stdlib --product hello-spike --show-bin-path)/hello-spike"
+          echo "--- binary ---"
+          ls -l "$bin"
+          echo "--- run ---"
+          "$bin"
+          echo "--- ldd ---"
+          ldd "$bin" || true
+          echo "--- file ---"
+          file "$bin" || true
+          echo "--- size ---"
+          du -h "$bin" || true
+
+      - name: swift test (URLCleaning + CommandBarMath)
+        working-directory: spikes/wp00-swift-core
+        continue-on-error: true
+        run: |
+          set +e
+          swift test 2>&1 | tee test.log
+          echo "exit=${PIPESTATUS[0]}"
+          cat test.log
+
+      - name: upload logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: wp00-swift-6.1-logs
+          path: |
+            spikes/wp00-swift-core/*.log
+            spikes/wp00-swift-core/Package.resolved
+          if-no-files-found: warn
+
+  swift-6-2-nightly:
+    name: swift 6.2 nightly (noble)
+    runs-on: ubuntu-24.04
+    continue-on-error: true
+    container:
+      image: swiftlang/swift:nightly-6.2-noble
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: swift --version
+        continue-on-error: true
+        run: swift --version
+
+      - name: sync vendored sources
+        working-directory: spikes/wp00-swift-core
+        continue-on-error: true
+        run: ./sync.sh
+
+      - name: build both targets
+        working-directory: spikes/wp00-swift-core
+        continue-on-error: true
+        run: |
+          set +e
+          swift build -v --target VorssaintCoreSpike 2>&1 | tee build-62.log
+          echo "--- full build-62.log ---"
+          cat build-62.log
+          grep -c ': error:' build-62.log || true
+          swift build -v --target VorssaintCoreWide 2>&1 | tee build-wide-62.log
+          grep -c ': error:' build-wide-62.log || true
+
+      - name: upload logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: wp00-swift-6.2-logs
+          path: spikes/wp00-swift-core/*.log
+          if-no-files-found: warn

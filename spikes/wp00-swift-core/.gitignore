@@ -1,0 +1,8 @@
+# Vendored copies are produced by ./sync.sh from Sources/ at build time.
+# They are never committed: the repository is the single source of truth and
+# a stale copy here would make the spike lie.
+Sources/VorssaintCoreSpike/Vendored/
+Sources/VorssaintCoreWide/Vendored/
+.build/
+Package.resolved
+*.log
