@@ -107,7 +107,7 @@ Mechanism clusters that decide the port:
 Each decision names the alternative considered and the evidence. Phase 0
 spikes confirm or revise the ones marked *to confirm*.
 
-### 4.1 Language: Swift core on Linux (to confirm in WP-00)
+### 4.1 Language: Swift core on Linux (confirmed by WP-00: GO WITH CONDITIONS)
 
 Swift 6.3 ships official Linux toolchains; `Foundation` on Linux is
 swift-foundation plus `FoundationNetworking` (`URLSession`) and
@@ -120,8 +120,8 @@ swift-foundation plus `FoundationNetworking` (`URLSession`) and
   which costs less across 78 `ObservableObject`s.
 - Static linking: `--static-swift-stdlib` for the GUI process (glibc stays
   dynamic and is bundled by the AppImage). The musl Static Linux SDK cannot
-  `dlopen` or link distro shared libraries, so it is used only for the
-  privileged helper, where zero dependencies is exactly what we want.
+  `dlopen` or link distro shared libraries, so it is not used for the app;
+  the privileged helper is C (see § 4.4).
 - Swift 6 strict concurrency meets Qt's main-thread rule: all UI-facing
   bridge calls are `@MainActor`, and the core keeps its "main thread only"
   convention.
@@ -131,7 +131,24 @@ the translations and the tested `Support` logic, and because a fork in a
 different language can never take upstream fixes again. It stays as the
 fallback in § 9 if WP-00 fails.
 
-### 4.2 UI toolkit: Qt 6 Quick shell with the Swift core behind one bridge (to confirm in WP-01)
+**Phase 0 outcome (WP-00, `spikes/00-swift-core.md`).** Swift 6.1.3 and a
+6.2 nightly on Linux CI compile unmodified Vorssaint sources; a closed
+two-file package passes nine behavioural tests with the same answers as
+macOS; `--static-swift-stdlib` yields a binary with no Swift, Foundation or
+ICU shared-library dependency (65 MB unstripped for a trivial program);
+OpenCombine 0.14 resolves and builds with zero Combine errors. The static
+census classifies 93 of 120 candidate files (68 % of 64k lines) as clean,
+with a measured ~2 % false-clean rate, so the compiler, not the census, is
+the gate. Conditions carried into the backlog: WP-11 moves files in
+declaration-graph order (3052 of 4173 diagnostics were dependency-closure
+holes, not Linux gaps) and splits `Defaults.swift` and
+`GlobalShortcut.swift` first; WP-12 budgets the named Foundation gaps
+(`FoundationXML`, `ProcessInfo.ThermalState`, `CFGetTypeID`,
+`FileManager.trashItem`); WP-13 re-measures OpenCombine against the real
+services; WP-04 starts from the 65 MB figure; Fedora is unproven until a
+toolchain can be run there.
+
+### 4.2 UI toolkit: Qt 6 Quick shell with the Swift core behind one bridge (confirmed by WP-01)
 
 Evidence from the ecosystem research:
 
@@ -166,6 +183,24 @@ views) and Adwaita for Swift. If Qt Bridge is stable enough, it replaces the
 C++ side of the bridge with the same design and fewer languages; the QML
 stays identical, which is why it is a low-risk swap.
 
+**Phase 0 outcome (WP-01, `spikes/01-toolkit.md`).** Qt 6 Quick and
+GTK4/libadwaita were built against the same C bridge stub and measured
+under Xvfb and headless sway: Qt uses 45 % of GTK's memory under the
+software renderer (50 vs 112 MiB), registers a tray item in 12 lines
+(GTK4 has no tray API; 82 hand-written lines of StatusNotifierItem), and
+its QML is a translation of the SwiftUI where GTK4 C is a rewrite. The
+recommendation stands and does not rest on layer-shell, because Ubuntu
+24.04 packages `layer-shell-qt` for Qt 5 only and has no GTK4 layer-shell
+at all: WP-29 must vendor LayerShellQt against Qt 6 or ship the fullscreen
+fallback, which works on sway. Qt Bridge for Swift and Adwaita for Swift
+could not be built here (no Swift toolchain) and are re-evaluated in Phase
+2 with the Swift toolchain on CI. Two findings for WP-20: the bridge
+callback must hop to the GUI thread with an owned copy of the snapshot,
+and every model accessor takes the lock (the GTK spike had one racy
+accessor, fixed in review); a StatusNotifierWatcher that omits properties
+from its introspection XML makes Qt report no tray, so WP-21's detection
+must not trust `IsStatusNotifierHostRegistered` alone.
+
 ### 4.3 Packaging: AppImage primary, Flatpak secondary (to confirm in WP-04)
 
 - AppImage: type2 runtime is static (no `libfuse2` requirement), the
@@ -182,8 +217,8 @@ stays identical, which is why it is a low-risk swap.
 
 ### 4.4 Privilege: one helper, `vorssaint-helper`
 
-A musl-static Swift daemon (systemd system unit, D-Bus system-bus name,
-polkit actions, udev rules for `uinput`/`i2c`), installed from the
+A small C daemon (systemd system unit, D-Bus system-bus name, polkit
+actions, udev rules for `uinput`/`i2c`), installed from the
 Capabilities page with one polkit prompt and uninstalled the same way. It
 owns: evdev grab + uinput re-emit (the `keyd` model), hwmon `pwm` writes,
 DDC/CI I2C writes. Everything else (backlight via logind `SetBrightness`,
@@ -194,6 +229,39 @@ needs; the security review is part of WP-S1 and the result is
 
 Alternative rejected: adding the user to `input`/`uinput` groups. It makes
 every process of that user a keylogger; the helper keeps that boundary.
+
+**Phase 0 outcome (WP-03, `spikes/03-input-relay.md`, `PRIVILEGES.md`).**
+The relay and the privilege split were built in C (libevdev, libudev,
+libxkbcommon, sd-bus, libpolkit-gobject): rules engine with 21 passing
+assertions, a recorded-evdev replay test, a working system-bus prototype
+where an unprivileged client drives the root helper and a denying polkit
+stub is proven to gate every method. Decisions taken at the gate:
+
+- **The helper stays in C**, not musl-static Swift as first written above.
+  The spike is the specification and most of the implementation; the
+  evdev, udev, sd-bus and polkit libraries are C, and a Swift rewrite would
+  add bindings without adding safety. It is built with `-Werror` and
+  hardened flags, and statically links what its licences allow.
+- **Keycode-level relaying, no layout mirroring.** The compositor applies
+  the session keymap to the virtual device like any keyboard; the spike
+  shows the same keycodes yield different keysyms under us/de/fr/ru with no
+  relay involvement. Corollary for WP-24: the shortcut recorder resolves
+  characters to keycodes with libxkbcommon in the app and the helper only
+  ever receives keycodes.
+- **`Enable(true)` binds to the caller's logind session** and only that
+  session or an administrator may disable it (WP-S1 acceptance criterion).
+  `SetRules` keeps `auth_admin_keep`; prompts can be relaxed later, the
+  capability cannot be taken back.
+- **`Enable(false)` must release every grab immediately** (a review found
+  the spike leaked grabs; fixed with a mutation-tested regression test), and
+  WP-S1 must prove on hardware that `evtest` succeeds on a device after
+  disable. The relay refuses to start if another grabber (keyd,
+  interception-tools) holds a device and the hub must name that process.
+- Relay latency measured here is the relay's own cost only (sub-microsecond
+  per event); kernel delivery and scheduling dominate and are measured on
+  hardware in WP-S1. This container's kernel has no uinput at all
+  (`CONFIG_INPUT_UINPUT` unset, no modules), so the evdev backend has never
+  executed here.
 
 ### 4.5 Desktop capability model
 
@@ -241,8 +309,8 @@ Sources/
                           Flatpak, HelperClient, GnomeBridgeClient,
                           KWinScriptClient, CompositorIPC. CoreBridge
                           (@_cdecl surface).
-  VorssaintHelper/        musl-static privileged daemon: InputRelay,
-                          Hwmon, DDC. D-Bus + polkit.
+linux/helper/           privileged C daemon (from the WP-03 spike):
+                          InputRelay, Hwmon, DDC. sd-bus + polkit.
 linux/
   shell/                  Qt 6 Quick app: CoreModel bridge, QML screens
                           (one file per SwiftUI view it replaces), tray,
@@ -285,7 +353,8 @@ versions as part of each work package.
 | Window list/focus/close | foreign-toplevel / KWin script / extension / EWMH | extension | KWin script | ✓ protocol | ✓ | none |
 | Move/resize windows | extension / KWin script / IPC / EWMH | extension | KWin script | Hyprland+Sway IPC | ✓ | none |
 | Live window previews | portal ScreenCast window source; `ext-image-copy-capture` | ✓ portal | ✓ portal | Hyprland ✓; wlroots 0.19 via ext protocol (unverified matrix) | XComposite | none |
-| Screen/region capture | portal ScreenCast + Screenshot, restore tokens | ✓ | ✓ | ✓ (monitor; window depends on backend) | ✓ | none |
+| Screen/region capture | portal ScreenCast + Screenshot, restore tokens | ✓ | ✓ | ✓ monitor; WINDOW requests are silently served as MONITOR by xdg-desktop-portal-wlr 0.7.1 (bit-mask bug), so the app must read `AvailableSourceTypes` and each stream's `source_type` | ✓ | none |
+| Portals that need `impl.portal.Access` (Screenshot, Camera, Device, Location) | backend must implement Access | ✓ | ✓ | ✗ on bare wlroots (xdpw has no Access impl): screenshot via ScreenCast frame instead | n/a | none |
 | Encoding | bundled ffmpeg libs (openh264 or VA-API/NVENC to avoid GPL x264 in the AppImage) or GStreamer | – | – | – | – | none |
 | System audio / mic | PipeWire monitor node / source node; libpulse fallback | ✓ | ✓ | ✓ | ✓ | none |
 | Per-app volume/routing | PipeWire `Props.volume`, metadata `target.object` | ✓ | ✓ | ✓ | ✓ | none |
@@ -305,6 +374,23 @@ versions as part of each work package.
 | Bluetooth on sleep | BlueZ D-Bus + logind delay inhibitor | ✓ | ✓ | ✓ | ✓ | none |
 | Headless CI | Xvfb for X11; `weston --backend=headless` or sway headless for Wayland + `xdg-desktop-portal-wlr`; `python-dbusmock` for portals | – | – | – | – | – |
 
+**Phase 0 outcome (WP-02, `spikes/02-capture.md`).** The full chain
+(portal ScreenCast → PipeWire → libx264 → MP4 with AAC system audio from a
+PipeWire monitor node, plus portal Screenshot and restore tokens) was
+proven on headless sway: 29.5 fps at 30 fps cap, 1.1 ms average capture
+latency, 42 % of one core, audio verified by a 440 Hz round trip.
+Findings that bind later packages: stock xdg-desktop-portal-wlr 0.7.1
+cannot screencast on the pixman renderer without a one-line patch (WP-P3's
+headless CI must bundle the patch or use a DRM-capable runner); wlroots
+frame rate is damage-driven, so `RecorderTimeline` must be driven by
+capture timestamps rather than a nominal rate; audio cannot use the
+portal's restricted PipeWire fd and needs a second ordinary
+`pw_context_connect`; H.264 encoder availability differs by distro
+(Ubuntu ships x264, Fedora's ffmpeg-free ships no H.264 encoder, Flatpak
+runtimes ship openh264), so the bundle decision belongs to WP-04 and the
+code stays encoder-agnostic. Drafts of the three upstream reports are under
+`docs/linux-port/spikes/upstream/`.
+
 ## 7. Dependencies
 
 Per `CONTRIBUTING.md` the project has no external dependencies. The port
@@ -320,7 +406,8 @@ with what carries it and how it ships.
 | ffmpeg libs (libavcodec/format/filter, openh264) | recording, media tools, GIF | bundled | recorder/media off |
 | Tesseract + Leptonica + `eng` tessdata | OCR | bundled; more languages downloaded on demand | OCR off |
 | zxing-cpp | QR | bundled static | QR off |
-| libxkbcommon, libudev, libevdev | input relay, layouts | helper links statically where licence allows, else bundled | relay off |
+| libevdev, libudev, sd-bus (libsystemd), libpolkit-gobject-1 | privileged helper | linked by the helper, which is installed onto the host by the app (not run from the AppImage) | relay, fan control and DDC off |
+| libxkbcommon | shortcut recorder keycode resolution | bundled | recorder falls back to raw keycodes |
 | libddcutil (optional) | external brightness | dlopen if present, else our own I2C path | DDC off |
 | NVML (optional) | NVIDIA GPU metrics | dlopen from driver | GPU rows hidden |
 | PackageKit, Flatpak (optional, runtime D-Bus/CLI) | Packages, updates, uninstaller | host | those rows hidden |

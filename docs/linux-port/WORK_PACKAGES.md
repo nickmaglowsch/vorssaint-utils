@@ -142,7 +142,12 @@ splitting its icon rendering out, `MetricFormat`, `MonitorSamplingPolicy`,
 their AppKit corner extracted into a sibling file left in `VorssaintMac`.
 *Accept:* Linux `swift build --target VorssaintCore` green; macOS app
 unchanged; the moved-file list is in the PR with the per-file reason for
-anything left behind.
+anything left behind. Per WP-00: the move order follows the declaration
+graph (closed sets, every intermediate commit green), `Defaults.swift` and
+`GlobalShortcut.swift` are split first (key table separated from
+`UCKeyTranslate`), the `Darwin`/`Vision` shim holes are closed so the
+208-file service layer gets a real error census, and the WP-00 census is
+treated as a prior only (measured ~2 % false-clean).
 
 **WP-12.** Define the protocols the Linux backends and the Mac adapter both
 implement, one per concern, each in its own file under
@@ -158,14 +163,20 @@ can degrade honestly. The Mac adapter wraps the existing services without
 changing their behaviour.
 *Accept:* every protocol has a Mac implementation that the existing
 services call through (no behaviour change proven by selftest + ui-smoke),
-and a `Fake*` implementation used by tests.
+and a `Fake*` implementation used by tests. Per WP-00, the Foundation gaps
+named in `spikes/00-swift-core.md` § 8 condition 3 (`FoundationXML`,
+`ProcessInfo.ThermalState`, `CFGetTypeID`/`CFBooleanGetTypeID`,
+`FileManager.trashItem`) each get a protocol home or a shim here.
 
 **WP-13.** `import Combine` becomes `import VorssaintCombine`, a tiny module
 that re-exports Combine on Darwin and OpenCombine (with
 `OpenCombineFoundation` for `Timer`/`NotificationCenter` publishers) on
 Linux. Audit `@Published` + `ObservableObject` usage for anything OpenCombine
 lacks.
-*Accept:* core builds on both; the audit list is in the PR.
+*Accept:* core builds on both; the audit list is in the PR. Per WP-00 the
+OpenCombine verdict is provisional (one candidate file imported Combine):
+re-measure against the real `ObservableObject` services, and do not name any
+shim target `Combine` (circular-module error).
 
 **WP-14.** `DefaultsKey` stays; `UserDefaults.standard` reads/writes go
 through a `SettingsStore` protocol with a `UserDefaults` implementation on
@@ -223,17 +234,17 @@ uninstall features. No features yet beyond a CPU readout used as a probe.
 | WP-21 | Tray: StatusNotifierItem host with per-readout items, GNOME AppIndicator detection | M | WP-20 | Shell squad | todo |
 | WP-22 | Panel window: popover anchored to the tray, tabs/sections, compact layout, drift-free positioning per compositor | L | WP-21 | Shell squad | todo |
 | WP-23 | Settings window (Qt Quick preferences, one page per group), Features hub, onboarding, What's new | L | WP-20 | Shell squad | todo |
-| WP-24 | Global shortcuts: portal GlobalShortcuts backend + shortcut recorder widget + X11 XGrabKey fallback | L | WP-20 | Shell squad | todo |
+| WP-24 | Global shortcuts: portal GlobalShortcuts backend + shortcut recorder widget (resolves characters to keycodes with libxkbcommon; the helper only ever receives keycodes, per WP-03) + X11 XGrabKey fallback | L | WP-20 | Shell squad | todo |
 | WP-25 | Capabilities page (replaces Permissions): portals, helper, groups, extensions, protocols | M | WP-23 | Shell squad | todo |
 | WP-26 | Notifications, autostart, session events (logind sleep/lock, active-app via toplevel list) | M | WP-20 | Shell squad | todo |
 | WP-27 | Icon mapping: SF Symbols → symbolic icon set bundled with the app | M | WP-20 | Shell squad | todo |
 | WP-28 | Theming: light/dark follow portal Settings, app accent, compact density | S | WP-23 | Shell squad | todo |
-| WP-29 | Overlay surfaces: `layer-shell-qt` where available, fullscreen transparent window fallback on GNOME, override-redirect on X11, per-output | M | WP-20 | Shell squad | todo |
+| WP-29 | Overlay surfaces: LayerShellQt vendored and built against Qt 6 (Ubuntu 24.04 only packages the Qt 5 build, per WP-01), fullscreen transparent window fallback on GNOME and where layer-shell is absent, override-redirect on X11, per-output; runtime check for a compositing manager on X11 (transparent overlays render black without one) | M | WP-20 | Shell squad | todo |
 | WP-P1 | Linux build script `build-linux.sh` + AppImage recipe | M | WP-04, WP-20 | Packaging/CI | todo |
 | WP-P2 | Flatpak manifest + Flathub-ready metadata (AppStream, desktop file) | M | WP-P1 | Packaging/CI | todo |
-| WP-P3 | Headless GUI smoke harness in CI (weston headless + Xvfb), smoke matrix runner | M | WP-P1 | Packaging/CI | todo |
+| WP-P3 | Headless GUI smoke harness in CI (sway headless + Xvfb), smoke matrix runner; capture smoke needs the WP-02 `xdpw-shm-only.patch` on the pixman renderer or a DRM-capable runner | M | WP-P1 | Packaging/CI | todo |
 | WP-P4 | Self-update: AppImageUpdate zsync feed, reuse feed parser | S | WP-P1 | Packaging/CI | todo |
-| WP-S1 | `vorssaint-helper` privileged daemon: D-Bus API, polkit policy, systemd unit, udev rules, install/uninstall from the app, `PRIVILEGES.md` | L | WP-03, WP-20 | Systems squad | todo |
+| WP-S1 | `vorssaint-helper` privileged daemon in C, grown from `spikes/wp03-input-relay`: D-Bus API, polkit policy, systemd unit, udev rules, install/uninstall from the app, `PRIVILEGES.md`. Acceptance adds (per WP-03 review): `Enable(true)` bound to the caller's logind session; on real hardware `evtest` succeeds on a device immediately after `Enable(false)`; latency measured end to end on hardware; refused `EVIOCGRAB` names the holding process in the hub; hot-plug via `udev_monitor` | L | WP-03, WP-20 | Systems squad | todo |
 
 Notes for the shell squad: the SwiftUI views in `Sources/Vorssaint/UI` are
 the spec. Port screen by screen (one QML file per SwiftUI view, same
@@ -275,11 +286,11 @@ the triage matrix update for its feature(s).
 
 | ID | Feature(s) | Size | after | Status |
 |---|---|---|---|---|
-| WP-B1 | Capture engine: portal ScreenCast/Screenshot → PipeWire frames, restore tokens, output/window enumeration | L | WP-02, WP-29 | todo |
+| WP-B1 | Capture engine: portal ScreenCast/Screenshot → PipeWire frames, restore tokens, output/window enumeration. Per WP-02: read `AvailableSourceTypes` and verify each stream's `source_type` (wlr serves WINDOW as MONITOR); screenshot via a ScreenCast frame where the Screenshot portal is absent (no `impl.portal.Access`); audio on a second ordinary `pw_context_connect`, never the portal fd | L | WP-02, WP-29 | todo |
 | WP-B2 | screenshot: selector overlay, frozen frame, window/area/screen, quick preview, save/copy, recent captures | L | WP-B1 | todo |
 | WP-B3 | screenshot editor (annotations, crop, redaction, backgrounds, pins) on cairo/GTK4 with `ScreenshotSupport` | L | WP-B2 | todo |
 | WP-B4 | screenOCR + QR (bundled Tesseract + tessdata, ZXing-C++) and colorPicker (portal PickColor + magnifier) | M | WP-B2 | todo |
-| WP-B5 | screenRecorder capture: video + system audio + mic via PipeWire, ffmpeg encode, pause/resume sync (reuse `RecorderSampleTiming`), floating controls | L | WP-B1, WP-A5 | todo |
+| WP-B5 | screenRecorder capture: video + system audio + mic via PipeWire, ffmpeg encode with the fallback chain libx264 → libopenh264 → h264_vaapi → mpeg4 (encoder decided by WP-04), pause/resume sync (reuse `RecorderSampleTiming`), timeline driven by capture timestamps because wlroots frame delivery is damage-driven (WP-02), floating controls | L | WP-B1, WP-A5 | todo |
 | WP-B6 | screenRecorder editor and export (trim/cut/zoom/blur/overlays/GIF), presets | L | WP-B5 | todo |
 | WP-B7 | mediaTools (ffmpeg, libvips, Tesseract) | M | WP-B4 | todo |
 | WP-B8 | cameraPreview (portal Camera / v4l2 via GStreamer) | S | WP-B1 | todo |
