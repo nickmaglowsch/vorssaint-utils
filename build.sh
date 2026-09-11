@@ -448,7 +448,14 @@ if (( TEST )); then
 fi
 
 echo "▸ Compiling ($BUILD_CONFIGURATION) against $(basename "$SDK")…"
-APP_SOURCES=(Sources/Vorssaint/**/*.swift)
+# The app is one module: the SwiftPM targets VorssaintCore and VorssaintMac
+# (Package.swift, WP-10) are compiled straight into it rather than linked, so
+# moving a file between these three directories never changes the Mac build.
+APP_SOURCES=(
+    Sources/Vorssaint/**/*.swift
+    Sources/VorssaintCore/**/*.swift
+    Sources/VorssaintMac/**/*.swift
+)
 if (( DEV )); then
     APP_OBJECT_DIR="build/objects/$EXECUTABLE"
     mkdir -p build "$APP_OBJECT_DIR"

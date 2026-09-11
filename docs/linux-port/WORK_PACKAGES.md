@@ -102,7 +102,7 @@ app is behaviourally unchanged.
 
 | ID | Title | Size | after | Owner role | Status |
 |---|---|---|---|---|---|
-| WP-10 | Package layout: VorssaintCore / VorssaintMac / VorssaintLinux targets | M | WP-00 | Core porter | todo |
+| WP-10 | Package layout: VorssaintCore / VorssaintMac / VorssaintLinux targets | M | WP-00 | Core porter | review |
 | WP-11 | Move Foundation-only files into VorssaintCore | L | WP-10 | Core porter | todo |
 | WP-12 | Platform protocol layer | L | WP-11 | Core porter | todo |
 | WP-13 | Combine abstraction (OpenCombine on Linux) | S | WP-10 | Core porter | todo |

@@ -1,0 +1,98 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Vorssaint
+#
+# Gate for the GNU/Linux port (docs/linux-port/). Two jobs, both hard gates:
+#   linux-core  the Swift core and the Linux executable compile and run under
+#               the official swift:6.1-noble container (the toolchain the
+#               WP-00 spike measured).
+#   macos       the macOS product is unchanged: ./build.sh, --selftest, tests,
+#               on the same Xcode as ci.yml's compatibility job.
+name: Linux port CI
+
+on:
+  push:
+    branches: ["claude/**"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: linux-port-ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  linux-core:
+    name: Linux core (Swift 6.1)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    container: swift:6.1-noble
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Verify toolchain
+        shell: bash
+        run: |
+          # The container runs as root over a checkout owned by the runner
+          # user; git (and therefore SwiftPM's dependency fetch) refuses that
+          # without this.
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          swift --version
+          swift --version | grep -F "Swift version 6.1"
+          uname -a
+
+      - name: Build VorssaintCore
+        shell: bash
+        run: swift build --target VorssaintCore
+
+      - name: Build VorssaintCombine (OpenCombine wiring)
+        shell: bash
+        run: swift build --target VorssaintCombine
+
+      - name: Build VorssaintLinux
+        shell: bash
+        run: swift build --target VorssaintLinux
+
+      - name: Run VorssaintLinux
+        shell: bash
+        run: |
+          swift run VorssaintLinux | tee /tmp/vorssaint-linux.out
+          grep -F "VorssaintCore 0.1.0-dev (linux)" /tmp/vorssaint-linux.out
+
+      - name: Unit tests
+        shell: bash
+        run: |
+          # `swift test` fails when the package declares no test target, so
+          # only run it once one exists (WP-16 adds it).
+          if grep -q 'testTarget' Package.swift; then
+            swift test
+          else
+            echo "no SwiftPM test target in Package.swift yet — skipping swift test"
+          fi
+
+  macos:
+    name: macOS app (build.sh)
+    runs-on: macos-15
+    timeout-minutes: 30
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_16.2.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Verify toolchain
+        run: |
+          swiftc --version | grep -F "Apple Swift version 6.0.3"
+          test "$(xcrun --sdk macosx --show-sdk-version)" = "15.2"
+
+      - name: Build
+        run: ./build.sh
+
+      - name: Selftest
+        run: ./build/Vorssaint --selftest
+
+      - name: Unit tests
+        run: ./build.sh --test

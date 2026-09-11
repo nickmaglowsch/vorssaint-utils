@@ -300,6 +300,11 @@ Sources/
                           localization, every *Support and model file,
                           feature runtime, settings store protocol,
                           Platform/ protocols with capability flags.
+  VorssaintCombine/       Combine on Darwin, OpenCombine 0.14 on Linux.
+                          Re-export shim only (WP-13); the target and the
+                          OpenCombine dependency are wired in WP-10. No target
+                          may be named `Combine` (circular-module error, see
+                          spikes/00-swift-core.md § 6).
   VorssaintMac/           Today's AppKit/IOKit/SCK/CoreAudio services and
                           SwiftUI views, calling the core through the
                           Platform protocols (adapter written in WP-12).
@@ -325,6 +330,23 @@ docs/linux-port/          this plan, triage, backlog, playbook, spikes,
 ```
 
 Rules of the architecture:
+
+- SwiftPM has no Linux platform declaration and `platforms:` constrains only
+  Apple platforms, so "macOS-only" and "Linux-only" are `#if os(...)` guards
+  inside the sources plus `.when(platforms:)` on dependencies. Linux CI builds
+  named targets (`swift build --target VorssaintCore`, `--target
+  VorssaintLinux`) rather than the whole package, because the `Vorssaint` app
+  target will never compile there.
+- `build.sh` keeps producing **one** module: it globs
+  `Sources/Vorssaint`, `Sources/VorssaintCore` and `Sources/VorssaintMac`
+  into a single `swiftc` invocation. The SwiftPM targets are the Linux-side
+  boundary; the Mac build has no module boundary, so a file moving between
+  those three directories never changes it. The consequence for WP-11/WP-13:
+  files under `Sources/VorssaintCore` must not `import VorssaintMac` or
+  `import VorssaintCombine`, since neither module exists in the `build.sh`
+  compilation — a core file that needs Combine writes
+  `#if canImport(Darwin) import Combine #else import OpenCombine #endif`, or
+  the Mac build switches to `swift build`.
 
 - Services keep their singleton + `syncWithPreferences()` shape and their
   `Support` split. A Linux service is the macOS service with the platform
