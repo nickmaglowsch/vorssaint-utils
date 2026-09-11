@@ -1,0 +1,5 @@
+[D-BUS Service]
+Name=org.vorssaint.Helper1
+Exec=/usr/libexec/vorssaint-helper
+User=root
+SystemdService=vorssaint-helper.service
