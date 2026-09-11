@@ -27,7 +27,7 @@ Spikes live under `spikes/` on their own branches and are never merged into
 | WP-01 | Shell toolkit bake-off | M | – | Shell squad | merged (Qt 6 Quick recommended; layer-shell needs vendoring) |
 | WP-02 | Portal ScreenCast + PipeWire capture proof | M | – | Feature squad | merged (GO on wlroots; 3 xdpw defects found) |
 | WP-03 | evdev/uinput input relay proof | M | – | Systems squad | merged (GO; uinput untestable here) |
-| WP-04 | Self-contained packaging proof | M | WP-01 | Packaging/CI | todo |
+| WP-04 | Self-contained packaging proof | M | WP-01 | Packaging/CI | review |
 
 **WP-00 Swift core on Linux.** Install the current Swift toolchain (6.x) on
 Ubuntu 24.04 and Fedora. Compile, unmodified, these twelve files (`FeatureCatalog.swift`,

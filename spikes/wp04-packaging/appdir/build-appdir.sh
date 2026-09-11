@@ -114,15 +114,43 @@ done
 # `import` lines, which under-reports (no transitive closure) -- the script
 # says so loudly rather than producing a quietly broken bundle.
 # ---------------------------------------------------------------------------
+#
+# The scanner reports some modules with a null `path` (built into a library,
+# or simply not resolved on this Qt version). Trusting `path` alone produced a
+# bundle that ran on Qt 6.4 and failed on Qt 6.2 with
+#   qrc:/qml/Panel.qml: module "QtQml.WorkerScript" is not installed
+# so every reported module *name* is also resolved against QT_INSTALL_QML, and
+# every nested `qmldir` under a bundled module is pulled in as well -- that is
+# what catches the submodules an older scanner does not list at all.
 declare -a QML_PATHS=()
 if [ -x "$SCANNER" ]; then
   echo "== qmlimportscanner $SCANNER"
   mapfile -t QML_PATHS < <("$SCANNER" -rootPath "$QML_SRC" -importPath "$QT_QML" \
-    | python3 -c 'import json,sys
+    | QT_QML="$QT_QML" python3 -c 'import json, os, sys
+qml = os.environ["QT_QML"]
+out = []
 for i in json.load(sys.stdin):
+    if i.get("type") != "module":
+        continue
     p = i.get("path")
-    if i.get("type") == "module" and p:
-        print(p)')
+    if p and os.path.isdir(p):
+        out.append(p)
+        continue
+    name = i.get("name")
+    if not name:
+        continue
+    cand = os.path.join(qml, *name.split("."))
+    if os.path.isdir(cand):
+        out.append(cand)
+    else:
+        sys.stderr.write("   (module %s has no directory, assumed built in)\n" % name)
+for p in sorted(set(out)):
+    print(p)')
+  # Nested modules the scanner did not list: any directory with its own qmldir.
+  mapfile -t -O "${#QML_PATHS[@]}" QML_PATHS < <(
+    for p in "${QML_PATHS[@]}"; do
+      find "$p" -mindepth 2 -name qmldir -printf '%h\n' 2>/dev/null
+    done | sort -u)
 else
   echo "!! qmlimportscanner not found at $SCANNER -- falling back to parsing"
   echo "!! `import` lines; this does NOT follow transitive imports."
