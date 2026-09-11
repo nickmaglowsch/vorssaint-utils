@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE policyconfig PUBLIC
+ "-//freedesktop//DTD PolicyKit Policy Configuration 1.0//EN"
+ "http://www.freedesktop.org/standards/PolicyKit/1/policyconfig.dtd">
+<policyconfig>
+
+  <vendor>Vorssaint</vendor>
+  <vendor_url>https://github.com/vorssaint/vorssaint-utils</vendor_url>
+
+  <!--
+    Three actions, because they are three different powers.
+
+    set-rules and enable are what turn the helper into a device that can see
+    and forge every keystroke in the session, so both are auth_admin_keep: an
+    administrator password, remembered for the session, not for ever.
+
+    get-devices only lists device names, which any user can already read from
+    /proc/bus/input/devices, so it is allowed without a prompt. Splitting it
+    out keeps the capabilities page usable (it can show what would be grabbed)
+    without handing out the power to grab.
+  -->
+
+  <action id="org.vorssaint.helper.enable">
+    <description>Intercept and re-emit keyboard and pointer input</description>
+    <description xml:lang="de">Tastatur- und Zeigereingaben abfangen und neu senden</description>
+    <message>Authentication is required to let Vorssaint intercept all keyboard and pointer input.</message>
+    <message xml:lang="de">Zur Freigabe des Abfangens aller Tastatur- und Zeigereingaben ist eine Authentifizierung erforderlich.</message>
+    <icon_name>input-keyboard</icon_name>
+    <defaults>
+      <allow_any>no</allow_any>
+      <allow_inactive>no</allow_inactive>
+      <allow_active>auth_admin_keep</allow_active>
+    </defaults>
+  </action>
+
+  <action id="org.vorssaint.helper.set-rules">
+    <description>Change the input relay rules</description>
+    <description xml:lang="de">Regeln der Eingabeweiterleitung ändern</description>
+    <message>Authentication is required to change how Vorssaint rewrites keyboard input.</message>
+    <message xml:lang="de">Zum Ändern der Tastaturregeln von Vorssaint ist eine Authentifizierung erforderlich.</message>
+    <icon_name>input-keyboard</icon_name>
+    <defaults>
+      <allow_any>no</allow_any>
+      <allow_inactive>no</allow_inactive>
+      <allow_active>auth_admin_keep</allow_active>
+    </defaults>
+  </action>
+
+  <action id="org.vorssaint.helper.get-devices">
+    <description>List the input devices the relay would claim</description>
+    <description xml:lang="de">Eingabegeräte auflisten, die die Weiterleitung übernehmen würde</description>
+    <message>Authentication is required to list input devices.</message>
+    <message xml:lang="de">Zum Auflisten der Eingabegeräte ist eine Authentifizierung erforderlich.</message>
+    <icon_name>input-keyboard</icon_name>
+    <defaults>
+      <allow_any>no</allow_any>
+      <allow_inactive>no</allow_inactive>
+      <allow_active>yes</allow_active>
+    </defaults>
+  </action>
+
+</policyconfig>
