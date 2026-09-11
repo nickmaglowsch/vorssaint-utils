@@ -83,6 +83,19 @@ jobs:
       - name: build the WP-01 Qt Quick spike (Release)
         continue-on-error: true
         run: |
+          # WP-01's CMakeLists calls qt_standard_project_setup(), which Qt
+          # added in 6.3; jammy ships 6.2.4, so the configure step fails with
+          # "Unknown CMake command". The call only sets AUTOMOC/AUTOUIC and a
+          # QML output dir, and this CMakeLists already sets AUTOMOC/AUTORCC
+          # itself, so it is dropped here for the 6.2 build. This is a real
+          # finding, not a workaround to hide: WP-01 should guard the call
+          # with `if (QT_VERSION VERSION_GREATER_EQUAL 6.3)` so the spike
+          # configures on the oldest glibc/Qt combination the port targets.
+          if [ "$(qmake6 -query QT_VERSION | cut -d. -f2)" -lt 3 ]; then
+            echo "Qt $(qmake6 -query QT_VERSION): dropping qt_standard_project_setup()"
+            sed -i 's/^qt_standard_project_setup()/# dropped by WP-04 CI: needs Qt >= 6.3/' \
+              spikes/wp01-toolkit/qt-quick/CMakeLists.txt
+          fi
           cmake -S spikes/wp01-toolkit/qt-quick -B build -G Ninja \
             -DCMAKE_BUILD_TYPE=Release
           cmake --build build -j"$(nproc)"
