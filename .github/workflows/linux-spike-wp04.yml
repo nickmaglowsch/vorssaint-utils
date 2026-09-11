@@ -148,6 +148,10 @@ jobs:
           ARCH: x86_64
           QML_SOURCES_PATHS: ${{ github.workspace }}/spikes/wp01-toolkit/qt-quick/qml
           EXTRA_QT_PLUGINS: wayland-decoration-client;wayland-graphics-integration-client;wayland-shell-integration;platformthemes
+          # Debian/Ubuntu's /usr/bin/qmake is the qtchooser wrapper with no
+          # default, so linuxdeploy-plugin-qt fails with "could not find a Qt
+          # installation of ''". Point it at the Qt 6 qmake explicitly.
+          QMAKE: /usr/bin/qmake6
         run: |
           mkdir -p AppDir-ld/usr/bin AppDir-ld/usr/share/applications \
                    AppDir-ld/usr/share/icons/hicolor/256x256/apps
@@ -282,7 +286,9 @@ jobs:
             elif command -v xwd >/dev/null; then
               xwd -root -display :95 -out "/tmp/shots/${{ matrix.mode }}-$name.xwd" || true
             fi
-            wait $pid; echo "exit=$?"
+            # `bash -e` would abort the step on a non-zero app exit before any
+            # diagnostics are printed, which is exactly the case worth seeing.
+            rc=0; wait $pid || rc=$?; echo "exit=$rc"
             # Artifact paths may not contain '*', so the logs are copied into
             # the screenshot directory under fixed names instead of globbed.
             cp "/tmp/$name.log" "/tmp/shots/${{ matrix.mode }}-$name.log" || true
@@ -318,6 +324,7 @@ jobs:
           sudo apt-get install -y --no-install-recommends \
             flatpak flatpak-builder xvfb x11-utils imagemagick dbus-x11 \
             elfutils \
+            librsvg2-common \
             python3-yaml
           flatpak --version; flatpak-builder --version
 
@@ -370,7 +377,7 @@ jobs:
             --screen panel --quit-after 5000 > /tmp/flatpak-full.log 2>&1 &
           pid=$!; sleep 4
           import -window root -display :96 /tmp/shots/flatpak-full.png || true
-          wait $pid; echo "exit=$?"
+          rc=0; wait $pid || rc=$?; echo "exit=$rc"
           cat /tmp/flatpak-full.log
 
       - name: build and install -- REDUCED permission set
