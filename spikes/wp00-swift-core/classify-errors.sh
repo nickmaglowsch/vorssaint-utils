@@ -33,10 +33,11 @@ echo "--- by category (raw diagnostics) ---"
 bin "Combine/OpenCombine"   "Combine|ObservableObject|@Published|AnyCancellable|Subject|objectWillChange"
 bin "CoreGraphics types"    "\bCG[A-Z]"
 bin "AppKit leak"           "\bNS[A-Z]|AppKit|NSApp"
-bin "Foundation gap"        "Bundle|UserDefaults|FileManager|trashItem|NSAttributedString|Locale|Formatter"
+bin "Foundation gap"        "FoundationXML|FoundationNetworking|XMLParser|XMLDocument|trashItem|NSAttributedString|is unavailable|has not been implemented|unavailable in Linux"
 bin "Swift 6 concurrency"   "concurrency|Sendable|actor-isolated|main actor|nonisolated|global variable"
 bin "unresolved in-repo"    "cannot find (type )?'[A-Za-z]"
-bin "circular/module"       "circular dependency|no such module|module '"
+bin "Darwin/libc"           "Darwin|sysctl|mach_|host_statistics|IOKit"
+bin "circular/module"       "circular dependency|no such module"
 echo
 
 echo "--- 10 representative distinct errors ---"

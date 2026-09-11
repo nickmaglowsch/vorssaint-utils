@@ -14,6 +14,8 @@ let package = Package(
     products: [
         .library(name: "VorssaintCoreSpike", targets: ["VorssaintCoreSpike"]),
         .library(name: "VorssaintCoreWide", targets: ["VorssaintCoreWide"]),
+        .library(name: "VorssaintServices", targets: ["VorssaintServices"]),
+        .library(name: "VorssaintCoreMinimal", targets: ["VorssaintCoreMinimal"]),
         .executable(name: "hello-spike", targets: ["HelloSpike"])
     ],
     dependencies: [
@@ -68,8 +70,29 @@ let package = Package(
             ]
         ),
 
+        // The whole non-UI layer: every file under Sources/Vorssaint outside
+        // UI/ that does not import SwiftUI, AppKit or Cocoa (208 files). The
+        // 120-file census set is not dependency-closed — it references types
+        // declared in sibling service files — so this is the target whose
+        // error log is a census of *Linux* gaps rather than of missing
+        // in-repo declarations.
+        .target(
+            name: "VorssaintServices",
+            dependencies: [
+                "CoreGraphics", "Carbon", "CryptoKit", "Security",
+                "UniformTypeIdentifiers", "ImageIO", "ApplicationServices", "CoreAudio",
+                "Combine", "VorssaintCombine"
+            ]
+        ),
+
+        // Two files that the census calls Foundation-only and that declare
+        // everything they use. Small enough to be dependency-closed, so it is
+        // the target that answers "does this logic compile *and* behave the
+        // same on Linux" — the tests run against it.
+        .target(name: "VorssaintCoreMinimal"),
+
         .executableTarget(name: "HelloSpike"),
 
-        .testTarget(name: "VorssaintCoreSpikeTests", dependencies: ["VorssaintCoreSpike"])
+        .testTarget(name: "VorssaintCoreSpikeTests", dependencies: ["VorssaintCoreMinimal"])
     ]
 )

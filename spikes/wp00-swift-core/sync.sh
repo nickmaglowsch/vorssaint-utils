@@ -46,3 +46,5 @@ sync_one() {
 
 sync_one files-core.txt "$here/Sources/VorssaintCoreSpike/Vendored"
 sync_one files-all.txt   "$here/Sources/VorssaintCoreWide/Vendored"
+sync_one files-services.txt "$here/Sources/VorssaintServices/Vendored"
+sync_one files-minimal.txt "$here/Sources/VorssaintCoreMinimal/Vendored"

@@ -44,6 +44,8 @@ jobs:
           ./sync.sh
           echo "core candidate set: $(ls Sources/VorssaintCoreSpike/Vendored | wc -l) files"
           echo "full census set:    $(ls Sources/VorssaintCoreWide/Vendored | wc -l) files"
+          echo "non-UI service set: $(ls Sources/VorssaintServices/Vendored | wc -l) files"
+          echo "minimal set:        $(ls Sources/VorssaintCoreMinimal/Vendored | wc -l) files"
 
       - name: resolve dependencies (OpenCombine)
         working-directory: spikes/wp00-swift-core
@@ -57,7 +59,7 @@ jobs:
         continue-on-error: true
         run: |
           set +e
-          swift build -v --target VorssaintCoreSpike 2>&1 | tee build.log
+          swift build --target VorssaintCoreSpike 2>&1 | tee build.log
           echo "swift build exit=${PIPESTATUS[0]}"
           ./classify-errors.sh build.log
 
@@ -66,9 +68,18 @@ jobs:
         continue-on-error: true
         run: |
           set +e
-          swift build -v --target VorssaintCoreWide 2>&1 | tee build-wide.log
+          swift build --target VorssaintCoreWide 2>&1 | tee build-wide.log
           echo "swift build exit=${PIPESTATUS[0]}"
           ./classify-errors.sh build-wide.log
+
+      - name: build VorssaintServices (the whole non-UI layer, 208 files)
+        working-directory: spikes/wp00-swift-core
+        continue-on-error: true
+        run: |
+          set +e
+          swift build --target VorssaintServices 2>&1 | tee build-services.log
+          echo "swift build exit=${PIPESTATUS[0]}"
+          ./classify-errors.sh build-services.log
 
       - name: static link probe (--static-swift-stdlib) + ldd
         working-directory: spikes/wp00-swift-core
@@ -93,6 +104,8 @@ jobs:
         continue-on-error: true
         run: |
           set +e
+          swift build --target VorssaintCoreMinimal 2>&1 | tee build-minimal.log
+          echo "minimal build exit=${PIPESTATUS[0]}"
           swift test 2>&1 | tee test.log
           echo "swift test exit=${PIPESTATUS[0]}"
           grep -E "Test Suite|Executed [0-9]+ test|error:" test.log | tail -40
@@ -130,12 +143,12 @@ jobs:
         continue-on-error: true
         run: |
           set +e
-          swift build -v --target VorssaintCoreSpike 2>&1 | tee build-62.log
+          swift build --target VorssaintCoreSpike 2>&1 | tee build-62.log
           echo "core candidate exit=${PIPESTATUS[0]}"
           ./classify-errors.sh build-62.log
-          swift build -v --target VorssaintCoreWide 2>&1 | tee build-wide-62.log
-          echo "wide exit=${PIPESTATUS[0]}"
-          ./classify-errors.sh build-wide-62.log
+          swift build --target VorssaintServices 2>&1 | tee build-services-62.log
+          echo "services exit=${PIPESTATUS[0]}"
+          ./classify-errors.sh build-services-62.log
 
       - name: swift test
         working-directory: spikes/wp00-swift-core

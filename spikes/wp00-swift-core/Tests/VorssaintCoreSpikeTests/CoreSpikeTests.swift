@@ -7,7 +7,7 @@
 // Apple Foundation and swift-corelibs-foundation).
 
 import XCTest
-@testable import VorssaintCoreSpike
+@testable import VorssaintCoreMinimal
 
 final class URLCleaningSpikeTests: XCTestCase {
     func testStripsGlobalTrackers() {
