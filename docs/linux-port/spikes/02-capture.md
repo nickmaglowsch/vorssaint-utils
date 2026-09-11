@@ -23,6 +23,12 @@ Code: `spikes/wp02-capture/` (`run-stack.sh`, `capture.c`, `CMakeLists.txt`,
 `mock-screenshot-impl.py`, `xdpw-shm-only.patch`, `build-patched-xdpw.sh`,
 `with-stack.sh`).
 
+Each of the three defects has a drafted upstream report under
+`docs/linux-port/spikes/upstream/` — `xdpw-shm-only-start.md`,
+`xdpw-window-type-bit.md`, `xdpw-no-access-impl.md`. **None has been
+submitted:** filing against another project's tracker is the repository
+owner's call.
+
 ---
 
 ## 1. What this was run on
