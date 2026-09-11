@@ -572,8 +572,16 @@ static void on_audio_process(void *data)
         Encoder *e = &c->enc;
         if (e->header_written && e->actx && e->afifo) {
             if (e->afifo_bytes + size > e->afifo_cap) {
-                e->afifo_cap = e->afifo_bytes + size + 65536;
-                e->afifo = realloc(e->afifo, e->afifo_cap);
+                size_t want = e->afifo_bytes + size + 65536;
+                uint8_t *grown = realloc(e->afifo, want);
+                if (!grown) {
+                    /* Drop this audio buffer rather than crash the recording. */
+                    fprintf(stderr, "audio fifo: out of memory, dropping %u bytes\n", size);
+                    pw_stream_queue_buffer(c->astream, b);
+                    return;
+                }
+                e->afifo = grown;
+                e->afifo_cap = want;
             }
             memcpy(e->afifo + e->afifo_bytes, src, size);
             e->afifo_bytes += size;
