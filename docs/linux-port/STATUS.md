@@ -38,7 +38,7 @@ downloads. Consequences for Phase 0:
 
 | WP | Status | Branch | Notes |
 |---|---|---|---|
-| WP-00 | in progress | worktree → plan branch (CI workflow) | |
+| WP-00 | merged | plan branch | GO WITH CONDITIONS; QA approved with nits (fixed) |
 | WP-01 | in progress | worktree | |
 | WP-02 | in progress | worktree | |
 | WP-03 | in progress | worktree | |

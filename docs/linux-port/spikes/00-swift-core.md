@@ -506,7 +506,7 @@ The conditions:
    domain lookup and its Carbon key table separated; `GlobalShortcut.swift`
    needs the key *table* (portable, 110 lines) split from the key
    *translation* (`UCKeyTranslate`, not portable, becomes xkbcommon).
-3. **Budget for the four named Foundation gaps**: `FoundationXML` for
+3. **WP-12 must budget for the four named Foundation gaps**: `FoundationXML` for
    `XMLParser`, no `ProcessInfo.ThermalState`, no `CFGetTypeID`/
    `CFBooleanGetTypeID`, no `FileManager.trashItem` (unused today, but the
    Cleaner and Uninstaller features will want it — freedesktop trash spec or
@@ -514,8 +514,8 @@ The conditions:
 4. **Re-run this spike on Fedora before the Phase 0 gate closes**, or accept
    in writing that Ubuntu 24.04 is the only proven distribution. It could not
    be done from the port containers.
-5. **Close the `Darwin` and `Vision` shim holes and re-measure the 208-file
-   service set.** Its current census (210 diagnostics, one message) is an
+5. **WP-11's first step must close the `Darwin` and `Vision` shim holes and
+   re-measure the 208-file service set.** Its current census (210 diagnostics, one message) is an
    artefact of the frontend aborting at the first missing module, not a
    statement about that code. Until that is done, nobody knows the error count
    for the bulk of the service layer.
