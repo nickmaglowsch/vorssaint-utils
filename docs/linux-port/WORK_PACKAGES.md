@@ -24,7 +24,6 @@ Spikes live under `spikes/` on their own branches and are never merged into
 | ID | Title | Size | after | Owner role | Status |
 |---|---|---|---|---|---|
 | WP-00 | Swift core on Linux | M | – | Core porter | merged (GO WITH CONDITIONS) |
-| WP-01 | Shell toolkit bake-off | M | – | Shell squad | todo |
 | WP-01 | Shell toolkit bake-off | M | – | Shell squad | review |
 | WP-02 | Portal ScreenCast + PipeWire capture proof | M | – | Feature squad | merged (GO on wlroots; 3 xdpw defects found) |
 | WP-03 | evdev/uinput input relay proof | M | – | Systems squad | merged (GO; uinput untestable here) |
