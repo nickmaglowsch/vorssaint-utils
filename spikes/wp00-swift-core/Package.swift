@@ -15,7 +15,6 @@ let package = Package(
         .library(name: "VorssaintCoreSpike", targets: ["VorssaintCoreSpike"]),
         .library(name: "VorssaintCoreWide", targets: ["VorssaintCoreWide"]),
         .library(name: "VorssaintServices", targets: ["VorssaintServices"]),
-        .library(name: "VorssaintCoreMinimal", targets: ["VorssaintCoreMinimal"]),
         .executable(name: "hello-spike", targets: ["HelloSpike"])
     ],
     dependencies: [
@@ -85,14 +84,7 @@ let package = Package(
             ]
         ),
 
-        // Two files that the census calls Foundation-only and that declare
-        // everything they use. Small enough to be dependency-closed, so it is
-        // the target that answers "does this logic compile *and* behave the
-        // same on Linux" — the tests run against it.
-        .target(name: "VorssaintCoreMinimal"),
 
-        .executableTarget(name: "HelloSpike"),
-
-        .testTarget(name: "VorssaintCoreSpikeTests", dependencies: ["VorssaintCoreMinimal"])
+        .executableTarget(name: "HelloSpike")
     ]
 )

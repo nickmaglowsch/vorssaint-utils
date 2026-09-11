@@ -3,6 +3,9 @@
 # a stale copy here would make the spike lie.
 Sources/VorssaintCoreSpike/Vendored/
 Sources/VorssaintCoreWide/Vendored/
+Sources/VorssaintServices/Vendored/
+minimal/Sources/VorssaintCoreMinimal/Vendored/
 .build/
+minimal/.build/
 Package.resolved
 *.log

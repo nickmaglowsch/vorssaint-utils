@@ -5,6 +5,12 @@
 # workflow is evidence-gathering, not a gate — every build step is
 # continue-on-error so the log is always produced and the branch never fails
 # because the spike does not compile yet.
+#
+# The raw `swift build` output goes to a file that is uploaded as an artifact,
+# NOT to the job log. Teeing it into the job log was tried first and made the
+# log unreadable through the Actions API: the failing targets produce tens of
+# thousands of diagnostic lines and the API only ever returns the tail. The
+# job log therefore carries the classified census instead.
 
 name: linux-spike-wp00
 
@@ -19,8 +25,7 @@ permissions:
 
 defaults:
   run:
-    # The container's default shell is `sh`; the steps use bash arrays
-    # (PIPESTATUS) and process substitution.
+    # The container's default shell is `sh`, which has no ${PIPESTATUS[@]}.
     shell: bash
 
 jobs:
@@ -45,22 +50,22 @@ jobs:
           echo "core candidate set: $(ls Sources/VorssaintCoreSpike/Vendored | wc -l) files"
           echo "full census set:    $(ls Sources/VorssaintCoreWide/Vendored | wc -l) files"
           echo "non-UI service set: $(ls Sources/VorssaintServices/Vendored | wc -l) files"
-          echo "minimal set:        $(ls Sources/VorssaintCoreMinimal/Vendored | wc -l) files"
+          echo "minimal set:        $(ls minimal/Sources/VorssaintCoreMinimal/Vendored | wc -l) files"
 
       - name: resolve dependencies (OpenCombine)
         working-directory: spikes/wp00-swift-core
         continue-on-error: true
         run: |
-          swift package resolve 2>&1 | tee resolve.log
-          cat Package.resolved || true
+          swift package resolve
+          cat Package.resolved
 
-      - name: build VorssaintCoreSpike (core candidate set)
+      - name: build VorssaintCoreSpike (core candidate set, 103 files)
         working-directory: spikes/wp00-swift-core
         continue-on-error: true
         run: |
           set +e
-          swift build --target VorssaintCoreSpike 2>&1 | tee build.log
-          echo "swift build exit=${PIPESTATUS[0]}"
+          swift build --target VorssaintCoreSpike > build.log 2>&1
+          echo "swift build exit=$?"
           ./classify-errors.sh build.log
 
       - name: build VorssaintCoreWide (all 120 census files)
@@ -68,8 +73,8 @@ jobs:
         continue-on-error: true
         run: |
           set +e
-          swift build --target VorssaintCoreWide 2>&1 | tee build-wide.log
-          echo "swift build exit=${PIPESTATUS[0]}"
+          swift build --target VorssaintCoreWide > build-wide.log 2>&1
+          echo "swift build exit=$?"
           ./classify-errors.sh build-wide.log
 
       - name: build VorssaintServices (the whole non-UI layer, 208 files)
@@ -77,8 +82,8 @@ jobs:
         continue-on-error: true
         run: |
           set +e
-          swift build --target VorssaintServices 2>&1 | tee build-services.log
-          echo "swift build exit=${PIPESTATUS[0]}"
+          swift build --target VorssaintServices > build-services.log 2>&1
+          echo "swift build exit=$?"
           ./classify-errors.sh build-services.log
 
       - name: static link probe (--static-swift-stdlib) + ldd
@@ -86,7 +91,7 @@ jobs:
         continue-on-error: true
         run: |
           set +e
-          swift build -c release --static-swift-stdlib --product hello-spike 2>&1 | tee static.log
+          swift build -c release --static-swift-stdlib --product hello-spike 2>&1 | tail -20
           bin="$(swift build -c release --static-swift-stdlib --product hello-spike --show-bin-path)/hello-spike"
           echo "--- binary ---"
           ls -l "$bin"
@@ -94,21 +99,20 @@ jobs:
           "$bin"
           echo "--- ldd ---"
           ldd "$bin"
-          echo "--- dynamic swift/Foundation libraries still referenced ---"
+          echo "--- dynamic swift/Foundation/icu libraries still referenced ---"
           ldd "$bin" | grep -iE 'swift|foundation|icu|curl|xml' || echo "(none)"
           echo "--- size ---"
           du -h "$bin"
 
-      - name: swift test (URLCleaning + CommandBarMath)
-        working-directory: spikes/wp00-swift-core
+      - name: build + test the minimal package (URLCleaning, CommandBarMath)
+        working-directory: spikes/wp00-swift-core/minimal
         continue-on-error: true
         run: |
           set +e
-          swift build --target VorssaintCoreMinimal 2>&1 | tee build-minimal.log
-          echo "minimal build exit=${PIPESTATUS[0]}"
-          swift test 2>&1 | tee test.log
+          swift build 2>&1 | tail -30
+          echo "swift build exit=${PIPESTATUS[0]}"
+          swift test 2>&1 | tail -60
           echo "swift test exit=${PIPESTATUS[0]}"
-          grep -E "Test Suite|Executed [0-9]+ test|error:" test.log | tail -40
 
       - name: upload logs
         if: always()
@@ -138,26 +142,25 @@ jobs:
         continue-on-error: true
         run: ./sync.sh
 
-      - name: build both targets
+      - name: build the same targets
         working-directory: spikes/wp00-swift-core
         continue-on-error: true
         run: |
           set +e
-          swift build --target VorssaintCoreSpike 2>&1 | tee build-62.log
-          echo "core candidate exit=${PIPESTATUS[0]}"
+          swift build --target VorssaintCoreSpike > build-62.log 2>&1
+          echo "core candidate exit=$?"
           ./classify-errors.sh build-62.log
-          swift build --target VorssaintServices 2>&1 | tee build-services-62.log
-          echo "services exit=${PIPESTATUS[0]}"
+          swift build --target VorssaintServices > build-services-62.log 2>&1
+          echo "services exit=$?"
           ./classify-errors.sh build-services-62.log
 
-      - name: swift test
-        working-directory: spikes/wp00-swift-core
+      - name: build + test the minimal package
+        working-directory: spikes/wp00-swift-core/minimal
         continue-on-error: true
         run: |
           set +e
-          swift test 2>&1 | tee test-62.log
+          swift test 2>&1 | tail -60
           echo "swift test exit=${PIPESTATUS[0]}"
-          grep -E "Test Suite|Executed [0-9]+ test|error:" test-62.log | tail -40
 
       - name: upload logs
         if: always()
