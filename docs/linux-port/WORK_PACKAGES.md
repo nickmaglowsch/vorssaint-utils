@@ -25,8 +25,13 @@ Spikes live under `spikes/` on their own branches and are never merged into
 |---|---|---|---|---|---|
 | WP-00 | Swift core on Linux | M | – | Core porter | merged (GO WITH CONDITIONS) |
 | WP-01 | Shell toolkit bake-off | M | – | Shell squad | todo |
+<<<<<<< HEAD
 | WP-02 | Portal ScreenCast + PipeWire capture proof | M | – | Feature squad | todo |
 | WP-03 | evdev/uinput input relay proof | M | – | Systems squad | merged (GO; uinput untestable here) |
+=======
+| WP-02 | Portal ScreenCast + PipeWire capture proof | M | – | Feature squad | review |
+| WP-03 | evdev/uinput input relay proof | M | – | Systems squad | todo |
+>>>>>>> worktree-agent-a03a863f6681d55d3
 | WP-04 | Self-contained packaging proof | M | WP-01 | Packaging/CI | todo |
 
 **WP-00 Swift core on Linux.** Install the current Swift toolchain (6.x) on
