@@ -62,19 +62,21 @@ by serializing those changes through the core porter.
 
 ## Conventions every agent follows
 
-- **Swift on both platforms, one codebase.** Platform code lives only under
-  `Sources/VorssaintCore/Platform` (protocols), `Sources/VorssaintMac`
-  and `Sources/VorssaintLinux`. `#if os(Linux)` inside shared code is a
-  smell to be justified in the PR; the default is a protocol plus two
-  implementations.
+- **One Swift core, two platform targets, one Qt shell.** Platform code
+  lives only under `Sources/VorssaintCore/Platform` (protocols),
+  `Sources/VorssaintMac` and `Sources/VorssaintLinux`; the Linux UI lives
+  under `linux/shell` (Qt Quick) and talks to the core only through the
+  `CoreBridge` snapshot/command surface (`BRIDGE.md`). `#if os(Linux)`
+  inside shared code is a smell to be justified in the PR; the default is a
+  protocol plus two implementations.
 - **UI observes services, services never import a UI toolkit.** The
   upstream boundary holds on Linux: services publish through
-  `ObservableObject`/Combine (OpenCombine on Linux, see `PLAN.md`), views
-  only render.
+  `ObservableObject`/Combine (OpenCombine on Linux, see `PLAN.md`) and, on
+  Linux, a `Snapshot`; views only render.
 - **Every user-facing string goes through `Strings`** and must be provided
   in all thirteen languages in the same PR. The compiler is the check.
   Linux-only strings live in the same catalogs, never in a side file.
-- **No new runtime dependency without a line in `PLAN.md` § Dependencies**
+- **No new runtime dependency without a line in `PLAN.md` § 7**
   naming what carries it, how it is bundled, and what breaks without it.
   Optional system tools (for example `ddcutil`, `tesseract`) are detected at
   runtime and the feature degrades with an honest message; they are never a
@@ -148,7 +150,7 @@ Risks:     <anything learned that changes the plan>
 ## What the lead never delegates
 
 - Renaming/branding decisions (`TRADEMARKS.md` requires a distinct identity
-  for unofficial builds; see `PLAN.md` § Open decisions).
+  for unofficial builds; see `PLAN.md` § 10).
 - Adding a runtime dependency or a privileged path.
 - Dropping a feature from scope, or changing its declared desktop support.
 - Merging into `main`.
