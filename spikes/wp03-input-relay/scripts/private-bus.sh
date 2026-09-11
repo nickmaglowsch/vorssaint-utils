@@ -131,6 +131,12 @@ as_unpriv "$BUILD/vorssaint-relayctl" set-rules '{"tap_threshold_ms":"whenever"}
   sed 's/^/  /'
 c listen 2
 c disable
+echo "-- after Enable(false): devices released, GetDevices re-enumerates without grabbing --"
+as_unpriv "$BUILD/vorssaint-relayctl" get-devices 2>&1 | sed 's/^/  /'
+echo "-- and Enable(true) again must open a clean backend, not a second grab --"
+c enable
+c get-devices
+c disable
 
 say "7. the interface as the bus sees it"
 dbus-send --system --print-reply --dest=org.vorssaint.Helper1 /org/vorssaint/Helper1 \

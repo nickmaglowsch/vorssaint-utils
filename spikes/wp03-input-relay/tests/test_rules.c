@@ -26,27 +26,18 @@ static void fail(const char *fmt, ...)
     failures++;
 }
 
-/* Drive the fake backend exactly as relay.c's live loop does, including the
- * hold timer, and return what landed in the output sink. */
-static input_backend *run(const rules_config *cfg, void (*script)(input_backend *, uint64_t),
-                          uint64_t base)
+/* The loop relay.c's live mode and helper.c's relay thread both run, including
+ * the hold timer. Drains the fake's queue and returns. */
+static void pump(input_backend *b, rules_state *st)
 {
-    input_backend *b = device_fake_new();
-    rules_state st;
-    char err[128];
-
-    rules_init(&st, cfg);
-    b->open(b, true, err, sizeof(err));
-    script(b, base);
-
     for (;;) {
         rules_event in, out[RULES_MAX_OUT];
-        uint64_t ts, deadline = rules_deadline_ns(&st);
+        uint64_t ts, deadline = rules_deadline_ns(st);
         int rc, m;
 
         rc = b->read(b, &in, &ts, deadline);
         if (rc == DEV_READ_TIMEOUT) {
-            m = rules_timer(&st, deadline, out, RULES_MAX_OUT);
+            m = rules_timer(st, deadline, out, RULES_MAX_OUT);
             for (int k = 0; k < m; k++)
                 b->write(b, &out[k]);
             continue;
@@ -54,13 +45,37 @@ static input_backend *run(const rules_config *cfg, void (*script)(input_backend 
         if (rc != DEV_READ_EVENT)
             break;
 
-        m = rules_timer(&st, ts, out, RULES_MAX_OUT);
+        m = rules_timer(st, ts, out, RULES_MAX_OUT);
         for (int k = 0; k < m; k++)
             b->write(b, &out[k]);
-        m = rules_process(&st, &in, ts, out, RULES_MAX_OUT);
+        m = rules_process(st, &in, ts, out, RULES_MAX_OUT);
         for (int k = 0; k < m; k++)
             b->write(b, &out[k]);
     }
+}
+
+/* What the helper's Enable(true) does: make a backend, then claim. */
+static input_backend *enable_cycle(const rules_config *cfg)
+{
+    input_backend *b = device_fake_new();
+    char err[128];
+    (void)cfg;
+    b->open(b, true, err, sizeof(err));
+    return b;
+}
+
+/* What the helper's Enable(false) does: close, which releases every grab. */
+static void disable_cycle(input_backend *b) { b->close(b); }
+
+static input_backend *run(const rules_config *cfg, void (*script)(input_backend *, uint64_t),
+                          uint64_t base)
+{
+    input_backend *b = enable_cycle(cfg);
+    rules_state st;
+
+    rules_init(&st, cfg);
+    script(b, base);
+    pump(b, &st);
     return b;
 }
 
@@ -312,6 +327,53 @@ int main(void)
             for (int k = 0; k < m; k++) b->write(b, &out[k]);
         }
         expect(b, "a bouncing Caps Lock yields one Escape", w, 2);
+    }
+
+    printf("\ndevice lifecycle: Enable(false) must actually release the devices\n");
+    {
+        /* The helper claims devices on Enable(true) and must hand them back on
+         * Enable(false). A backend that is merely "stopped" keeps its
+         * EVIOCGRAB, which leaves the user unable to type until the daemon
+         * exits, so what is asserted here is that close() really runs. */
+        unsigned before = device_fake_close_count();
+        input_backend *b;
+
+        current_case = "Enable(true) then Enable(false) closes the backend";
+        b = enable_cycle(&cfg);
+        disable_cycle(b);
+        if (device_fake_close_count() != before + 1)
+            fail("close() was not called: count %u -> %u", before,
+                 device_fake_close_count());
+        else
+            printf("  %-46s ok\n", current_case);
+
+        current_case = "a second Enable(true) opens a clean backend";
+        b = enable_cycle(&cfg);
+        if (device_fake_sink_count(b) != 0)
+            fail("reopened backend carried %zu stale output events",
+                 device_fake_sink_count(b));
+        else if (device_fake_pending(b) != 0)
+            fail("reopened backend carried %zu stale input events",
+                 device_fake_pending(b));
+        else
+            printf("  %-46s ok\n", current_case);
+
+        current_case = "the reopened backend relays correctly";
+        {
+            rules_event w[] = {E(KEY_ESC, 1), E(KEY_ESC, 0)};
+            rules_state st2;
+            rules_init(&st2, &cfg);
+            device_fake_push(b, EV_KEY, KEY_CAPSLOCK, 1, T);
+            device_fake_push(b, EV_KEY, KEY_CAPSLOCK, 0, T + MS(50));
+            pump(b, &st2);
+            expect(b, current_case, w, 2); /* expect() closes it */
+        }
+
+        current_case = "closing the reopened backend counts too";
+        if (device_fake_close_count() != before + 2)
+            fail("expected %u closes, saw %u", before + 2, device_fake_close_count());
+        else
+            printf("  %-46s ok\n", current_case);
     }
 
     printf("\n%s\n", failures ? "FAILURES" : "all rules tests passed");

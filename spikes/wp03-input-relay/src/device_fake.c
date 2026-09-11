@@ -93,8 +93,15 @@ static int fake_describe(input_backend *self, char *buf, size_t cap)
                     p->grabbed ? "true" : "false", p->grabbed ? "true" : "false");
 }
 
+/* Counts closes for the lifecycle tests. It has to be a file-scope counter
+ * rather than a field, because close() frees the object it would live in. */
+static unsigned fake_closes;
+
+unsigned device_fake_close_count(void) { return fake_closes; }
+
 static void fake_close(input_backend *self)
 {
+    fake_closes++;
     free(self->priv);
     free(self);
 }

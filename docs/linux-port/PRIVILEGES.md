@@ -74,7 +74,7 @@ wrong duration, with no way to see or revoke it**:
 |---|---|---|
 | Who gets keylogger capability | every process the user ever runs, forever | one binary, audited, that we ship |
 | Granularity | all input devices, read and write | the three device classes the relay needs |
-| Revocation | log out, log in again after `gpasswd -d` | `systemctl stop`, or `Enable(false)` |
+| Revocation | log out, log in again after `gpasswd -d` | `Enable(false)` releases every grab immediately; `systemctl stop` ends the process |
 | Visible to the user | no: a group membership nobody reads | yes: a polkit prompt naming the action |
 | Survives uninstalling the app | yes | no: the unit and rules go with the package |
 | Blast radius of a bug in *our* code | same as any other bug | confined to a root process with a 3-method API |
@@ -205,6 +205,17 @@ Deliberate implementation choices that belong to the threat model:
   window is how relays leave modifiers stuck down.
 - **`SetRules` while a modifier is held emits its release first**, so a rule
   edit cannot strand Control down.
+- **`Enable(false)` really releases.** The helper holds no backend object while
+  disabled: `Enable(true)` creates one and claims the devices, `Enable(false)`
+  closes it, which ungrabs every source and destroys the uinput device. There is
+  no state in which the helper reports itself disabled while still holding an
+  `EVIOCGRAB`, and no path — including a source dying mid-stream — that stops
+  the relay without going through that release. This matters more than it
+  sounds: a grabbed device is invisible to the compositor, so a leaked grab is
+  not untidiness, it is a keyboard the user cannot type on until the daemon is
+  killed. The same invariant is why `GetDevices()` re-enumerates in listen-only
+  mode when disabled rather than replaying its last answer: a cached list would
+  report devices as claimed after they were released.
 
 ## 5. Install and uninstall
 

@@ -156,7 +156,34 @@ configuration
 chatter window applies to the remapped key too
   a bouncing Caps Lock yields one Escape         ok
 
+device lifecycle: Enable(false) must actually release the devices
+  Enable(true) then Enable(false) closes the backend ok
+  a second Enable(true) opens a clean backend    ok
+  the reopened backend relays correctly          ok
+  closing the reopened backend counts too        ok
+
 all rules tests passed
+```
+
+The lifecycle block is there because QA found a real defect in the first
+revision: `Enable(false)` stopped the relay thread and logged "devices
+released" while every source stayed `EVIOCGRAB`'d until the process exited. On
+real hardware that is a keyboard the user cannot type on. The helper now holds
+no backend object at all while disabled — `Enable(true)` creates one and claims,
+`Enable(false)` closes it — and `release_devices()` is the single path by which
+the relay ever stops, including when a source dies mid-stream. The test is not
+vacuous: reverting `disable_cycle()` to the pre-fix behaviour fails it.
+
+```
+$ sed -i 's|disable_cycle(input_backend \*b) { b->close(b); }|disable_cycle(input_backend *b) { (void)b; }|' tests/test_rules.c
+$ cmake --build /tmp/wp03/build -j4 && /tmp/wp03/build/test_rules | tail -6
+device lifecycle: Enable(false) must actually release the devices
+  FAIL Enable(true) then Enable(false) closes the backend: close() was not called: count 14 -> 14
+  a second Enable(true) opens a clean backend    ok
+  the reopened backend relays correctly          ok
+  FAIL closing the reopened backend counts too: expected 16 closes, saw 15
+
+FAILURES
 ```
 
 ### 2.2 Against a recorded evdev event stream
@@ -417,6 +444,31 @@ it to open even if it were:
 
 `code=58` is `KEY_CAPSLOCK` and `code=35` is `KEY_H`: tap mode reports the
 **raw** event, not the rewritten one, which is what a shortcut recorder needs.
+
+**Disable really releases, and re-enabling is clean.** The devices are handed
+back on `Enable(false)`, and `GetDevices()` while disabled re-enumerates in
+listen-only mode (no grab, no uinput) rather than replaying a cached answer:
+
+```
+-- disable --
+  Enable(false) -> ok
+-- after Enable(false): devices released, GetDevices re-enumerates without grabbing --
+  GetDevices -> [{"node":"fake:keyboard0",…,"grabbed":false},{"node":"fake:mouse0",…,"grabbed":false}]
+-- and Enable(true) again must open a clean backend, not a second grab --
+  Enable(true) -> ok
+  GetDevices -> [{"node":"fake:keyboard0",…},{"node":"fake:mouse0",…}]
+  Enable(false) -> ok
+```
+
+and the helper log shows two complete claim/release pairs, not one claim and a
+silent leak:
+
+```
+  helper: relay enabled on backend 'fake': [{"node":"fake:keyboard0",…}]
+  helper: relay disabled, devices released
+  helper: relay enabled on backend 'fake': [{"node":"fake:keyboard0",…}]
+  helper: relay disabled, devices released
+```
 
 **The interface the bus advertises:**
 

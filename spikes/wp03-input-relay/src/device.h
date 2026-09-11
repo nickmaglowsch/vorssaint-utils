@@ -63,6 +63,10 @@ const rules_event *device_fake_sink(input_backend *b, size_t idx);
 void device_fake_sink_clear(input_backend *b);
 /* Number of source events not yet read. */
 size_t device_fake_pending(input_backend *b);
+/* How many fake backends have been closed since the process started. The
+ * counter outlives the object, which is the point: close() frees the backend,
+ * so a caller cannot ask a closed one whether it was closed. */
+unsigned device_fake_close_count(void);
 /* Replace the fake's clock. Used by the replay driver so recorded timestamps,
  * not wall time, drive the rules. */
 void device_fake_set_clock(input_backend *b, uint64_t now_ns);

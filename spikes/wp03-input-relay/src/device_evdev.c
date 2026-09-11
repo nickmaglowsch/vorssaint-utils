@@ -105,6 +105,23 @@ static int add_source(evdev_priv *p, const char *node, const char *kind, bool gr
     return 0;
 }
 
+/* Ungrab and close every claimed source. Safe to call twice, and safe to call
+ * halfway through a failed enumeration: a device this relay has grabbed is
+ * unusable by the session until it is released, so every exit path leads here. */
+static void release_sources(evdev_priv *p)
+{
+    for (int i = 0; i < p->n_src; i++) {
+        if (p->src[i].grabbed)
+            libevdev_grab(p->src[i].dev, LIBEVDEV_UNGRAB);
+        if (p->src[i].dev)
+            libevdev_free(p->src[i].dev);
+        if (p->src[i].fd >= 0)
+            close(p->src[i].fd);
+        memset(&p->src[i], 0, sizeof(p->src[i]));
+    }
+    p->n_src = 0;
+}
+
 static int discover(evdev_priv *p, bool grab, char *err, size_t err_cap)
 {
     struct udev *udev = udev_new();
@@ -214,14 +231,25 @@ static int ev_open(input_backend *self, bool grab, char *err, size_t err_cap)
     evdev_priv *p = self->priv;
     int rc;
 
+    /* The helper closes the backend on Enable(false) and opens a fresh one on
+     * the next Enable(true), so open() must start from an empty source list.
+     * Without this reset a reopen would append to the previous enumeration and
+     * grab every device twice. */
+    if (p->n_src != 0 || p->uidev != NULL) {
+        snprintf(err, err_cap, "backend already open with %d source(s)", p->n_src);
+        return -EBUSY;
+    }
+
     /* grab == false is listen-only (--tap): the relay reads devices to show the
      * user what they pressed and emits nothing, so it needs neither the grab
      * nor an output device. Requiring uinput here would make shortcut
      * recording fail on machines where only the relay proper cannot run. */
     if (grab) {
-        /* Check the output path before claiming anything: failing after
-         * grabbing every keyboard in the session would leave the user with no
-         * input at all. */
+        /* LOCKOUT GUARD -- do not reorder. The output path is proven to work
+         * before a single device is grabbed. If uinput were opened after the
+         * grabs and then failed, every keyboard and pointer in the session
+         * would be held by a relay that cannot emit anything, and the user
+         * would have no way to type their way out of it. */
         int fd = open("/dev/uinput", O_RDWR | O_CLOEXEC);
         if (fd < 0) {
             snprintf(err, err_cap, "open /dev/uinput: %s (errno %d)", strerror(errno), errno);
@@ -232,11 +260,19 @@ static int ev_open(input_backend *self, bool grab, char *err, size_t err_cap)
 
     p->grab = grab;
     rc = discover(p, grab, err, err_cap);
-    if (rc < 0)
+    if (rc < 0) {
+        /* Enumeration can fail after some devices were already grabbed. Leaving
+         * those held would take the user's keyboard away on a failed start. */
+        release_sources(p);
         return rc;
+    }
     if (!grab)
         return 0;
-    return build_output(p, err, err_cap);
+
+    rc = build_output(p, err, err_cap);
+    if (rc < 0)
+        release_sources(p);
+    return rc;
 }
 
 static int ev_read(input_backend *self, rules_event *ev, uint64_t *ts_ns, uint64_t deadline_ns)
@@ -342,16 +378,15 @@ static void ev_close(input_backend *self)
 {
     evdev_priv *p = self->priv;
 
-    if (p->uidev)
+    if (p->uidev) {
         libevdev_uinput_destroy(p->uidev);
-    if (p->out_template)
-        libevdev_free(p->out_template);
-    for (int i = 0; i < p->n_src; i++) {
-        if (p->src[i].grabbed)
-            libevdev_grab(p->src[i].dev, LIBEVDEV_UNGRAB);
-        libevdev_free(p->src[i].dev);
-        close(p->src[i].fd);
+        p->uidev = NULL;
     }
+    if (p->out_template) {
+        libevdev_free(p->out_template);
+        p->out_template = NULL;
+    }
+    release_sources(p);
     free(p);
     free(self);
 }

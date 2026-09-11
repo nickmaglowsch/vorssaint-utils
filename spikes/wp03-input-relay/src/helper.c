@@ -43,10 +43,17 @@ typedef struct {
 } tap_ev;
 
 static struct {
+    /* NULL whenever the relay is disabled. A backend exists only while the
+     * devices are actually claimed, so "disabled" and "nothing grabbed" cannot
+     * drift apart. */
     input_backend *backend;
     bool fake;
     bool tap_mode;
     bool enabled;
+    /* Set by the relay thread when its source dies (unplug, read error). The
+     * main loop notices and tears the backend down, because the thread must not
+     * free an object the D-Bus methods may still be holding the lock on. */
+    volatile sig_atomic_t fatal;
 
     rules_state rules;
     pthread_mutex_t lock;
@@ -56,8 +63,6 @@ static struct {
 
     tap_ev ring[RING_CAP];
     size_t ring_head, ring_tail;
-
-    char devices_json[4096];
 } H;
 
 static volatile sig_atomic_t g_quit;
@@ -124,10 +129,15 @@ static void *relay_thread(void *arg)
         pthread_mutex_unlock(&H.lock);
 
         rc = b->read(b, &in, &ts, deadline ? deadline : now_monotonic_ns() + 200000000ULL);
-        if (rc == DEV_READ_EOF)
+        if (rc == DEV_READ_EOF || rc == DEV_READ_ERROR) {
+            /* One source died. The others are still grabbed, so the session
+             * has lost them until they are released; flag it and let the main
+             * loop close the backend rather than limping on. */
+            fprintf(stderr, "helper: source %s, releasing all devices\n",
+                    rc == DEV_READ_EOF ? "disconnected" : "read error");
+            H.fatal = 1;
             break;
-        if (rc == DEV_READ_ERROR)
-            break;
+        }
 
         pthread_mutex_lock(&H.lock);
         if (rc == DEV_READ_TIMEOUT) {
@@ -148,6 +158,43 @@ static void *relay_thread(void *arg)
     }
     H.thread_running = false;
     return NULL;
+}
+
+/* --- backend lifecycle ---------------------------------------------------- */
+
+static void seed_fake_source(input_backend *b);
+
+static input_backend *make_backend(void)
+{
+    input_backend *b = H.fake ? device_fake_new() : device_evdev_new();
+    if (b && H.fake)
+        seed_fake_source(b);
+    return b;
+}
+
+/* Stop the relay and hand every device back to the session.
+ *
+ * This is the only place the relay stops, so there is no path on which the
+ * helper reports itself disabled while still holding an EVIOCGRAB. A grabbed
+ * device is invisible to the compositor, so a leaked grab is not a tidiness
+ * problem: it is a keyboard the user cannot type on until the daemon exits. */
+static void release_devices(void)
+{
+    if (!H.enabled)
+        return;
+
+    H.stop = 1;
+    if (H.thread_running) {
+        pthread_join(H.thread, NULL);
+        H.thread_running = false;
+    }
+    if (H.backend) {
+        H.backend->close(H.backend); /* ungrabs every source, destroys uinput */
+        H.backend = NULL;
+    }
+    H.enabled = false;
+    H.fatal = 0;
+    fprintf(stderr, "helper: relay disabled, devices released\n");
 }
 
 /* --- methods -------------------------------------------------------------- */
@@ -175,9 +222,9 @@ static int method_set_rules(sd_bus_message *m, void *userdata, sd_bus_error *ret
     pthread_mutex_lock(&H.lock);
     n = rules_reconfigure(&H.rules, &cfg, out, RULES_MAX_OUT);
     /* Reconfiguring while a modifier is held would strand it down. */
-    for (int k = 0; k < n && H.enabled; k++)
+    for (int k = 0; k < n && H.backend; k++)
         H.backend->write(H.backend, &out[k]);
-    if (n > 0 && H.enabled)
+    if (n > 0 && H.backend)
         H.backend->sync(H.backend);
     pthread_mutex_unlock(&H.lock);
 
@@ -187,7 +234,8 @@ static int method_set_rules(sd_bus_message *m, void *userdata, sd_bus_error *ret
 
 static int method_get_devices(sd_bus_message *m, void *userdata, sd_bus_error *ret_error)
 {
-    char buf[4096];
+    char buf[4096] = "[]";
+    char err[256] = {0};
     int r;
 
     (void)userdata;
@@ -195,9 +243,27 @@ static int method_get_devices(sd_bus_message *m, void *userdata, sd_bus_error *r
     if (r < 0)
         return r;
 
-    if (H.enabled && H.backend->describe(H.backend, buf, sizeof(buf)) > 0)
+    if (H.backend) {
+        H.backend->describe(H.backend, buf, sizeof(buf));
         return sd_bus_reply_method_return(m, "s", buf);
-    return sd_bus_reply_method_return(m, "s", H.devices_json[0] ? H.devices_json : "[]");
+    }
+
+    /* Disabled. Enumerate for real rather than replaying the last answer: a
+     * cached list would report devices as claimed after they were released,
+     * which is the same lie as a leaked grab, only quieter. Listen-only
+     * discovery takes no EVIOCGRAB and needs no uinput, so answering this way
+     * costs the caller nothing. */
+    {
+        input_backend *probe = make_backend();
+        if (probe) {
+            if (probe->open(probe, false, err, sizeof(err)) < 0)
+                fprintf(stderr, "helper: GetDevices found nothing: %s\n", err);
+            else
+                probe->describe(probe, buf, sizeof(buf));
+            probe->close(probe);
+        }
+    }
+    return sd_bus_reply_method_return(m, "s", buf);
 }
 
 static int method_enable(sd_bus_message *m, void *userdata, sd_bus_error *ret_error)
@@ -216,24 +282,32 @@ static int method_enable(sd_bus_message *m, void *userdata, sd_bus_error *ret_er
         return r;
 
     if (enable && !H.enabled) {
+        H.backend = make_backend();
+        if (!H.backend)
+            return sd_bus_error_set_const(ret_error, SD_BUS_ERROR_NO_MEMORY, "out of memory");
+
         if (H.backend->open(H.backend, !H.tap_mode, err, sizeof(err)) < 0) {
             fprintf(stderr, "helper: Enable(true) refused: %s\n", err);
+            /* open() unwinds its own partial work, but the object itself is
+             * ours to free, and leaving it around would make the next
+             * Enable(true) reopen an already-open backend. */
+            H.backend->close(H.backend);
+            H.backend = NULL;
             return sd_bus_error_setf(ret_error, SD_BUS_ERROR_FAILED,
                                      "cannot claim input devices: %s", err);
         }
-        H.backend->describe(H.backend, H.devices_json, sizeof(H.devices_json));
         H.enabled = true;
         H.stop = 0;
+        H.fatal = 0;
         if (pthread_create(&H.thread, NULL, relay_thread, H.backend) == 0)
             H.thread_running = true;
-        fprintf(stderr, "helper: relay enabled on backend '%s': %s\n", H.backend->name,
-                H.devices_json);
+        {
+            char devs[4096];
+            H.backend->describe(H.backend, devs, sizeof(devs));
+            fprintf(stderr, "helper: relay enabled on backend '%s': %s\n", H.backend->name, devs);
+        }
     } else if (!enable && H.enabled) {
-        H.stop = 1;
-        if (H.thread_running)
-            pthread_join(H.thread, NULL);
-        H.enabled = false;
-        fprintf(stderr, "helper: relay disabled, devices released\n");
+        release_devices();
     }
     return sd_bus_reply_method_return(m, "");
 }
@@ -253,7 +327,8 @@ static int prop_backend(sd_bus *bus, const char *path, const char *iface, const 
                         sd_bus_message *reply, void *userdata, sd_bus_error *ret_error)
 {
     (void)bus; (void)path; (void)iface; (void)prop; (void)userdata; (void)ret_error;
-    return sd_bus_message_append(reply, "s", H.backend->name);
+    /* Reportable while disabled, when no backend object exists. */
+    return sd_bus_message_append(reply, "s", H.fake ? "fake" : "evdev");
 }
 
 static int prop_authz(sd_bus *bus, const char *path, const char *iface, const char *prop,
@@ -326,10 +401,10 @@ int main(int argc, char **argv)
 
     pthread_mutex_init(&H.lock, NULL);
     rules_init(&H.rules, NULL);
+    /* No backend is created here: devices are claimed by Enable(true) and
+     * released by Enable(false), so a helper sitting idle on the bus holds
+     * nothing at all. */
     H.fake = strcmp(backend, "fake") == 0;
-    H.backend = H.fake ? device_fake_new() : device_evdev_new();
-    if (!H.backend)
-        return 1;
 
     signal(SIGINT, on_signal);
     signal(SIGTERM, on_signal);
@@ -358,8 +433,8 @@ int main(int argc, char **argv)
     }
     fprintf(stderr, "helper: owning %s on the %s bus, uid=%u, authorization=%s\n", BUS_NAME,
             session_bus ? "session" : "system", (unsigned)geteuid(), polkit_backend_name());
-    fprintf(stderr, "helper: backend=%s tap_mode=%s\n", H.backend->name,
-            H.tap_mode ? "yes" : "no");
+    fprintf(stderr, "helper: backend=%s tap_mode=%s (no devices claimed until Enable(true))\n",
+            H.fake ? "fake" : "evdev", H.tap_mode ? "yes" : "no");
     fflush(stderr);
 
     while (!g_quit) {
@@ -371,10 +446,13 @@ int main(int argc, char **argv)
 
         /* Drain the tap ring into D-Bus signals from this thread only: sd-bus
          * connections are not shared across threads. */
+        if (H.fatal)
+            release_devices();
+
         pthread_mutex_lock(&H.lock);
         /* Only once the previous burst has been consumed, so the synthetic
          * timestamps stay monotonic. */
-        if (H.fake && H.enabled && device_fake_pending(H.backend) == 0)
+        if (H.fake && H.enabled && H.backend && device_fake_pending(H.backend) == 0)
             seed_fake_source(H.backend);
         while (H.ring_head != H.ring_tail) {
             tap_ev *e = &H.ring[H.ring_head];
@@ -389,11 +467,7 @@ int main(int argc, char **argv)
             break;
     }
 
-    H.stop = 1;
-    if (H.thread_running)
-        pthread_join(H.thread, NULL);
-    if (H.enabled)
-        H.backend->close(H.backend);
+    release_devices();
     sd_bus_slot_unref(slot);
     sd_bus_unref(bus);
     fprintf(stderr, "helper: exiting, devices released\n");
