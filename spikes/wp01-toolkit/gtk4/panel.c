@@ -13,8 +13,8 @@ typedef struct {
 static void draw_spark(GtkDrawingArea *area, cairo_t *cr, int w, int h, gpointer data)
 {
     PanelState *st = data;
-    guint n = 0;
-    const double *hist = core_model_get_history(st->metrics, &n);
+    double hist[VS_HISTORY_MAX];
+    guint n = core_model_copy_history(st->metrics, hist, VS_HISTORY_MAX);
 
     cairo_set_source_rgb(cr, 0.169, 0.188, 0.231);
     cairo_set_line_width(cr, 1);

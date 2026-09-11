@@ -6,7 +6,7 @@
 
 #include "corebridge.h"
 
-#define VS_HISTORY_MAX 64
+
 
 struct _CoreModel {
     GObject parent_instance;
@@ -137,10 +137,15 @@ const char *core_model_get_string(CoreModel *self, const char *key, const char *
     return v ? v : fallback;
 }
 
-const double *core_model_get_history(CoreModel *self, guint *n_out)
+guint core_model_copy_history(CoreModel *self, double *out, guint cap)
 {
-    *n_out = self->history_len;
-    return self->history;
+    /* apply_json() rewrites history on the bridge's ticker thread under
+       self->lock; hand the caller a snapshot instead of a live pointer. */
+    g_mutex_lock(&self->lock);
+    guint n = MIN(self->history_len, cap);
+    memcpy(out, self->history, n * sizeof(double));
+    g_mutex_unlock(&self->lock);
+    return n;
 }
 
 int core_model_invoke(CoreModel *self, const char *json)

@@ -7,6 +7,8 @@
 // difference is the point of the bake-off: see the report's view-code counts.
 #pragma once
 
+#define VS_HISTORY_MAX 64
+
 #include <glib-object.h>
 
 G_BEGIN_DECLS
@@ -20,7 +22,7 @@ CoreModel *core_model_new(const char *service);
 double      core_model_get_double(CoreModel *self, const char *key, double fallback);
 gboolean    core_model_get_bool(CoreModel *self, const char *key, gboolean fallback);
 const char *core_model_get_string(CoreModel *self, const char *key, const char *fallback);
-const double *core_model_get_history(CoreModel *self, guint *n_out);
+guint core_model_copy_history(CoreModel *self, double *out, guint cap);
 
 // Send a command; `json` is the Codable command enum encoded as JSON.
 int core_model_invoke(CoreModel *self, const char *json);
