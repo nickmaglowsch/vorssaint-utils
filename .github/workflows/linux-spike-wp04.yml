@@ -55,6 +55,8 @@ jobs:
             qml6-module-qtquick qml6-module-qtquick-controls \
             qml6-module-qtquick-layouts qml6-module-qtquick-window \
             qml6-module-qtquick-templates qml6-module-qtqml-workerscript \
+            libqt6opengl6-dev libxkbcommon-dev libxkbcommon-x11-dev \
+            qt6-xdgdesktopportal-platformtheme \
             libgl1-mesa-dev libvulkan-dev \
             cmake ninja-build patchelf squashfs-tools file desktop-file-utils
           echo "--- Qt version on this runner (jammy ships 6.2; noble ships 6.4)"
@@ -251,7 +253,12 @@ jobs:
           Xvfb :95 -screen 0 1280x800x24 >/tmp/xvfb.log 2>&1 &
           sleep 3
           export DISPLAY=:95
-          for img in /tmp/art/*.AppImage; do
+          shopt -s nullglob
+          imgs=(/tmp/art/*.AppImage)
+          if [ ${#imgs[@]} -eq 0 ]; then
+            echo "no AppImage artifact was produced by the appimage job"; exit 0
+          fi
+          for img in "${imgs[@]}"; do
             name="$(basename "$img" .AppImage)"
             echo "===================== $name (${{ matrix.mode }})"
             "$img" --screen panel --quit-after 5000 > "/tmp/$name.log" 2>&1 &
@@ -263,6 +270,9 @@ jobs:
               xwd -root -display :95 -out "/tmp/shots/${{ matrix.mode }}-$name.xwd" || true
             fi
             wait $pid; echo "exit=$?"
+            # Artifact paths may not contain '*', so the logs are copied into
+            # the screenshot directory under fixed names instead of globbed.
+            cp "/tmp/$name.log" "/tmp/shots/${{ matrix.mode }}-$name.log" || true
             echo "--- log"
             cat "/tmp/$name.log" || true
             echo "--- missing-library / platform-plugin diagnostics"
@@ -276,9 +286,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: wp04-smoke-${{ strategy.job-index }}
-          path: |
-            /tmp/shots/**
-            /tmp/*.log
+          path: /tmp/shots
           if-no-files-found: warn
           retention-days: 7
 
@@ -374,14 +382,20 @@ jobs:
           du -sh ~/.local/share/flatpak/app/com.example.vorssaint-linux-spike || true
           flatpak list --user --columns=application,size,runtime || true
 
+      - name: collect flatpak evidence
+        if: always()
+        continue-on-error: true
+        run: |
+          mkdir -p /tmp/wp04-flatpak-evidence
+          cp /tmp/probe-*.txt /tmp/flatpak-*.log /tmp/wp04-flatpak-evidence/ 2>/dev/null || true
+          cp -r /tmp/shots /tmp/wp04-flatpak-evidence/shots 2>/dev/null || true
+          ls -la /tmp/wp04-flatpak-evidence
+
       - name: upload flatpak evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: wp04-flatpak
-          path: |
-            /tmp/probe-*.txt
-            /tmp/flatpak-*.log
-            /tmp/shots/**
+          path: /tmp/wp04-flatpak-evidence
           if-no-files-found: warn
           retention-days: 7

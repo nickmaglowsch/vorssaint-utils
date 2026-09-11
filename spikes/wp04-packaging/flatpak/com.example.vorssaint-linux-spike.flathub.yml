@@ -67,6 +67,9 @@ modules:
   - name: vorssaint-qt-spike
     buildsystem: cmake-ninja
     subdir: qt-quick
+    # The spike CMakeLists has no install() rule (it is a WP-01 bake-off
+    # binary, not a product), so ninja has no `install` target.
+    no-make-install: true
     config-opts:
       - -DCMAKE_BUILD_TYPE=Release
     sources:

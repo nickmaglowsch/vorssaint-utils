@@ -73,14 +73,22 @@ cp "$BIN" "$APPDIR/usr/bin/$BINNAME"
 # platform plugins the port targets (wayland, xcb) plus the offscreen one that
 # headless CI uses, the Wayland sub-plugin families (shell integration,
 # decorations, client buffer integration), the XCB GL glue, image formats,
-# icon engines, the XDG platform theme (this is what turns QSystemTrayIcon
-# into a StatusNotifierItem on KDE/GNOME), and TLS backends.
+# icon engines, the XDG platform theme (portal file dialogs and the portal
+# colour-scheme signal), TLS backends and the network-reachability backends
+# the update feed needs.
+#
+# Note for whoever builds this on a distro: `platformthemes` is NOT part of
+# qt6-base on Debian/Ubuntu. `libqxdgdesktopportal.so` lives in
+# `qt6-xdgdesktopportal-platformtheme` and the GTK one in
+# `qt6-gtk-platformtheme`; without them a Flatpak-less bundle still gets a
+# tray item (Qt's QDBusTrayIcon is in QtGui, not a theme plugin) but loses
+# portal file dialogs. Install them before running this script.
 # ---------------------------------------------------------------------------
 PLUGIN_GROUPS=(
   platforms platformthemes platforminputcontexts
   wayland-shell-integration wayland-decoration-client wayland-graphics-integration-client
   xcbglintegrations egldeviceintegrations
-  imageformats iconengines tls
+  imageformats iconengines tls networkinformation
 )
 for g in "${PLUGIN_GROUPS[@]}"; do
   [ -d "$QT_PLUGINS/$g" ] || continue
