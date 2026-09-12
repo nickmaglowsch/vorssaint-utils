@@ -157,9 +157,23 @@ jobs:
       - name: Verify toolchain
         shell: bash
         run: |
+          set -euo pipefail
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
           swift --version | grep -F "Swift version 6.1"
-          cc --version | head -1
+          # swift:6.1-noble ships clang and binutils but no `cc` symlink, so
+          # resolve each tool once here rather than assuming a name.
+          for candidate in clang gcc cc; do
+            if command -v "$candidate" >/dev/null; then CC="$candidate"; break; fi
+          done
+          for candidate in ar llvm-ar; do
+            if command -v "$candidate" >/dev/null; then AR="$candidate"; break; fi
+          done
+          for candidate in nm llvm-nm; do
+            if command -v "$candidate" >/dev/null; then NM="$candidate"; break; fi
+          done
+          : "${CC:?no C compiler}" "${AR:?no ar}" "${NM:?no nm}"
+          "$CC" --version | head -1
+          { echo "CC=$CC"; echo "AR=$AR"; echo "NM=$NM"; } >> "$GITHUB_ENV"
 
       # The proof that the header is the same ABI the WP-01 Qt spike was built
       # against. Comment lines start with `/*`, ` *` or ` */` and are dropped;
@@ -221,13 +235,13 @@ jobs:
           test -n "$objects"
           echo "$objects" | wc -l | xargs echo "object files:"
           echo "$objects" > /tmp/objects.txt
-          ar crs /tmp/libvorssaintbridge.a $objects
+          "$AR" crs /tmp/libvorssaintbridge.a $objects
           ls -l /tmp/libvorssaintbridge.a
           echo "=== exported bridge symbols ==="
-          nm --defined-only -g /tmp/libvorssaintbridge.a \
+          "$NM" --defined-only -g /tmp/libvorssaintbridge.a \
             | grep -E ' T (vs_subscribe|vs_command|vs_snapshot|vs_free)$' | sort
           for symbol in vs_subscribe vs_command vs_snapshot vs_free; do
-            nm --defined-only -g /tmp/libvorssaintbridge.a \
+            "$NM" --defined-only -g /tmp/libvorssaintbridge.a \
               | grep -qE " T $symbol\$" || { echo "missing $symbol"; exit 1; }
           done
           echo "ALL FOUR SYMBOLS EXPORTED"
@@ -239,7 +253,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          cc -std=c11 -Wall -Wextra -Werror -O2 \
+          "$CC" -std=c11 -Wall -Wextra -Werror -O2 \
             -I linux/shell/include -c linux/shell/tests/abi_client.c \
             -o /tmp/abi_client.o
           echo "C CLIENT COMPILED"

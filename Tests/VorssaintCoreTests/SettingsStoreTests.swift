@@ -35,7 +35,20 @@ final class SettingsStoreTests: XCTestCase {
         case 1: return .integer(index * 31 - 7)
         case 2: return .double(Double(index) / 8 + 0.5)
         case 3: return .string("value \(index) ✓ \u{1F600}")
-        case 4: return .data(Data((0..<(index % 23 + 1)).map { UInt8(($0 &+ UInt8(index % 251)) & 0xFF) }))
+        case 4:
+            // Spelled out with explicit types rather than as one expression:
+            // the one-liner this replaces made Swift 6.1 give up on Linux with
+            // "unable to type-check this expression in reasonable time"
+            // (run 34714111996), because the literal range's element type is
+            // only pinned by a `&+` three levels in. Same bytes either way.
+            let length = index % 23 + 1
+            let seed = UInt8(index % 251)
+            var bytes: [UInt8] = []
+            bytes.reserveCapacity(length)
+            for offset in 0..<length {
+                bytes.append(UInt8(offset) &+ seed)
+            }
+            return .data(Data(bytes))
         case 5: return .array([.string("a\(index)"), .integer(index), .bool(index % 2 == 0)])
         default: return .dictionary(["n": .integer(index),
                                      "flag": .bool(index % 3 == 0),
