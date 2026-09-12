@@ -185,6 +185,6 @@ grep -q "^event	removed	$ID_DELTA" "$WORK/events.txt" || fail "no removed event 
 if "$VS_WINDOW" --backend x11 close "$ID_DELTA" 2>"$WORK/close2.txt"; then
     fail "closing a dead window reported success"
 fi
-grep -q "no such window" "$WORK/close2.txt" || fail "wrong error for a dead window"
+grep -q "no such object" "$WORK/close2.txt" || fail "wrong error for a dead window"
 
 echo "PASS: x11"

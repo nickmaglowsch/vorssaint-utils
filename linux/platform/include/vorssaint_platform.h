@@ -367,8 +367,18 @@ typedef enum vs_audio_node_flag {
     VS_AUDIO_NODE_HAS_VOLUME = 1u << 2,
     /** `pid` is real rather than the -1 placeholder. */
     VS_AUDIO_NODE_HAS_PID = 1u << 3,
+    /**
+     * Sound is actually moving through this node right now, as opposed to an
+     * application that holds a stream open while silent. `AudioStream.isActive`
+     * in WP-12, `MixerApp.isPlaying` on macOS: the mixer shows a live indicator
+     * for it and sorts silent rows down, but still lists them, because a row
+     * that vanished when the app paused would take its volume slider with it.
+     */
+    VS_AUDIO_NODE_ACTIVE = 1u << 4,
 } vs_audio_node_flag;
 
+#define VS_AUDIO_APP_ID_MAX 128
+#define VS_AUDIO_TRANSPORT_MAX 32
 #define VS_AUDIO_NAME_MAX 256
 #define VS_AUDIO_DESCRIPTION_MAX 256
 #define VS_AUDIO_APP_NAME_MAX 128
@@ -385,6 +395,22 @@ typedef struct vs_audio_node {
     char description[VS_AUDIO_DESCRIPTION_MAX];
     /** `application.name` for streams (`MixerApp.name`). */
     char app_name[VS_AUDIO_APP_NAME_MAX];
+    /**
+     * Streams only: a stable identity for the application, and the key a saved
+     * volume or route is persisted against. `AudioStream.applicationID` in
+     * WP-12, and the counterpart of the bundle id the macOS mixer saves under
+     * -- `name` cannot do that job, because every `pw-play` shares the
+     * `node.name` "pw-play".
+     *
+     * Taken from `application.id`, then `application.process.binary`, then
+     * `application.name`. The fall back to a display name is the same rule
+     * `MixerRoutingSupport.rowIdentity` applies on macOS for a process with no
+     * bundle id, and for the same reason: a game or a bare executable is still
+     * worth remembering a volume for, and its name is the only stable thing it
+     * has. Empty only when the client set none of the three, in which case the
+     * row is adjustable but saves nothing -- `MixerApp.persistenceID` being nil.
+     */
+    char app_id[VS_AUDIO_APP_ID_MAX];
     /** `application.icon-name`: an XDG icon name, the Linux answer to the
      *  macOS mixer's per-app icon. May be empty. */
     char icon_name[VS_AUDIO_ICON_NAME_MAX];
@@ -393,6 +419,14 @@ typedef struct vs_audio_node {
     char media_name[VS_AUDIO_MEDIA_NAME_MAX];
     /** Owning process (`MixerApp.ownerPid`), or -1 when the backend cannot say. */
     int32_t pid;
+    /**
+     * Devices only: the bus, for the icon the mixer draws -- "bluetooth",
+     * "usb", "hdmi", "builtin", or "" when the backend cannot tell.
+     * `AudioSink.transport` in WP-12, deliberately free-form there because
+     * PipeWire's `device.bus` and CoreAudio's transport type do not enumerate
+     * the same set.
+     */
+    char transport[VS_AUDIO_TRANSPORT_MAX];
     /** Linear amplitude; see the scale note above. Meaningful only with
      *  `VS_AUDIO_NODE_HAS_VOLUME`. */
     float volume;
@@ -461,9 +495,16 @@ struct vs_audio_system {
 
     /** Snapshot of every node whose kind is in `kind_mask` (a bitmask of
      *  `vs_audio_node_kind`). The caller owns the array until it passes it to
-     *  `free_list`; a count of 0 comes with a NULL pointer. Budget: 100 ms.
-     *  May run the backend's connection, so events it uncovers are delivered by
-     *  a later `dispatch` rather than by this call. */
+     *  `free_list`; a count of 0 comes with a NULL pointer.
+     *
+     *  Budget: 2 s, and nothing like it in practice. The PipeWire backend
+     *  answers from its own mirror of the graph and turns the loop once without
+     *  blocking, so it cannot wait at all; the libpulse fallback has no mirror
+     *  and asks the server, which is where the cap applies -- one round trip
+     *  per node kind plus one for the defaults.
+     *
+     *  Either way this may run the backend's connection, so events it uncovers
+     *  are delivered by a later `dispatch` rather than by this call. */
     int (*list)(vs_audio_system *self, uint32_t kind_mask,
                 vs_audio_node **nodes_out, size_t *count_out);
     void (*free_list)(vs_audio_system *self, vs_audio_node *nodes, size_t count);
@@ -491,6 +532,9 @@ struct vs_audio_system {
      *  the choice is both in effect now and restored at the next login.
      *  Budget: 3 s. */
     int (*set_default_sink)(vs_audio_system *self, vs_audio_id sink_id);
+    /** The same for the default input, which is what AudioInputDeviceManager's
+     *  preferred-input setting writes. Budget: 3 s. */
+    int (*set_default_source)(vs_audio_system *self, vs_audio_id source_id);
 
     /** Mute every input, or restore.
      *

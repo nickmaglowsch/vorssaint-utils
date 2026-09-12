@@ -68,12 +68,26 @@ struct node_entry {
     char app_name[VS_AUDIO_APP_NAME_MAX];
     char icon_name[VS_AUDIO_ICON_NAME_MAX];
     char media_name[VS_AUDIO_MEDIA_NAME_MAX];
+    char app_id[VS_AUDIO_APP_ID_MAX];
+    char transport[VS_AUDIO_TRANSPORT_MAX];
     int32_t pid;
+    bool active;
 
     float channel_volumes[MAX_CHANNELS];
     uint32_t n_channels;
     bool mute;
     bool has_volume;
+    /**
+     * The node's own info event has arrived, so its properties are the
+     * complete set and not the registry's filtered subset. A node is not
+     * listed before this: the registry global comes first and carries neither
+     * `application.process.id` nor `media.name`, so listing on it would show a
+     * mixer row that is briefly anonymous and then fills in -- a visible
+     * flicker, and a row the user cannot identify while it lasts. Every bound
+     * node gets an info event immediately after the bind, so the wait is a
+     * round trip and not a risk of a node staying hidden.
+     */
+    bool info_seen;
 
     struct pw_proxy *proxy;
     struct spa_hook proxy_listener;
@@ -191,6 +205,10 @@ static vs_audio_id resolve_target(struct pw_backend *be, const char *value)
     return n ? n->serial : 0;
 }
 
+/* find_by_* deliberately do NOT filter on info_seen: a node that has been
+ * bound is a real node and can be written to. Only `list` waits, because only
+ * a listing shows properties that are not there yet. */
+
 /** The global id of whatever this stream's links actually land on. */
 static uint32_t linked_global_of(struct pw_backend *be, uint32_t stream_global)
 {
@@ -200,6 +218,40 @@ static uint32_t linked_global_of(struct pw_backend *be, uint32_t stream_global)
         if (l->in_node == stream_global) return l->out_node;
     }
     return 0;
+}
+
+/**
+ * The bus a device sits on, for the icon the mixer draws.
+ *
+ * `device.bus` is the answer when it is there, but it lives on the Device
+ * object and is only sometimes copied onto the node, so the node name is the
+ * fallback: WirePlumber builds it from the ALSA or BlueZ path and its prefix is
+ * the most reliable thing a node-only view has. A guess that puts the wrong
+ * icon on a device is worse than no icon, so anything unrecognised stays ""
+ * and the UI draws its generic one.
+ */
+static void derive_transport(const struct spa_dict *props, char *out, size_t len)
+{
+    out[0] = '\0';
+    const char *bus = spa_dict_lookup(props, PW_KEY_DEVICE_BUS);
+    if (bus && *bus) {
+        if (strcmp(bus, "pci") == 0 || strcmp(bus, "isa") == 0)
+            vs_audio_copy_field(out, len, "builtin");
+        else
+            vs_audio_copy_field(out, len, bus);
+        return;
+    }
+    if (spa_dict_lookup(props, "api.bluez5.transport")
+        || spa_dict_lookup(props, "api.bluez5.profile")) {
+        vs_audio_copy_field(out, len, "bluetooth");
+        return;
+    }
+    const char *name = spa_dict_lookup(props, PW_KEY_NODE_NAME);
+    if (!name) return;
+    if (strncmp(name, "bluez_", 6) == 0) vs_audio_copy_field(out, len, "bluetooth");
+    else if (strstr(name, ".usb-")) vs_audio_copy_field(out, len, "usb");
+    else if (strstr(name, "hdmi")) vs_audio_copy_field(out, len, "hdmi");
+    else if (strstr(name, ".pci-")) vs_audio_copy_field(out, len, "builtin");
 }
 
 static void schedule_changed(struct pw_backend *be)
@@ -364,7 +416,24 @@ static void node_info(void *data, const struct pw_node_info *info)
         vs_audio_copy_field(n->media_name, sizeof(n->media_name), value);
     if ((value = spa_dict_lookup(props, PW_KEY_APP_PROCESS_ID)))
         n->pid = (int32_t)strtol(value, NULL, 10);
+    /* application.id is the desktop-file id when the toolkit sets one, the
+     * process binary is what most clients have, and the display name is the
+     * last resort -- measured: `pw-play` sets neither of the first two, and
+     * neither do plenty of real clients. Falling back to the name is the rule
+     * MixerRoutingSupport.rowIdentity already applies on macOS to a process
+     * with no bundle id. */
+    value = spa_dict_lookup(props, PW_KEY_APP_ID);
+    if (!value) value = spa_dict_lookup(props, PW_KEY_APP_PROCESS_BINARY);
+    if (!value) value = spa_dict_lookup(props, PW_KEY_APP_NAME);
+    if (value) vs_audio_copy_field(n->app_id, sizeof(n->app_id), value);
+    if (n->kind & VS_AUDIO_NODE_ANY_DEVICE)
+        derive_transport(props, n->transport, sizeof(n->transport));
 
+    /* Running means samples are moving. A stream that is merely open sits in
+     * Idle, which is the distinction the mixer's live indicator draws. */
+    n->active = info->state == PW_NODE_STATE_RUNNING;
+
+    n->info_seen = true;
     schedule_changed(n->be);
 }
 
@@ -633,6 +702,7 @@ static int pw_list(vs_audio_system *self, uint32_t kind_mask,
     struct node_entry *n;
     spa_list_for_each(n, &be->nodes, link) {
         if ((n->kind & kind_mask) == 0) continue;
+        if (!n->info_seen) continue; /* see node_entry.info_seen */
         if (!vs_audio_nodes_reserve(&nodes, count, &capacity)) {
             free(nodes);
             return VS_ERR_NO_MEM;
@@ -646,8 +716,11 @@ static int pw_list(vs_audio_system *self, uint32_t kind_mask,
         vs_audio_copy_field(out->app_name, sizeof(out->app_name), n->app_name);
         vs_audio_copy_field(out->icon_name, sizeof(out->icon_name), n->icon_name);
         vs_audio_copy_field(out->media_name, sizeof(out->media_name), n->media_name);
+        vs_audio_copy_field(out->app_id, sizeof(out->app_id), n->app_id);
+        vs_audio_copy_field(out->transport, sizeof(out->transport), n->transport);
         out->pid = n->pid;
         if (n->pid >= 0) out->flags |= VS_AUDIO_NODE_HAS_PID;
+        if (n->active) out->flags |= VS_AUDIO_NODE_ACTIVE;
         if (n->has_volume) {
             /* Channels can differ if another mixer set a balance; the single
              * number this API exposes is the loudest, so a slider never reports
@@ -873,6 +946,32 @@ static int pw_set_default_sink(vs_audio_system *self, vs_audio_id sink_id)
     return rc == VS_ERR_TIMEOUT ? VS_ERR_NOT_APPLIED : rc;
 }
 
+static bool default_source_is(struct pw_backend *be, void *ctx)
+{
+    return strcmp(be->default_source, (const char *)ctx) == 0;
+}
+
+static int pw_set_default_source(vs_audio_system *self, vs_audio_id source_id)
+{
+    struct pw_backend *be = self->impl;
+    if (source_id == 0) return VS_ERR_INVALID;
+    struct node_entry *source = find_by_serial(be, source_id);
+    if (!source || source->kind != VS_AUDIO_NODE_SOURCE) return VS_ERR_NOT_FOUND;
+    if (!be->metadata) return VS_ERR_UNSUPPORTED;
+
+    char json[VS_AUDIO_NAME_MAX + 16];
+    snprintf(json, sizeof(json), "{\"name\":\"%s\"}", source->name);
+    pw_metadata_set_property(be->metadata, 0, "default.configured.audio.source",
+                             "Spa:String:JSON", json);
+    pw_metadata_set_property(be->metadata, 0, "default.audio.source",
+                             "Spa:String:JSON", json);
+
+    char wanted[VS_AUDIO_NAME_MAX];
+    vs_audio_copy_field(wanted, sizeof(wanted), source->name);
+    int rc = pump_until(be, default_source_is, wanted, ROUTE_BUDGET_MS);
+    return rc == VS_ERR_TIMEOUT ? VS_ERR_NOT_APPLIED : rc;
+}
+
 static int pw_mute_all_inputs(vs_audio_system *self, bool mute, size_t *changed_out)
 {
     return vs_audio_mute_all_inputs_generic(self, mute, changed_out);
@@ -962,6 +1061,7 @@ vs_audio_system *vs_audio_pipewire_create(int *result_out)
         .set_mute = pw_set_mute,
         .route_stream = pw_route_stream,
         .set_default_sink = pw_set_default_sink,
+        .set_default_source = pw_set_default_source,
         .mute_all_inputs = pw_mute_all_inputs,
         .set_event_callback = pw_set_event_callback,
         .event_fd = pw_event_fd,

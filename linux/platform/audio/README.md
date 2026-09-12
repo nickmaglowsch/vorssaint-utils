@@ -6,7 +6,7 @@ The Linux half of three macOS services:
 |---|---|---|
 | `AppVolumeMixer` | list output devices, list app streams, set a per-app volume above 100 %, route one app to one output | `list`, `set_volume`, `route_stream` |
 | `SoundOutputSwitcher` | switch the system output, notice headphones leaving | `set_default_sink`, `VS_AUDIO_EVENT_DEFAULT_SINK_DISCONNECTED` |
-| `AudioInputDeviceManager` | list inputs, know the default | `list` with `VS_AUDIO_NODE_SOURCE` |
+| `AudioInputDeviceManager` | list inputs, know the default, set a preferred one | `list` with `VS_AUDIO_NODE_SOURCE`, `set_default_source` |
 | `MicMuteService` | mute every input, restore exactly what it muted | `mute_all_inputs` |
 
 Two backends fill the same `vs_audio_system` vtable: PipeWire over
@@ -193,6 +193,26 @@ in [`../README.md`](../README.md):
 | `list` + `free_list` | one call returning `[AudioNode]` |
 | `vs_audio_linear_to_cubic` | `AudioVolume.cubic` |
 
+Field by field against the protocol as it landed:
+
+| `vs_audio_node` | `AudioSink` / `AudioSource` | `AudioStream` |
+|---|---|---|
+| `id` | `id` (stringified) | `id` (stringified) |
+| `description`, falling back to `name` | `name` | – |
+| `transport` | `transport` | – |
+| `VS_AUDIO_NODE_IS_DEFAULT` | `isDefault` | – |
+| `volume`, `VS_AUDIO_NODE_MUTED` | `volume`, `isMuted` | `volume`, `isMuted` |
+| `app_id` | – | `applicationID` |
+| `app_name` | – | `applicationName` |
+| `effective_id` (stringified) | – | `sinkID` |
+| `VS_AUDIO_NODE_ACTIVE` | – | `isActive` |
+
+Two notes on that table. The ids are `uint32_t` here and `String` there, so the
+wrapper stringifies; it must not substitute `node.name`, which is not unique
+(every `pw-play` is called "pw-play"). And `AudioStream.sinkID` maps to
+`effective_id`, not `target_id`: the protocol asks where the audio *is*, and
+`target_id` is only where it was asked to go.
+
 Two rules keep the mirror honest, the same two the window section states:
 
 1. **The C side is the source of truth for names and semantics.** A field
@@ -256,8 +276,23 @@ Each live case gets its own stack, since the cases mutate global state (the
 default sink; `default_sink` destroys a sink outright) and sharing one would
 make them order-dependent.
 
-All four CMake build types must be clean under `-Werror`:
+All five legs of the matrix must pass — the four CMake build types clean under
+`-Werror`, plus AddressSanitizer/UndefinedBehaviorSanitizer/LeakSanitizer:
 
 ```sh
 CTEST_ARGS="-R ^audio_" linux/platform/scripts/build-matrix.sh
+```
+
+The sanitizer leg is not a formality here. The backend holds proxies and hooks
+whose callbacks fire long after the call that armed them, and the ordinary
+failure mode would be a listener still attached to a freed `node_entry` — a
+use-after-free nothing in a warning set can see. It is also the leg that would
+catch a `list` whose array escaped without a matching `free_list`.
+
+To run it alone:
+
+```sh
+cmake -S linux/platform -B build-asan -DCMAKE_BUILD_TYPE=Debug -DVS_SANITIZE=ON
+cmake --build build-asan -j
+ctest --test-dir build-asan -R '^audio_' --output-on-failure
 ```

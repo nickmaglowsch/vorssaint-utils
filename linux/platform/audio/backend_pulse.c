@@ -200,6 +200,12 @@ static void fill_stream_props(vs_audio_node *out, pa_proplist *props)
                         pa_proplist_gets(props, PA_PROP_APPLICATION_ICON_NAME));
     vs_audio_copy_field(out->media_name, sizeof(out->media_name),
                         pa_proplist_gets(props, PA_PROP_MEDIA_NAME));
+    /* Same three-step fallback as the PipeWire backend, so a volume saved on
+     * one host is found again on the other. */
+    const char *app_id = pa_proplist_gets(props, PA_PROP_APPLICATION_ID);
+    if (!app_id) app_id = pa_proplist_gets(props, PA_PROP_APPLICATION_PROCESS_BINARY);
+    if (!app_id) app_id = pa_proplist_gets(props, PA_PROP_APPLICATION_NAME);
+    vs_audio_copy_field(out->app_id, sizeof(out->app_id), app_id);
     const char *pid = pa_proplist_gets(props, PA_PROP_APPLICATION_PROCESS_ID);
     if (pid) {
         out->pid = (int32_t)strtol(pid, NULL, 10);
@@ -220,6 +226,27 @@ static void fill_common(vs_audio_node *out, vs_audio_id id, vs_audio_node_kind k
     vs_audio_copy_field(out->description, sizeof(out->description), description);
 }
 
+/**
+ * The bus a device sits on. PulseAudio puts `device.bus` in the proplist
+ * directly, so unlike the PipeWire side there is no Device object to chase --
+ * only the same normalisation, so both backends hand the UI the same words.
+ */
+static void fill_transport(vs_audio_node *out, pa_proplist *props)
+{
+    if (!props) return;
+    const char *bus = pa_proplist_gets(props, PA_PROP_DEVICE_BUS);
+    if (bus && *bus) {
+        if (strcmp(bus, "pci") == 0 || strcmp(bus, "isa") == 0)
+            vs_audio_copy_field(out->transport, sizeof(out->transport), "builtin");
+        else
+            vs_audio_copy_field(out->transport, sizeof(out->transport), bus);
+        return;
+    }
+    const char *api = pa_proplist_gets(props, PA_PROP_DEVICE_API);
+    if (api && strcmp(api, "bluez") == 0)
+        vs_audio_copy_field(out->transport, sizeof(out->transport), "bluetooth");
+}
+
 static void sink_info_cb(pa_context *c, const pa_sink_info *i, int eol, void *ud)
 {
     (void)c;
@@ -232,6 +259,8 @@ static void sink_info_cb(pa_context *c, const pa_sink_info *i, int eol, void *ud
                 i->name, i->description, pa_cvolume_max(&i->volume), i->mute);
     if (strcmp(out->name, be->default_sink) == 0)
         out->flags |= VS_AUDIO_NODE_IS_DEFAULT;
+    fill_transport(out, i->proplist);
+    if (i->state == PA_SINK_RUNNING) out->flags |= VS_AUDIO_NODE_ACTIVE;
 }
 
 static void source_info_cb(pa_context *c, const pa_source_info *i, int eol, void *ud)
@@ -251,6 +280,8 @@ static void source_info_cb(pa_context *c, const pa_source_info *i, int eol, void
                 i->name, i->description, pa_cvolume_max(&i->volume), i->mute);
     if (strcmp(out->name, be->default_source) == 0)
         out->flags |= VS_AUDIO_NODE_IS_DEFAULT;
+    fill_transport(out, i->proplist);
+    if (i->state == PA_SOURCE_RUNNING) out->flags |= VS_AUDIO_NODE_ACTIVE;
 }
 
 static void sink_input_cb(pa_context *c, const pa_sink_input_info *i, int eol, void *ud)
@@ -268,6 +299,9 @@ static void sink_input_cb(pa_context *c, const pa_sink_input_info *i, int eol, v
      * pretending to an independent observation. */
     out->target_id = pack_id(TAG_SINK, i->sink);
     out->effective_id = out->target_id;
+    /* `corked` is PulseAudio's word for a stream the application paused; not
+     * corked is the closest this protocol comes to PipeWire's Running state. */
+    if (!i->corked) out->flags |= VS_AUDIO_NODE_ACTIVE;
     fill_stream_props(out, i->proplist);
 }
 
@@ -284,6 +318,7 @@ static void source_output_cb(pa_context *c, const pa_source_output_info *i, int 
                 i->name, i->name, pa_cvolume_max(&i->volume), i->mute);
     out->target_id = pack_id(TAG_SOURCE, i->source);
     out->effective_id = out->target_id;
+    if (!i->corked) out->flags |= VS_AUDIO_NODE_ACTIVE;
     fill_stream_props(out, i->proplist);
 }
 
@@ -598,6 +633,42 @@ static int pulse_set_default_sink(vs_audio_system *self, vs_audio_id sink_id)
     return wait_for_default(be, name, DEFAULT_BUDGET_MS);
 }
 
+/** The source counterpart of wait_for_default, and for the same reason. */
+static int wait_for_default_source(struct pa_backend *be, const char *name,
+                                   unsigned budget_ms)
+{
+    uint64_t deadline = vs_audio_now_ms() + budget_ms;
+    for (;;) {
+        int rc = refresh_server_info(be);
+        if (rc != VS_OK) return rc;
+        if (strcmp(be->default_source, name) == 0) return VS_OK;
+        if (vs_audio_now_ms() >= deadline) return VS_ERR_NOT_APPLIED;
+        rc = pump_once(be, 50);
+        if (rc != VS_OK) return rc;
+    }
+}
+
+static int pulse_set_default_source(vs_audio_system *self, vs_audio_id source_id)
+{
+    struct pa_backend *be = self->impl;
+    if (source_id == 0) return VS_ERR_INVALID;
+    if (id_tag(source_id) != TAG_SOURCE) return VS_ERR_INVALID;
+
+    int rc = probe(be, source_id);
+    if (rc != VS_OK) return rc;
+    if (!be->probe_name[0]) return VS_ERR_NOT_FOUND;
+
+    char name[VS_AUDIO_NAME_MAX];
+    vs_audio_copy_field(name, sizeof(name), be->probe_name);
+
+    be->succeeded = false;
+    rc = run_op(be, pa_context_set_default_source(be->context, name, success_cb, be),
+                WRITE_BUDGET_MS);
+    if (rc != VS_OK) return rc;
+    if (!be->succeeded) return VS_ERR_BACKEND;
+    return wait_for_default_source(be, name, DEFAULT_BUDGET_MS);
+}
+
 static int pulse_mute_all_inputs(vs_audio_system *self, bool mute, size_t *changed_out)
 {
     return vs_audio_mute_all_inputs_generic(self, mute, changed_out);
@@ -666,6 +737,7 @@ vs_audio_system *vs_audio_pulse_create(int *result_out)
         .set_mute = pulse_set_mute,
         .route_stream = pulse_route_stream,
         .set_default_sink = pulse_set_default_sink,
+        .set_default_source = pulse_set_default_source,
         .mute_all_inputs = pulse_mute_all_inputs,
         .set_event_callback = pulse_set_event_callback,
         .event_fd = pulse_event_fd,

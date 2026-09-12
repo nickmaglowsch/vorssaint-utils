@@ -15,23 +15,19 @@ of a generated tone, given the properties a real client supplies.
 
 ```
 $ scripts/run-stack.sh start
-export XDG_RUNTIME_DIR=/tmp/wp-a5/ev/run
-export DBUS_SESSION_BUS_ADDRESS=unix:path=/tmp/dbus-kbectbzhMy,guid=784d40f042f8264d56c4c21d6aa543ad
-export XDG_STATE_HOME=/tmp/wp-a5/ev/state
-export XDG_CONFIG_HOME=/tmp/wp-a5/ev/config
-export XDG_DATA_HOME=/tmp/wp-a5/ev/data
+export XDG_RUNTIME_DIR=/tmp/wp-a5/recap/run
+export DBUS_SESSION_BUS_ADDRESS=unix:path=/tmp/dbus-Jx99HNkCgn,guid=ba506e9a5da3982b2e70ea3d6aa549d1
+export XDG_STATE_HOME=/tmp/wp-a5/recap/state
+export XDG_CONFIG_HOME=/tmp/wp-a5/recap/config
+export XDG_DATA_HOME=/tmp/wp-a5/recap/data
 
 $ wpctl status
 Audio
  ├─ Sinks:
- │      43. Vorssaint Test Sink B               [vol: 1.00]
+ │      39. Vorssaint Test Sink B               [vol: 1.00]
  │  *   44. Vorssaint Test Sink A               [vol: 1.00]
  ├─ Sources:
  │  *   49. Vorssaint Test Source A             [vol: 1.00]
- └─ Streams:
-        51. VsTestPlayer
-             52. output_FL       > Vorssaint Test Sink A:playback_FL	[active]
-             53. output_FR       > Vorssaint Test Sink A:playback_FR	[active]
 ```
 
 ## Summary against the work package
@@ -46,6 +42,11 @@ Audio
 | 6 | libpulse fallback, detected by connection failure | met | [§6](#6-the-libpulse-fallback) |
 | 7 | Capability flags | met | [§7](#7-capability-flags) |
 
+Beyond the seven, the surface was checked field by field against WP-12's
+`AudioGraph` protocol once that landed, and four things it needs were missing:
+`AudioSink.transport`, `AudioStream.applicationID`, `AudioStream.isActive` and
+`setDefaultSource`. All four were added; see [§8](#8-filling-wp-12s-audiograph).
+
 ## 1. Registry and events
 
 Sinks, sources and streams are enumerated with their properties. The default
@@ -53,18 +54,18 @@ sink comes from the `default.audio.sink` metadata and is marked.
 
 ```
 $ vs-audio devices
-ID       KIND     VOL%   MUTE  DEFAULT NAME
-45       sink     100.0  no    *       Vorssaint Test Sink A
-51       sink     100.0  no            Vorssaint Test Sink B
-57       source   100.0  no    *       Vorssaint Test Source A
+ID       KIND     VOL%   MUTE  DEFAULT TRANSPORT NAME
+45       sink     100.0  no    *       -         Vorssaint Test Sink A
+51       sink     100.0  no            -         Vorssaint Test Sink B
+57       source   100.0  no    *       -         Vorssaint Test Source A
 
 $ vs-audio streams
-ID       KIND     VOL%   MUTE  TARGET   EFFECTIVE APP                  PID      MEDIA
-65       playback 100.0  no    0        45        VsTestPlayer         22577    VsTestTone
+ID       KIND     VOL%   MUTE  LIVE   TARGET   EFFECTIVE APP                  PID      MEDIA
+65       playback 100.0  no    yes    0        45        VsTestPlayer         25115    VsTestTone
 
 $ vs-audio --json streams
 [
-  {"id":65,"kind":"playback","name":"pw-play","description":"","app_name":"VsTestPlayer","icon_name":"audio-x-generic","media_name":"VsTestTone","pid":22577,"volume":1.0000,"cubic":1.0000,"percent":100.0,"mute":false,"has_volume":true,"is_default":false,"target_id":0,"effective_id":45}
+  {"id":65,"kind":"playback","name":"pw-play","description":"","app_name":"VsTestPlayer","icon_name":"audio-x-generic","media_name":"VsTestTone","app_id":"VsTestPlayer","transport":"","pid":25115,"volume":1.0000,"cubic":1.0000,"percent":100.0,"mute":false,"has_volume":true,"is_default":false,"active":true,"target_id":0,"effective_id":45}
 ]
 ```
 
@@ -103,13 +104,13 @@ set 65 to 30.0% (linear 0.3000, cubic 0.6694)
 $ pw-cli destroy vs-sink-a
 
 (what watch printed)
-1789215686.968 changed id=0 name=
-1789215688.891 default-sink-changed id=45 name=vs-sink-a
-1789215688.974 changed id=0 name=
-1789215689.983 changed id=0 name=
-1789215690.912 default-sink-disconnected id=45 name=vs-sink-a
-1789215690.914 default-sink-changed id=51 name=vs-sink-b
-1789215690.996 changed id=0 name=
+1789217242.420 changed id=0 name=
+1789217244.341 default-sink-changed id=45 name=vs-sink-a
+1789217244.426 changed id=0 name=
+1789217245.432 changed id=0 name=
+1789217246.363 default-sink-disconnected id=45 name=vs-sink-a
+1789217246.365 default-sink-changed id=51 name=vs-sink-b
+1789217246.447 changed id=0 name=
 ```
 
 The volume write produced **one** `changed`, not one per param reply, which is
@@ -188,17 +189,17 @@ actually moved.
 ```
 $ vs-audio route 65 51                      # 51 is sink B
 stream 65 routed to sink 51
-ID       KIND     VOL%   MUTE  TARGET   EFFECTIVE APP                  PID      MEDIA
-65       playback 100.0  no    51       51        VsTestPlayer         22577    VsTestTone
+ID       KIND     VOL%   MUTE  LIVE   TARGET   EFFECTIVE APP                  PID      MEDIA
+65       playback 100.0  no    yes    51       51        VsTestPlayer         25115    VsTestTone
 
 $ pw-dump Link
-link 55 node 51 -> node 43                  # node 43 is sink B
-link 54 node 51 -> node 43
+link 55 node 51 -> node 39                  # node 39 is sink B
+link 54 node 51 -> node 39
 
 $ vs-audio route 65 0                       # clear the pin
 stream 65 follows the default
-ID       KIND     VOL%   MUTE  TARGET   EFFECTIVE APP                  PID      MEDIA
-65       playback 100.0  no    0        45        VsTestPlayer         22577    VsTestTone
+ID       KIND     VOL%   MUTE  LIVE   TARGET   EFFECTIVE APP                  PID      MEDIA
+65       playback 100.0  no    yes    0        45        VsTestPlayer         25115    VsTestTone
 
 $ pw-dump Link
 link 54 node 51 -> node 44                  # back on sink A, the default
@@ -224,14 +225,17 @@ the next login:
 ```
 $ vs-audio set-default 51
 default sink is now 51
-ID       KIND     VOL%   MUTE  DEFAULT NAME
-45       sink     100.0  no            Vorssaint Test Sink A
-51       sink     100.0  no    *       Vorssaint Test Sink B
-57       source   100.0  no    *       Vorssaint Test Source A
+ID       KIND     VOL%   MUTE  DEFAULT TRANSPORT NAME
+45       sink     100.0  no            -         Vorssaint Test Sink A
+51       sink     100.0  no    *       -         Vorssaint Test Sink B
+57       source   100.0  no    *       -         Vorssaint Test Source A
 
 $ pw-metadata -n default | grep audio.sink
 update: id:0 key:'default.audio.sink' value:'{"name":"vs-sink-b"}' type:'Spa:String:JSON'
 update: id:0 key:'default.configured.audio.sink' value:'{"name":"vs-sink-b"}' type:'Spa:String:JSON'
+
+$ vs-audio set-default-source 57
+default source is now 57
 ```
 
 Headphone disconnect is a sink global disappearing while it is the default.
@@ -242,13 +246,13 @@ Bluetooth headset dropping:
 $ pw-cli destroy vs-sink-a          # while vs-sink-a is the default
 
 (watch)
-1789215690.912 default-sink-disconnected id=45 name=vs-sink-a
-1789215690.914 default-sink-changed id=51 name=vs-sink-b
+1789217246.363 default-sink-disconnected id=45 name=vs-sink-a
+1789217246.365 default-sink-changed id=51 name=vs-sink-b
 
 $ vs-audio devices
-ID       KIND     VOL%   MUTE  DEFAULT NAME
-51       sink     100.0  no    *       Vorssaint Test Sink B
-57       source   100.0  no    *       Vorssaint Test Source A
+ID       KIND     VOL%   MUTE  DEFAULT TRANSPORT NAME
+51       sink     100.0  no    *       -         Vorssaint Test Sink B
+57       source   100.0  no    *       -         Vorssaint Test Source A
 ```
 
 The event carries the id **and the name** of the sink that left, because by the
@@ -262,14 +266,14 @@ which device went away and which one the system fell back to.
 ```
 $ vs-audio mute-inputs on
 inputs muted (1 changed)
-57       source   100.0  yes   *       Vorssaint Test Source A
+57       source   100.0  yes   *       -         Vorssaint Test Source A
 
 $ cat $XDG_RUNTIME_DIR/vorssaint-audio-micmute
 0 vs-source-a
 
 $ vs-audio mute-inputs off          # a separate process
 inputs restored (1 changed)
-57       source   100.0  no    *       Vorssaint Test Source A
+57       source   100.0  no    *       -         Vorssaint Test Source A
 ```
 
 The `0` in the record means "this source was not muted before", so restoring
@@ -296,21 +300,21 @@ libpulse API.
 
 ```
 $ vs-audio --backend libpulse devices
-ID       KIND     VOL%   MUTE  DEFAULT NAME
-16777261 sink     100.0  no            Vorssaint Test Sink A
-16777267 sink     100.0  no    *       Vorssaint Test Sink B
-33554489 source   100.0  no    *       Vorssaint Test Source A
+ID       KIND     VOL%   MUTE  DEFAULT TRANSPORT NAME
+16777261 sink     100.0  no            -         Vorssaint Test Sink A
+16777267 sink     100.0  no    *       -         Vorssaint Test Sink B
+33554489 source   100.0  no    *       -         Vorssaint Test Source A
 
 $ vs-audio --backend libpulse streams
-ID       KIND     VOL%   MUTE  TARGET   EFFECTIVE APP                  PID      MEDIA
-50331713 playback 100.0  no    16777267 16777267  VsTestPlayer         22577    VsTestTone
+ID       KIND     VOL%   MUTE  LIVE   TARGET   EFFECTIVE APP                  PID      MEDIA
+50331713 playback 100.0  no    yes    16777267 16777267  VsTestPlayer         25115    VsTestTone
 
 $ vs-audio --backend libpulse set-volume 50331713 1.5
 set 50331713 to 150.0% (linear 1.5000, cubic 1.1447)
 
 $ vs-audio streams                  # the same stream through PipeWire
-ID       KIND     VOL%   MUTE  TARGET   EFFECTIVE APP                  PID      MEDIA
-65       playback 150.0  no    0        51        VsTestPlayer         22577    VsTestTone
+ID       KIND     VOL%   MUTE  LIVE   TARGET   EFFECTIVE APP                  PID      MEDIA
+65       playback 150.0  no    yes    0        51        VsTestPlayer         25115    VsTestTone
 
 $ vs-audio --backend libpulse set-default 16777267
 default sink is now 16777267
@@ -395,7 +399,8 @@ exit 77 — ctest's "not run" — when `pipewire`, `wireplumber`, `dbus-daemon` 
 `ffmpeg` is missing, so a machine without them reports them as skipped rather
 than passed.
 
-All four CMake build types are clean under `-Werror`:
+All five legs of the matrix pass — the four CMake build types clean under
+`-Werror`, plus AddressSanitizer/UndefinedBehaviorSanitizer/LeakSanitizer:
 
 ```
 $ CTEST_ARGS="-R ^audio_" linux/platform/scripts/build-matrix.sh
@@ -420,9 +425,117 @@ $ CTEST_ARGS="-R ^audio_" linux/platform/scripts/build-matrix.sh
   build: clean, no compiler warnings
   ctest: 100% tests passed, 0 tests failed out of 9
 
+===== Sanitizers =====
+  CMAKE_BUILD_TYPE = Debug
+  sanitizers: address, undefined, leak
+  build: clean, no compiler warnings
+  ctest: 100% tests passed, 0 tests failed out of 9
+
 ===== summary =====
-all four configurations build clean under -Werror and pass ctest
+all five legs pass: four build types clean under -Werror, plus
+ASan/UBSan/LSan with no sanitizer reports
 ```
+
+LeakSanitizer was confirmed armed rather than assumed, because a leg that
+silently ran without it would be a fifth clean build wearing a new name:
+
+```
+$ cat leakcheck.c
+#include <stdlib.h>
+int main(void){ volatile void*p = malloc(64); (void)p; return 0; }
+$ gcc -fsanitize=address,undefined -g -o leakcheck leakcheck.c && ./leakcheck
+==20313==ERROR: LeakSanitizer: detected memory leaks
+Direct leak of 64 byte(s) in 1 object(s) allocated from:
+    #1 0x55fd179d519e in main /tmp/wp-a5/leakcheck.c:2
+SUMMARY: AddressSanitizer: 64 byte(s) leaked in 1 allocation(s).
+exit=1
+```
+
+The ctest suites exercise the library. The **CLI exit paths** were swept
+separately, because that is the shape of the defect the rule was written for
+(WP-D2 shipped a leaking CLI exit that four clean builds missed) and because an
+error exit is the path least likely to be covered by a test that asserts on
+success:
+
+```
+clean rc=0  caps                 clean rc=0  pulse caps
+clean rc=0  caps --json          clean rc=0  pulse devices
+clean rc=0  devices              clean rc=0  pulse streams
+clean rc=0  devices --json       clean rc=0  pulse set-volume
+clean rc=0  streams              clean rc=0  pulse set-default
+clean rc=0  streams --json       clean rc=0  pulse route
+clean rc=0  set-volume 1.5       clean rc=1  unknown id
+clean rc=0  set-volume 1.0       clean rc=2  bad args
+clean rc=0  set-mute on          clean rc=2  unknown command
+clean rc=0  set-mute off         clean rc=1  unknown backend
+clean rc=0  route -> B           clean rc=0  help
+clean rc=0  route clear          clean     watch (interrupted with SIGINT)
+clean rc=0  set-default B
+clean rc=0  set-default A
+clean rc=0  mute-inputs on
+clean rc=0  mute-inputs off
+
+ALL CLI PATHS CLEAN UNDER ASan/UBSan/LSan
+```
+
+Every one of those ran the sanitized `vs-audio` against the live stack; "clean"
+means the run produced no `AddressSanitizer`, `LeakSanitizer` or
+`runtime error` line, and the non-zero `rc` values are the intended exit codes
+for the error paths, not crashes. The matrix also greps each ctest log for
+sanitizer reports independently of the exit status, so a leak in a process that
+still exited 0 fails the leg rather than passing unnoticed.
+
+## 8. Filling WP-12's `AudioGraph`
+
+`Sources/VorssaintCore/Platform/AudioGraph.swift` landed while this backend was
+being written, and comparing the two found four gaps. They were real: without
+them the Swift wrapper could not have been written without adding behaviour of
+its own, which `linux/platform/README.md` forbids.
+
+```
+$ vs-audio devices
+ID       KIND     VOL%   MUTE  DEFAULT TRANSPORT NAME
+45       sink     100.0  no    *       -         Vorssaint Test Sink A
+51       sink     100.0  no            -         Vorssaint Test Sink B
+57       source   100.0  no    *       -         Vorssaint Test Source A
+
+$ vs-audio streams
+ID       KIND     VOL%   MUTE  LIVE   TARGET   EFFECTIVE APP                  PID      MEDIA
+65       playback 100.0  no    yes    0        45        VsTestPlayer         25115    VsTestTone
+```
+
+- **`transport`** (`AudioSink.transport`, the bus the icon is drawn from) comes
+  from `device.bus` where PipeWire copies it onto the node, then from the BlueZ
+  API keys, then from the node-name prefix WirePlumber builds out of the ALSA
+  or BlueZ path. A null sink sits on no bus at all, so `-` above is the correct
+  answer and anything else would mean the heuristic had invented something. The
+  values that matter — bluetooth, usb, hdmi — **could not be produced in this
+  container**; see "What was not measured here".
+- **`app_id`** (`AudioStream.applicationID`, the key a saved volume persists
+  against) is `application.id`, then `application.process.binary`, then
+  `application.name`. **Finding:** `pw-play` sets neither of the first two, and
+  the first implementation left `app_id` empty for it. The display-name
+  fallback is not a patch over that — it is the rule
+  `MixerRoutingSupport.rowIdentity` already applies on macOS to a process with
+  no bundle id, and for the same reason: a game or a bare executable is still
+  worth remembering a volume for. Hence `"app_id":"VsTestPlayer"` above.
+- **`VS_AUDIO_NODE_ACTIVE`** (`AudioStream.isActive`, the live indicator and
+  the reason silent rows sort down) is PipeWire's node state being `Running`
+  rather than `Idle`, and not being `corked` on the libpulse side.
+- **`set_default_source`** is the input half of the default switching, which
+  `AudioInputDeviceManager`'s preferred-input setting writes. It takes the same
+  two metadata keys as the sink and reads back the same way.
+
+Two mapping decisions the Swift wrapper must follow, recorded here because
+getting either wrong is silent:
+
+- `AudioGraph`'s ids are `String` and these are `uint32_t`, so the wrapper
+  stringifies the id. It must **not** use `node.name` instead: every `pw-play`
+  is called "pw-play", and two of them would collapse into one row.
+- `AudioStream.sinkID` maps to `effective_id`, **not** `target_id`. The
+  protocol asks where the audio is; `target_id` is only where it was asked to
+  go, and the two differ for exactly as long as a route is in flight or has
+  failed.
 
 ## What was not measured here
 
@@ -432,6 +545,13 @@ all four configurations build clean under -Werror and pass ctest
   reports, are unverified; the backend's read-back is what turns a clamping
   device into `VS_ERR_NOT_APPLIED` rather than a silent wrong value, but no
   such device was available to trigger it.
+- **`transport` beyond the empty case.** The null sinks sit on no bus, so the
+  only value observed was `""`. The `device.bus` branch, the BlueZ branch and
+  the three node-name prefixes (`bluez_`, `.usb-`, `hdmi`) are reasoned from
+  PipeWire's key documentation and WirePlumber's naming, **not measured**. This
+  is the weakest claim in the package: it decides only which icon the mixer
+  draws, and an unrecognised device falls back to `""` and a generic icon
+  rather than a wrong one, but a reviewer with real hardware should check it.
 - **A real PulseAudio server.** The fallback was tested against
   `pipewire-pulse`. The API calls are the same, but a genuine `pulseaudio`
   daemon has not been exercised.

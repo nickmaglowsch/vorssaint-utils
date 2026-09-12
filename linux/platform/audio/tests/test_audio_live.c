@@ -153,6 +153,11 @@ static void case_registry(void)
     CHECK(find_named(audio, VS_AUDIO_NODE_SINK, SINK_B, &sink_b));
     CHECK(find_named(audio, VS_AUDIO_NODE_SOURCE, SOURCE_A, &source_a));
     CHECK(strcmp(sink_a.description, "Vorssaint Test Sink A") == 0);
+    /* A null sink sits on no bus at all, so "" is the right answer here and a
+     * non-empty one would mean the heuristic had invented something. The
+     * transports that matter (bluetooth, usb, hdmi) cannot be produced in this
+     * container; see AUDIO_BACKEND.md "What was not measured here". */
+    CHECK(sink_a.transport[0] == '\0');
     CHECK(sink_a.id != 0 && sink_b.id != 0 && sink_a.id != sink_b.id);
     CHECK(sink_a.flags & VS_AUDIO_NODE_HAS_VOLUME);
 
@@ -179,6 +184,15 @@ static void case_registry(void)
     CHECK(strcmp(stream.icon_name, "audio-x-generic") == 0);
     CHECK(stream.pid > 0);
     CHECK(stream.flags & VS_AUDIO_NODE_HAS_PID);
+    /* The persistence key WP-12's AudioStream.applicationID needs. Measured:
+     * pw-play sets neither application.id nor application.process.binary, so
+     * what lands here is the display-name fallback -- the case that matters,
+     * because it is what a game or a bare executable has, and the rule macOS
+     * already applies to a process with no bundle id. */
+    CHECK(strcmp(stream.app_id, TEST_APP) == 0);
+    /* A stream with audio flowing is live; the mixer's indicator and its
+     * sorting of silent rows both read this. */
+    CHECK(stream.flags & VS_AUDIO_NODE_ACTIVE);
     /* Unrouted, it follows the default and its audio lands on that sink.
      * Compared against whichever sink the metadata calls the default rather
      * than against sink A by name: which one WirePlumber settles on is its
@@ -456,6 +470,18 @@ static void case_default_sink(void)
     REQUIRE(find_named(audio, VS_AUDIO_NODE_SINK, SINK_A, &sink_a));
     CHECK(sink_a.flags & VS_AUDIO_NODE_IS_DEFAULT);
 
+    /* The input half, which AudioInputDeviceManager's preferred-input
+     * setting writes. Only one source exists here, so the check is that the
+     * call succeeds and the metadata agrees rather than that it moved. */
+    vs_audio_node only_source;
+    REQUIRE(find_named(audio, VS_AUDIO_NODE_SOURCE, SOURCE_A, &only_source));
+    CHECK_OK(audio->set_default_source(audio, only_source.id));
+    REQUIRE(find_named(audio, VS_AUDIO_NODE_SOURCE, SOURCE_A, &only_source));
+    CHECK(only_source.flags & VS_AUDIO_NODE_IS_DEFAULT);
+    /* A sink is not a source. */
+    CHECK(audio->set_default_source(audio, sink_b.id) == VS_ERR_NOT_FOUND);
+    CHECK(audio->set_default_source(audio, 0) == VS_ERR_INVALID);
+
     /* A sink that does not exist, and a source asked to be a sink. */
     CHECK(audio->set_default_sink(audio, 999999) == VS_ERR_NOT_FOUND);
     vs_audio_node source;
@@ -578,6 +604,8 @@ static void case_pulse_fallback(void)
     REQUIRE(await_test_stream(audio, &stream, 10000));
     CHECK(stream.pid > 0);
     CHECK(strcmp(stream.media_name, "VsTestTone") == 0);
+    CHECK(strcmp(stream.app_id, TEST_APP) == 0);
+    CHECK(stream.flags & VS_AUDIO_NODE_ACTIVE);
 
     /* set-volume, including the boost, read back through the same API. The
      * linear scale is the backend's promise: pa_volume_t is cubic underneath,
@@ -614,6 +642,12 @@ static void case_pulse_fallback(void)
     CHECK_OK(audio->mute_all_inputs(audio, false, &changed));
     REQUIRE(find_named(audio, VS_AUDIO_NODE_SOURCE, SOURCE_A, &source_a));
     CHECK(!(source_a.flags & VS_AUDIO_NODE_MUTED));
+
+    /* The default input, over pa_context_set_default_source. */
+    CHECK_OK(audio->set_default_source(audio, source_a.id));
+    REQUIRE(find_named(audio, VS_AUDIO_NODE_SOURCE, SOURCE_A, &source_a));
+    CHECK(source_a.flags & VS_AUDIO_NODE_IS_DEFAULT);
+    CHECK(audio->set_default_source(audio, sink_a.id) == VS_ERR_INVALID);
 
     /* Errors keep the same shape as the PipeWire backend's. */
     CHECK(audio->set_volume(audio, 0, 0.5f) == VS_ERR_INVALID);

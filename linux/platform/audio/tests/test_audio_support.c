@@ -100,6 +100,11 @@ static void test_node_init(void)
     CHECK(node.flags == 0);
     CHECK(node.id == 0);
     CHECK_NEAR(node.volume, VS_AUDIO_UNITY_VOLUME);
+    /* Strings start empty rather than holding whatever was in the slot, so a
+     * backend that does not set one hands the UI "" and never a stale name. */
+    CHECK(node.name[0] == '\0');
+    CHECK(node.app_id[0] == '\0');
+    CHECK(node.transport[0] == '\0');
 }
 
 struct sink {

@@ -24,6 +24,20 @@ if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
     message(STATUS "No CMAKE_BUILD_TYPE given, defaulting to RelWithDebInfo")
 endif()
 
+# The fifth leg of scripts/build-matrix.sh. ASan/UBSan/LSan catch what no
+# optimisation level can: a use-after-free in a callback that fires long after
+# the call that armed it, and an exit path that leaks. Off by default because
+# the sanitizers change timing enough to matter for the live suites, and on in
+# the matrix so nothing reaches review without having been run under them.
+option(VS_SANITIZE "Build with AddressSanitizer, UndefinedBehaviorSanitizer and LeakSanitizer" OFF)
+if(VS_SANITIZE)
+    add_compile_options(-fsanitize=address,undefined -fno-omit-frame-pointer -g)
+    add_link_options(-fsanitize=address,undefined)
+    # UBSan otherwise prints and continues, so a test can pass with undefined
+    # behaviour in it. Trapping on the first one is the point.
+    add_compile_options(-fno-sanitize-recover=undefined)
+endif()
+
 include(CTest)
 
 add_library(vorssaint_platform_headers INTERFACE)

@@ -38,6 +38,7 @@ static void usage(FILE *out)
         "  set-mute <id> on|off     mute one node\n"
         "  route <stream> <sink>    send a stream to a sink (sink 0 clears)\n"
         "  set-default <sink>       make a sink the default output\n"
+        "  set-default-source <src> make a source the default input\n"
         "  mute-inputs on|off       mute every input, or restore\n"
         "  caps                     print the backend and its capabilities\n"
         "\n"
@@ -78,6 +79,8 @@ static void print_node_json(const vs_audio_node *n, bool last)
     printf(",\"app_name\":"); print_json_string(n->app_name);
     printf(",\"icon_name\":"); print_json_string(n->icon_name);
     printf(",\"media_name\":"); print_json_string(n->media_name);
+    printf(",\"app_id\":"); print_json_string(n->app_id);
+    printf(",\"transport\":"); print_json_string(n->transport);
     printf(",\"pid\":%" PRId32, n->pid);
     printf(",\"volume\":%.4f,\"cubic\":%.4f,\"percent\":%.1f",
            (double)n->volume, (double)vs_audio_linear_to_cubic(n->volume),
@@ -85,6 +88,7 @@ static void print_node_json(const vs_audio_node *n, bool last)
     printf(",\"mute\":%s", (n->flags & VS_AUDIO_NODE_MUTED) ? "true" : "false");
     printf(",\"has_volume\":%s", (n->flags & VS_AUDIO_NODE_HAS_VOLUME) ? "true" : "false");
     printf(",\"is_default\":%s", (n->flags & VS_AUDIO_NODE_IS_DEFAULT) ? "true" : "false");
+    printf(",\"active\":%s", (n->flags & VS_AUDIO_NODE_ACTIVE) ? "true" : "false");
     printf(",\"target_id\":%" PRIu32 ",\"effective_id\":%" PRIu32,
            n->target_id, n->effective_id);
     printf("}%s\n", last ? "" : ",");
@@ -99,28 +103,31 @@ static void print_nodes_json(const vs_audio_node *nodes, size_t count)
 
 static void print_devices(const vs_audio_node *nodes, size_t count)
 {
-    printf("%-8s %-8s %-6s %-5s %-7s %s\n",
-           "ID", "KIND", "VOL%", "MUTE", "DEFAULT", "NAME");
+    printf("%-8s %-8s %-6s %-5s %-7s %-9s %s\n",
+           "ID", "KIND", "VOL%", "MUTE", "DEFAULT", "TRANSPORT", "NAME");
     for (size_t i = 0; i < count; i++) {
         const vs_audio_node *n = &nodes[i];
-        printf("%-8" PRIu32 " %-8s %-6.1f %-5s %-7s %s\n",
+        printf("%-8" PRIu32 " %-8s %-6.1f %-5s %-7s %-9s %s\n",
                n->id, kind_name(n->kind), (double)n->volume * 100.0,
                (n->flags & VS_AUDIO_NODE_MUTED) ? "yes" : "no",
                (n->flags & VS_AUDIO_NODE_IS_DEFAULT) ? "*" : "",
+               n->transport[0] ? n->transport : "-",
                n->description[0] ? n->description : n->name);
     }
 }
 
 static void print_streams(const vs_audio_node *nodes, size_t count)
 {
-    printf("%-8s %-8s %-6s %-5s %-8s %-9s %-20s %-8s %s\n",
-           "ID", "KIND", "VOL%", "MUTE", "TARGET", "EFFECTIVE", "APP", "PID", "MEDIA");
+    printf("%-8s %-8s %-6s %-5s %-6s %-8s %-9s %-20s %-8s %s\n",
+           "ID", "KIND", "VOL%", "MUTE", "LIVE", "TARGET", "EFFECTIVE", "APP", "PID",
+           "MEDIA");
     for (size_t i = 0; i < count; i++) {
         const vs_audio_node *n = &nodes[i];
-        printf("%-8" PRIu32 " %-8s %-6.1f %-5s %-8" PRIu32 " %-9" PRIu32
+        printf("%-8" PRIu32 " %-8s %-6.1f %-5s %-6s %-8" PRIu32 " %-9" PRIu32
                " %-20s %-8" PRId32 " %s\n",
                n->id, kind_name(n->kind), (double)n->volume * 100.0,
                (n->flags & VS_AUDIO_NODE_MUTED) ? "yes" : "no",
+               (n->flags & VS_AUDIO_NODE_ACTIVE) ? "yes" : "no",
                n->target_id, n->effective_id,
                n->app_name[0] ? n->app_name : n->name, n->pid, n->media_name);
     }
@@ -318,6 +325,14 @@ int main(int argc, char **argv)
             int rc = audio->set_default_sink(audio, sink);
             if (rc != VS_OK) status = fail("set-default", rc);
             else printf("default sink is now %" PRIu32 "\n", sink);
+        }
+    } else if (!strcmp(command, "set-default-source")) {
+        vs_audio_id source;
+        if (rest != 1 || !parse_id(argv[arg], &source)) { usage(stderr); status = 2; }
+        else {
+            int rc = audio->set_default_source(audio, source);
+            if (rc != VS_OK) status = fail("set-default-source", rc);
+            else printf("default source is now %" PRIu32 "\n", source);
         }
     } else if (!strcmp(command, "mute-inputs")) {
         bool on;
