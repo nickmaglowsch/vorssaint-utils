@@ -460,20 +460,6 @@ all real differences rather than porting mistakes:
 
 All three still run on macOS, unchanged.
 
-## 6.4 The open item, closed by the lead
-
-The report left one thing open: the macOS `./build.sh --test` step had not
-yet reported on a commit carrying both the generated suite and WP-12's
-protocol layer. It has now. Run
-[34693623124](https://github.com/nickmaglowsch/vorssaint-utils/actions/runs/34693623124)
-on `5cdbfbd` is `completed / success` on **both** jobs: the Linux job runs
-the full suite (`Executed 90 tests, with 0 failures` — the 73 generated
-cases plus WP-12's 17), and the macOS job on that same commit reports
-`TESTS OK (31565 checks)` and `PREFERENCE CLEANUP TESTS OK`, the WP-10 and
-WP-11 baseline unchanged. Nothing pushed after it touches
-`Tests/MetricsTests.swift` or `build.sh`.
-
-
 ## 7. WP-17 and `Tools/ui-smoke.sh`
 
 WP-17 ("macOS CI job proves `main` unchanged") is satisfied by the `macos`
