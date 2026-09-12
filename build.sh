@@ -326,6 +326,10 @@ if (( TEST )); then
         Sources/Vorssaint/Core/GlobalShortcut.swift \
         Sources/Vorssaint/Core/SymbolicHotKeys.swift \
         Sources/VorssaintCore/Services/SystemShortcutTakeoverSupport.swift \
+        Sources/VorssaintCore/Core/SettingsStore.swift \
+        Sources/VorssaintCore/Core/SettingsStoreAccess.swift \
+        Sources/VorssaintCore/Core/UserDefaultsSettingsStore.swift \
+        Sources/VorssaintCore/Core/JSONSettingsStore.swift \
         Sources/VorssaintCore/Core/Localization.swift \
         Sources/VorssaintCore/Core/Localizations/Strings+*.swift \
         Sources/VorssaintCore/Core/FeatureStrings.swift \
