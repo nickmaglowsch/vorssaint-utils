@@ -1,7 +1,12 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Vorssaint
 
+// Only the geometry family (`CGPoint` here), which Linux Foundation provides
+// on its own; the CoreGraphics module itself is Darwin-only, so the import is
+// guarded rather than the code (WP-00 spike § 3).
+#if canImport(CoreGraphics)
 import CoreGraphics
+#endif
 import Foundation
 
 /// The maths behind the two effects that make a recording read as produced:

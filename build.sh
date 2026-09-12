@@ -287,11 +287,11 @@ if (( TEST )); then
         Sources/VorssaintCore/Core/PermissionGuideStrings.swift \
         Sources/VorssaintCore/Core/FanControlStrings.swift \
         Sources/Vorssaint/Services/FanControl/FanControlSupport.swift \
-        Sources/Vorssaint/Services/Snippets/TextSnippetSupport.swift \
+        Sources/VorssaintCore/Services/Snippets/TextSnippetSupport.swift \
         Sources/Vorssaint/Services/RadialMenu/RadialMenuSupport.swift \
-        Sources/Vorssaint/Services/QuickTools/ScratchpadSupport.swift \
+        Sources/VorssaintCore/Services/QuickTools/ScratchpadSupport.swift \
         Sources/Vorssaint/Services/QuickTools/ScratchpadStore.swift \
-        Sources/Vorssaint/Services/KillProcess/KillProcessSupport.swift \
+        Sources/VorssaintCore/Services/KillProcess/KillProcessSupport.swift \
         Sources/Vorssaint/Services/Recorder/RecorderSupport.swift \
         Sources/Vorssaint/Services/Recorder/RecorderSampleTiming.swift \
         Sources/Vorssaint/Services/Recorder/RecorderWriter.swift \
@@ -301,7 +301,7 @@ if (( TEST )); then
         Sources/Vorssaint/Services/PrivateFileStore.swift \
         Sources/Vorssaint/Services/Recorder/RecorderTakeStore.swift \
         Sources/Vorssaint/Services/Recorder/RecorderPresetImageStore.swift \
-        Sources/Vorssaint/Services/Recorder/RecorderMotion.swift \
+        Sources/VorssaintCore/Services/Recorder/RecorderMotion.swift \
         Sources/Vorssaint/Services/Recorder/RecorderPointerTrack.swift \
         Sources/Vorssaint/Services/Recorder/RecorderTypingTrack.swift \
         Sources/Vorssaint/Services/Recorder/RecorderTimeline.swift \
@@ -312,7 +312,7 @@ if (( TEST )); then
         Sources/Vorssaint/Core/AppInfo.swift \
         Sources/Vorssaint/Core/GlobalShortcut.swift \
         Sources/Vorssaint/Core/SymbolicHotKeys.swift \
-        Sources/Vorssaint/Services/SystemShortcutTakeoverSupport.swift \
+        Sources/VorssaintCore/Services/SystemShortcutTakeoverSupport.swift \
         Sources/VorssaintCore/Core/Localization.swift \
         Sources/Vorssaint/Core/Localizations/Strings+*.swift \
         Sources/VorssaintCore/Core/FeatureStrings.swift \
@@ -321,40 +321,40 @@ if (( TEST )); then
         Sources/VorssaintCore/Core/WhatsAppOrganizerStrings.swift \
         Sources/Vorssaint/Core/ReleaseNotes.swift \
         Sources/VorssaintCore/Core/URLCleaning.swift \
-        Sources/Vorssaint/Services/GeneralPasteboardAccess.swift \
+        Sources/VorssaintCore/Services/GeneralPasteboardAccess.swift \
         Sources/Vorssaint/Services/Audio/MixerRoutingSupport.swift \
-        Sources/Vorssaint/Services/Audio/MusicLaunchSupport.swift \
-        Sources/Vorssaint/Services/Bluetooth/BluetoothSleepSupport.swift \
+        Sources/VorssaintCore/Services/Audio/MusicLaunchSupport.swift \
+        Sources/VorssaintCore/Services/Bluetooth/BluetoothSleepSupport.swift \
         Sources/Vorssaint/UI/MenuPanel/MixerPercentNativeTextField.swift \
         Sources/Vorssaint/Services/Audio/BoostLimiter.swift \
         Sources/Vorssaint/Services/Audio/MixerRender.swift \
-        Sources/Vorssaint/Services/Audio/PreciseVolumeRollerSupport.swift \
+        Sources/VorssaintCore/Services/Audio/PreciseVolumeRollerSupport.swift \
         Sources/Vorssaint/Services/DockPreview/DockPreviewSupport.swift \
         Sources/Vorssaint/Services/Homebrew/HomebrewSupport.swift \
         Sources/Vorssaint/Services/AppUpdates/AppUpdatesSupport.swift \
         Sources/Vorssaint/Services/AppUpdates/AppUpdateFeedSupport.swift \
         Sources/VorssaintCore/Core/AppUpdateStrings.swift \
         Sources/VorssaintCore/Core/DiskImageInstallerStrings.swift \
-        Sources/Vorssaint/Services/DiskImageInstaller/DiskImageInstallerSupport.swift \
+        Sources/VorssaintCore/Services/DiskImageInstaller/DiskImageInstallerSupport.swift \
         Sources/Vorssaint/Services/Clipboard/ClipboardHistorySupport.swift \
-        Sources/Vorssaint/Services/Clipboard/ClipboardAutoClearSupport.swift \
+        Sources/VorssaintCore/Services/Clipboard/ClipboardAutoClearSupport.swift \
         Sources/Vorssaint/Services/AutoQuit/AutoQuitSupport.swift \
         Sources/Vorssaint/Services/Shelf/ShelfSupport.swift \
-        Sources/Vorssaint/Services/Finder/FinderRenameSupport.swift \
+        Sources/VorssaintCore/Services/Finder/FinderRenameSupport.swift \
         Sources/Vorssaint/Services/Update/UpdateInstallerSupport.swift \
         Sources/Vorssaint/Services/Update/UpdateServiceSupport.swift \
         Sources/Vorssaint/Services/InstalledApps.swift \
-        Sources/Vorssaint/Services/LaunchAtLoginSupport.swift \
+        Sources/VorssaintCore/Services/LaunchAtLoginSupport.swift \
         Sources/Vorssaint/UI/Settings/SettingsSearchSupport.swift \
         Sources/Vorssaint/UI/Settings/FeatureVisibilitySupport.swift \
         Sources/Vorssaint/App/MenuBarSpacingSupport.swift \
         Sources/Vorssaint/App/StatusItemAnchorSupport.swift \
         Sources/Vorssaint/Services/DockClick/DockClickSupport.swift \
-        Sources/Vorssaint/Services/Finder/CutPasteProgressSupport.swift \
-        Sources/Vorssaint/Services/Finder/CutPastePrivilegeSupport.swift \
+        Sources/VorssaintCore/Services/Finder/CutPasteProgressSupport.swift \
+        Sources/VorssaintCore/Services/Finder/CutPastePrivilegeSupport.swift \
         Sources/Vorssaint/Services/Finder/FinderPasteImageSupport.swift \
-        Sources/Vorssaint/Services/MiddleClick/MiddleClickSupport.swift \
-        Sources/Vorssaint/Services/MouseNavigation/MouseNavigationSupport.swift \
+        Sources/VorssaintCore/Services/MiddleClick/MiddleClickSupport.swift \
+        Sources/VorssaintCore/Services/MouseNavigation/MouseNavigationSupport.swift \
         Sources/Vorssaint/Services/MouseButtons/MouseButtonShortcutSupport.swift \
         Sources/Vorssaint/Services/MouseButtons/MouseSpacesGestureSupport.swift \
         Sources/Vorssaint/Services/MouseClickDebounce/MouseClickDebounceSupport.swift \
@@ -371,64 +371,64 @@ if (( TEST )); then
         Sources/Vorssaint/Services/QuickTools/QuickToolsSupport.swift \
         Sources/Vorssaint/Services/CommandBar/CommandBarSupport.swift \
         Sources/Vorssaint/Services/CommandBar/CommandBarPreferences.swift \
-        Sources/Vorssaint/Services/CommandBar/CommandBarMath.swift \
+        Sources/VorssaintCore/Services/CommandBar/CommandBarMath.swift \
         Sources/Vorssaint/Services/CommandBar/CommandBarUnits.swift \
-        Sources/Vorssaint/Services/CommandBar/CommandBarEmoji.swift \
+        Sources/VorssaintCore/Services/CommandBar/CommandBarEmoji.swift \
         Sources/Vorssaint/Services/CommandBar/CommandBarLinks.swift \
         Sources/Vorssaint/Services/CommandBar/CommandBarDates.swift \
         Sources/Vorssaint/Services/CommandBar/CommandBarRowShortcuts.swift \
-        Sources/Vorssaint/Services/CommandBar/CommandBarSystemSettingsSupport.swift \
-        Sources/Vorssaint/Services/CommandBar/CommandBarFileSearchSupport.swift \
+        Sources/VorssaintCore/Services/CommandBar/CommandBarSystemSettingsSupport.swift \
+        Sources/VorssaintCore/Services/CommandBar/CommandBarFileSearchSupport.swift \
         Sources/Vorssaint/Services/CommandBar/CommandBarQueryMemory.swift \
-        Sources/Vorssaint/Services/SpotlightNamesSupport.swift \
-        Sources/Vorssaint/Services/QuickTools/MicMuteSupport.swift \
-        Sources/Vorssaint/Services/QuickTools/QuickTogglesSupport.swift \
+        Sources/VorssaintCore/Services/SpotlightNamesSupport.swift \
+        Sources/VorssaintCore/Services/QuickTools/MicMuteSupport.swift \
+        Sources/VorssaintCore/Services/QuickTools/QuickTogglesSupport.swift \
         Sources/Vorssaint/Services/QuickTools/ScreenshotCapturePolicy.swift \
         Sources/Vorssaint/Services/QuickTools/ScreenshotSupport.swift \
         Sources/Vorssaint/Services/QuickTools/RecentCaptureStore.swift \
-        Sources/Vorssaint/Services/QuickTools/ScreenshotSharingSupport.swift \
+        Sources/VorssaintCore/Services/QuickTools/ScreenshotSharingSupport.swift \
         Sources/Vorssaint/Services/QuickTools/WindowActivationPolicy.swift \
         Sources/Vorssaint/Services/KeyboardDebounce/KeyboardDebounceSupport.swift \
         Sources/Vorssaint/Services/SuperKey/SuperKeySupport.swift \
         Sources/Vorssaint/Services/SuperKey/SuperKeyMappingGuard.swift \
         Sources/Vorssaint/Core/SuperKeyStrings.swift \
         Sources/Vorssaint/Services/SessionActivity.swift \
-        Sources/Vorssaint/Services/SessionActivitySupport.swift \
-        Sources/Vorssaint/Services/ScrollWheelSupport.swift \
-        Sources/Vorssaint/Services/SmoothScrollSupport.swift \
-        Sources/Vorssaint/Services/MouseAcceleration/MouseAccelerationSupport.swift \
+        Sources/VorssaintCore/Services/SessionActivitySupport.swift \
+        Sources/VorssaintCore/Services/ScrollWheelSupport.swift \
+        Sources/VorssaintCore/Services/SmoothScrollSupport.swift \
+        Sources/VorssaintCore/Services/MouseAcceleration/MouseAccelerationSupport.swift \
         Sources/Vorssaint/Services/FocusFollowsMouse/FocusFollowsMouseSupport.swift \
         Sources/Vorssaint/Services/AssistiveKeyboard.swift \
         Sources/Vorssaint/Services/Switcher/SwitcherModels.swift \
         Sources/Vorssaint/Services/Switcher/SwitcherSupport.swift \
         Sources/Vorssaint/Services/Switcher/SpaceHopSupport.swift \
         Sources/Vorssaint/Services/Switcher/WindowUseOrder.swift \
-        Sources/Vorssaint/Services/Metrics/MetricFormat.swift \
+        Sources/VorssaintCore/Services/Metrics/MetricFormat.swift \
         Sources/Vorssaint/Services/Metrics/VMStatisticsDecoder.swift \
-        Sources/Vorssaint/Services/KeepAwakeAutomationSupport.swift \
-        Sources/Vorssaint/Services/SudoersSupport.swift \
-        Sources/Vorssaint/Services/Metrics/BatteryTimeSupport.swift \
+        Sources/VorssaintCore/Services/KeepAwakeAutomationSupport.swift \
+        Sources/VorssaintCore/Services/SudoersSupport.swift \
+        Sources/VorssaintCore/Services/Metrics/BatteryTimeSupport.swift \
         Sources/Vorssaint/Services/BoundedProcessRunner.swift \
         Sources/Vorssaint/Services/DetachedProcess.swift \
         Sources/Vorssaint/Services/ShellSupport.swift \
         Sources/Vorssaint/Services/Metrics/NetworkProcessSupport.swift \
         Sources/Vorssaint/Services/Metrics/NetworkSampler.swift \
         Sources/Vorssaint/Services/Metrics/SpeedTest.swift \
-        Sources/Vorssaint/Services/Metrics/PeripheralBatterySupport.swift \
-        Sources/Vorssaint/Services/Metrics/DiskSupport.swift \
-        Sources/Vorssaint/Services/Metrics/MonitorSamplingPolicy.swift \
+        Sources/VorssaintCore/Services/Metrics/PeripheralBatterySupport.swift \
+        Sources/VorssaintCore/Services/Metrics/DiskSupport.swift \
+        Sources/VorssaintCore/Services/Metrics/MonitorSamplingPolicy.swift \
         Sources/Vorssaint/Services/Metrics/MaxCapacityProbe.swift \
         Sources/Vorssaint/Services/Metrics/TemperatureSensorSelector.swift \
-        Sources/Vorssaint/Services/Metrics/SustainedAlertGate.swift \
+        Sources/VorssaintCore/Services/Metrics/SustainedAlertGate.swift \
         Sources/Vorssaint/Services/WindowLayout/WindowLayoutSupport.swift \
         Sources/Vorssaint/Services/WindowLayout/WindowGestureSupport.swift \
         Sources/VorssaintCore/Core/WindowDirectionalStrings.swift \
-        Sources/Vorssaint/Services/CleaningMode/CleaningUnlockCounter.swift \
-        Sources/Vorssaint/Services/Display/ExtraBrightnessSupport.swift \
-        Sources/Vorssaint/Services/Display/BrightnessSupport.swift \
-        Sources/Vorssaint/Services/Cleaner/CleanerSupport.swift \
-        Sources/Vorssaint/Services/Cleaner/CleanerPolicy.swift \
-        Sources/Vorssaint/Services/Cleaner/CleanerSchedule.swift \
+        Sources/VorssaintCore/Services/CleaningMode/CleaningUnlockCounter.swift \
+        Sources/VorssaintCore/Services/Display/ExtraBrightnessSupport.swift \
+        Sources/VorssaintCore/Services/Display/BrightnessSupport.swift \
+        Sources/VorssaintCore/Services/Cleaner/CleanerSupport.swift \
+        Sources/VorssaintCore/Services/Cleaner/CleanerPolicy.swift \
+        Sources/VorssaintCore/Services/Cleaner/CleanerSchedule.swift \
         Sources/Vorssaint/Services/Uninstall/UninstallerSupport.swift \
         Sources/Vorssaint/Services/ManagedDownloads/WhatsAppDownloadSupport.swift \
         Tests/MetricsTests.swift \
