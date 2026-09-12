@@ -32,8 +32,12 @@ APPDIR="$WORK/AppDir"
 export APPIMAGE_EXTRACT_AND_RUN=1
 export ARCH="${ARCH:-x86_64}"
 
-fetch() {  # fetch <variable-name> <url>
-    local var="$1" url="$2" dest="$WORK/$1"
+# fetch <variable-name> <file-name> <url>. The file name matters: linuxdeploy
+# finds its plugins by looking for `linuxdeploy-plugin-<name>*` on PATH, so a
+# download saved under any other name is a plugin it cannot see ("ERROR: Could
+# not find plugin: qt", run 34722872604).
+fetch() {
+    local var="$1" name="$2" url="$3" dest="$WORK/$2"
     if [ -n "${!var:-}" ]; then echo "${!var}"; return; fi
     if [ ! -x "$dest" ]; then
         curl -fsSL -o "$dest" "$url"
@@ -49,12 +53,15 @@ echo "== staging the AppDir with cmake --install"
 DESTDIR="$APPDIR" cmake --install "$BUILD_DIR" --prefix /usr >/dev/null
 find "$APPDIR" -type f | sort | sed 's/^/   /'
 
-LINUXDEPLOY="$(fetch LINUXDEPLOY \
+LINUXDEPLOY="$(fetch LINUXDEPLOY linuxdeploy-x86_64.AppImage \
   https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage)"
-LINUXDEPLOY_PLUGIN_QT="$(fetch LINUXDEPLOY_PLUGIN_QT \
+LINUXDEPLOY_PLUGIN_QT="$(fetch LINUXDEPLOY_PLUGIN_QT linuxdeploy-plugin-qt-x86_64.AppImage \
   https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-x86_64.AppImage)"
-APPIMAGETOOL="$(fetch APPIMAGETOOL \
+APPIMAGETOOL="$(fetch APPIMAGETOOL appimagetool-x86_64.AppImage \
   https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage)"
+# linuxdeploy resolves `--plugin qt` by searching PATH, not its own directory.
+PATH="$(dirname "$LINUXDEPLOY_PLUGIN_QT"):$PATH"
+export PATH
 # The type-2 runtime is fetched separately and passed with --runtime-file:
 # appimagetool otherwise downloads it at package time, which fails on a runner
 # with no network and silently produces an image with no runtime at all.
