@@ -48,4 +48,6 @@ downloads. Consequences for Phase 0:
 
 | WP | Status | Branch | Notes |
 |---|---|---|---|
-| WP-10 | in progress | worktree → plan branch (CI) | package layout + Linux-port CI workflow with the macOS gate |
+| WP-10 | merged | plan branch | package split + `linux-port-ci.yml` gate (Linux core build, macOS build.sh + selftest + 31565 checks), QA approved |
+| WP-11 | in progress | worktree → plan branch (CI) | file moves in declaration-graph order |
+| WP-13 | in progress | worktree | Combine audit and convention; target decision |
