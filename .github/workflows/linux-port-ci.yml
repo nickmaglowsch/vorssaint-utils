@@ -1,10 +1,16 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Copyright (C) 2026 Vorssaint
 #
-# Gate for the GNU/Linux port (docs/linux-port/). Two jobs, both hard gates:
+# Gate for the GNU/Linux port (docs/linux-port/). Three jobs, all hard gates:
 #   linux-core  the Swift core and the Linux executable compile and run under
 #               the official swift:6.1-noble container (the toolchain the
 #               WP-00 spike measured).
+#   bridge-abi  WP-18's C ABI is real: VorssaintLinux archived as a static
+#               library, a C client compiled against
+#               linux/shell/include/corebridge.h and nothing else, all four
+#               entry points called. Separate from linux-core because it is
+#               the only leg that proves something about the *linked* product
+#               rather than about the Swift compiler.
 #   macos       the macOS product is unchanged: ./build.sh, --selftest, tests,
 #               on the same Xcode as ci.yml's compatibility job.
 name: Linux port CI
@@ -126,12 +132,139 @@ jobs:
           grep -E "error:" /tmp/swift-test.out | head -40 || true
           echo "=== per-case check counts ========================"
           grep -F "[generated-checks]" /tmp/swift-test.out | tail -100 || true
+          echo "=== the WP-18 diffing measurement ================"
+          # docs/linux-port/BRIDGE.md quotes these lines; they are the
+          # measurement the full-snapshot decision rests on, so they are
+          # re-made on every run rather than copied from a report.
+          grep -F "[bridge-diff]" /tmp/swift-test.out || true
           echo "=== totals ======================================="
           # corelibs-xctest indents the summary with a tab, so anchor loosely.
           grep -E "Executed [0-9]+ tests?" /tmp/swift-test.out | tail -5 || true
           test "$status" -eq 0
           grep -qE "Executed [0-9]+ tests?, with 0 failures" /tmp/swift-test.out
           ! grep -qE "with [1-9][0-9]* failures?" /tmp/swift-test.out
+
+  bridge-abi:
+    name: Bridge C ABI (static library + C client)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    container: swift:6.1-noble
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Verify toolchain
+        shell: bash
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          swift --version | grep -F "Swift version 6.1"
+          cc --version | head -1
+
+      # The proof that the header is the same ABI the WP-01 Qt spike was built
+      # against. Comment lines start with `/*`, ` *` or ` */` and are dropped;
+      # what is left is every declaration and every preprocessor line, and the
+      # two files must agree on all of it byte for byte. The prose above the
+      # include guard differs deliberately (docs/linux-port/BRIDGE.md § 3).
+      - name: The header declares the same ABI as the WP-01 stub
+        shell: bash
+        run: |
+          set -euo pipefail
+          pattern='^(#|typedef|int |char |void |extern|\})'
+          grep -E "$pattern" spikes/wp01-toolkit/corebridge-stub/corebridge.h > /tmp/stub.decls
+          grep -E "$pattern" linux/shell/include/corebridge.h > /tmp/real.decls
+          echo "=== linux/shell/include/corebridge.h, declarations only ==="
+          cat /tmp/real.decls
+          diff -u /tmp/stub.decls /tmp/real.decls
+          echo "HEADER DECLARATIONS IDENTICAL"
+
+      # LinuxFeatureProbeSet sits on the wrong side of a module boundary from
+      # AppFeature (still macOS-only until WP-15), so the compiler cannot check
+      # that its ids are real. A grep can.
+      - name: Every feature id the bridge offers is a real AppFeature
+        shell: bash
+        run: |
+          set -euo pipefail
+          sed -n '/^enum AppFeature/,/^}/p' Sources/Vorssaint/Core/FeatureCatalog.swift \
+            | sed 's://.*::' | grep -E '^\s*(case )?[a-z]' | tr ' ,' '\n\n' \
+            | grep -E '^[a-z][A-Za-z0-9]*$' | grep -v '^case$' | sort -u \
+            > /tmp/appfeatures.txt
+          test "$(wc -l < /tmp/appfeatures.txt)" -gt 40  # the catalog really parsed
+          sed -n '/public static let ids = \[/,/^    \]/p' \
+            Sources/VorssaintCore/Bridge/BridgeStandardServices.swift \
+            | grep -oE '"[a-zA-Z]+"' | tr -d '"' | sort -u > /tmp/probeset.txt
+          test -s /tmp/probeset.txt
+          missing=$(comm -23 /tmp/probeset.txt /tmp/appfeatures.txt || true)
+          if [ -n "$missing" ]; then
+            echo "not AppFeature cases: $missing"; exit 1
+          fi
+          echo "ALL PROBE-SET IDS ARE APPFEATURE CASES"
+          cat /tmp/probeset.txt | tr '\n' ' '; echo
+
+      - name: Build VorssaintLinux
+        shell: bash
+        run: swift build --target VorssaintLinux
+
+      # "VorssaintLinux as a static library": SwiftPM builds executables, not
+      # archives, so the archive is made from the objects it produced —
+      # VorssaintCore, VorssaintLinux (minus main.swift.o, whose `main` the C
+      # client brings its own of) and the OpenCombine products the core needs
+      # on Linux. nm is the check that the four @_cdecl symbols are really
+      # exported, undecorated, from the archive itself.
+      - name: Archive it as a static library
+        shell: bash
+        run: |
+          set -euo pipefail
+          objects=$(find .build/debug -name '*.o' -path '*.build/*' \
+            \( -path '*VorssaintCore.build*' -o -path '*VorssaintLinux.build*' \
+               -o -path '*OpenCombine*' \) ! -name 'main.swift.o' | sort)
+          test -n "$objects"
+          echo "$objects" | wc -l | xargs echo "object files:"
+          echo "$objects" > /tmp/objects.txt
+          ar crs /tmp/libvorssaintbridge.a $objects
+          ls -l /tmp/libvorssaintbridge.a
+          echo "=== exported bridge symbols ==="
+          nm --defined-only -g /tmp/libvorssaintbridge.a \
+            | grep -E ' T (vs_subscribe|vs_command|vs_snapshot|vs_free)$' | sort
+          for symbol in vs_subscribe vs_command vs_snapshot vs_free; do
+            nm --defined-only -g /tmp/libvorssaintbridge.a \
+              | grep -qE " T $symbol\$" || { echo "missing $symbol"; exit 1; }
+          done
+          echo "ALL FOUR SYMBOLS EXPORTED"
+
+      # The client includes linux/shell/include/corebridge.h and nothing else,
+      # and is compiled as C with -Werror: a signature the header gets wrong is
+      # a compile error here, and a symbol it names wrongly is a link error.
+      - name: Compile the C client against the header alone
+        shell: bash
+        run: |
+          set -euo pipefail
+          cc -std=c11 -Wall -Wextra -Werror -O2 \
+            -I linux/shell/include -c linux/shell/tests/abi_client.c \
+            -o /tmp/abi_client.o
+          echo "C CLIENT COMPILED"
+
+      # swiftc is the linker driver because the Swift runtime's autolink
+      # entries live in those objects; `swift-autolink-extract` is what turns
+      # them into -l flags, and it reads objects rather than archives, so it is
+      # run over the object list and the archive is what is actually linked.
+      - name: Link it against the static library and run it
+        shell: bash
+        run: |
+          set -euo pipefail
+          swift-autolink-extract $(cat /tmp/objects.txt) -o /tmp/autolink.args
+          echo "=== autolink flags ==="
+          tr '\n' ' ' < /tmp/autolink.args; echo
+          # shellcheck disable=SC2046
+          swiftc -o /tmp/vs-abi-client /tmp/abi_client.o /tmp/libvorssaintbridge.a \
+            -L .build/debug $(tr '\n' ' ' < /tmp/autolink.args)
+          echo "=== what it links against ==="
+          ldd /tmp/vs-abi-client | head -20
+          echo "=== running the C client ==="
+          set -o pipefail
+          /tmp/vs-abi-client 2>&1 | tee /tmp/abi.out
+          grep -q '^OK: 0 check(s) failed' /tmp/abi.out
+          ! grep -q '\[FAIL\]' /tmp/abi.out
 
   macos:
     name: macOS app (build.sh)

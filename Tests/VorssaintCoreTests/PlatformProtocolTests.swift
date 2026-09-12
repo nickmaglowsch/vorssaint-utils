@@ -244,4 +244,39 @@ final class PlatformProtocolTests: XCTestCase {
         XCTAssertEqual(seen, [.nominal, .fair, .serious, .critical])
         XCTAssertEqual(sensors.thermalPressure, .critical)
     }
+
+    // MARK: A captured frame says what its fourth byte is
+
+    /// WP-B1 found the defect this guards: the ScreenCast portal commonly
+    /// negotiates `SPA_VIDEO_FORMAT_BGRx`, whose fourth byte is padding, and a
+    /// wrapper that relabelled it BGRA produced screenshots that saved fully
+    /// transparent. So the format travels with the frame and `hasAlpha` is the
+    /// question every consumer asks before it reads byte 3.
+    func testACapturedFrameCarriesTheFormatItWasActuallyGiven() {
+        XCTAssertFalse(CapturedPixelFormat.bgrx.hasAlpha,
+                       "BGRx's fourth byte is undefined padding, not opacity")
+        XCTAssertFalse(CapturedPixelFormat.rgbx.hasAlpha)
+        XCTAssertTrue(CapturedPixelFormat.bgraPremultiplied.hasAlpha)
+        XCTAssertTrue(CapturedPixelFormat.rgbaPremultiplied.hasAlpha)
+        XCTAssertTrue(CapturedPixelFormat.bgrx.isBGROrdered)
+        XCTAssertFalse(CapturedPixelFormat.rgbaPremultiplied.isBGROrdered)
+
+        // Open, like PlatformCapability: a format a later backend negotiates
+        // arrives as data, and is treated as opaque rather than trusted.
+        let later = CapturedPixelFormat(rawValue: "XRGB2101010")
+        XCTAssertFalse(later.hasAlpha)
+        XCTAssertEqual(later.rawValue, "XRGB2101010")
+        XCTAssertFalse(CapturedPixelFormat.unknown.hasAlpha)
+
+        // The raw values are `vs_capture_pixel_format_name()`'s strings, which
+        // is what lets one cross the C boundary unchanged.
+        XCTAssertEqual([CapturedPixelFormat.unknown, .bgrx, .bgraPremultiplied,
+                        .rgbx, .rgbaPremultiplied].map(\.rawValue),
+                       ["unknown", "BGRx", "BGRA", "RGBx", "RGBA"])
+
+        // The fake defaults to the awkward format, not the convenient one.
+        XCTAssertEqual(CapturedFrame.fake().pixelFormat, .bgrx)
+        XCTAssertEqual(CapturedFrame.fake(pixelFormat: .bgraPremultiplied).pixelFormat,
+                       .bgraPremultiplied)
+    }
 }
