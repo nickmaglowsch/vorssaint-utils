@@ -1,0 +1,7 @@
+# The repository's top-level .gitignore excludes `dist/` anywhere in the tree,
+# which is right for build output and wrong for this one directory: everything
+# under linux/helper/dist is hand-written source that gets installed on the
+# user's machine (the polkit policy, the systemd unit, the bus policy, the udev
+# rules, and the install/uninstall scripts the app runs through pkexec). Nothing
+# here is generated.
+!dist/

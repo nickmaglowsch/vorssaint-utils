@@ -1,0 +1,72 @@
+[Unit]
+Description=Vorssaint privileged helper (input relay, fan control, DDC/CI)
+Documentation=file:///usr/share/doc/vorssaint/PRIVILEGES.md
+# The helper is useless without a bus to be reached on, and must not linger
+# after it.
+After=dbus.service
+Requires=dbus.service
+
+[Service]
+Type=dbus
+BusName=org.vorssaint.Helper1
+ExecStart=/usr/libexec/vorssaint-helper
+Restart=on-failure
+RestartSec=2
+
+# The helper needs four things and nothing else: /dev/input/event* to read,
+# /dev/uinput to write, the hwmon pwm attributes under /sys, and /dev/i2c-*
+# for DDC/CI. Everything below removes something it does not need, so a bug in
+# the JSON parser or the DDC framing buys an attacker as little as possible.
+# It is deliberately not DynamicUser: it must open root-owned device nodes and
+# it keeps no state of its own.
+#
+# Verify with `systemd-analyze security vorssaint-helper.service` after
+# installing; the directives below are the ones that move that score, and a
+# change to any of them must be argued in docs/linux-port/PRIVILEGES.md.
+User=root
+DevicePolicy=closed
+DeviceAllow=/dev/uinput rw
+DeviceAllow=char-input rw
+DeviceAllow=char-i2c rw
+CapabilityBoundingSet=
+AmbientCapabilities=
+NoNewPrivileges=yes
+
+# A keylogger that cannot reach the network is a much smaller problem, and
+# nothing the helper does needs one.
+PrivateNetwork=yes
+IPAddressDeny=any
+RestrictAddressFamilies=AF_UNIX
+
+PrivateTmp=yes
+PrivateMounts=yes
+ProtectSystem=strict
+ProtectHome=yes
+# ProtectSystem=strict makes /sys read-only, and the fan control writes to
+# hwmon pwm attributes. This is the single narrow hole in it: the pwm
+# attributes and nothing else under /sys.
+ReadWritePaths=/sys/class/hwmon
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+ProtectProc=default
+# ProtectProc must not be `invisible`: naming the process that holds a refused
+# EVIOCGRAB is done by walking /proc/<pid>/fd, and an invisible /proc hides
+# exactly the other users' processes (keyd runs as root, but an
+# interception-tools setup need not) that the message is about. The helper is
+# already root, so this hides nothing from it that it could not otherwise see.
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources @mount @reboot @swap @obsolete
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

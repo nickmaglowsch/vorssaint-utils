@@ -1,0 +1,39 @@
+# Vorssaint DDC/CI: udev rules for the i2c buses a monitor can be on.
+#
+# Installed to /usr/lib/udev/rules.d/71-vorssaint-i2c.rules.
+#
+# As with 70-vorssaint-uinput.rules, note what this file does NOT do: it does
+# not widen access to /dev/i2c-* for any user or group. The common packaging
+# shortcut for DDC tools is
+#
+#     KERNEL=="i2c-[0-9]*", GROUP="i2c", MODE="0660"
+#
+# plus adding the user to `i2c`. That is rejected here for the same reason the
+# `input` group is rejected in docs/linux-port/PRIVILEGES.md, and it is worse
+# in one respect: an i2c bus is not a monitor API. It is a general bus, and
+# whatever else is on those pins is reachable from it -- on many boards the
+# SPD EEPROMs of the memory modules (writable on DDR4 and later, and a
+# bricked module is a bricked module), and on some, the embedded controller.
+# The helper runs as root, speaks only to address 0x37, and exposes no raw
+# transfer method; that is the whole of the access the app gets.
+#
+# This file therefore only tags buses so the helper and the capabilities page
+# can tell a display channel from a motherboard SMBus without opening either.
+
+# 1. The i2c-dev module is what creates /dev/i2c-*. Without it there is no DDC
+#    on this machine at all, and the capabilities page should say so rather
+#    than showing an empty list that looks like "no monitors".
+ACTION=="add", SUBSYSTEM=="i2c-dev", TAG+="systemd"
+
+# 2. A bus whose parent is a DRM connector is a display data channel. Those are
+#    the only ones worth offering the user; an SMBus controller on the
+#    motherboard will never answer a DDC/CI frame.
+SUBSYSTEM=="i2c-dev", DEVPATH=="*/drm/card*", ENV{ID_VORSSAINT_DDC_CANDIDATE}="1"
+SUBSYSTEM=="i2c-dev", ATTRS{name}=="*DPDDC*", ENV{ID_VORSSAINT_DDC_CANDIDATE}="1"
+SUBSYSTEM=="i2c-dev", ATTRS{name}=="*gmbus*", ENV{ID_VORSSAINT_DDC_CANDIDATE}="1"
+SUBSYSTEM=="i2c-dev", ATTRS{name}=="*AMDGPU DM*", ENV{ID_VORSSAINT_DDC_CANDIDATE}="1"
+SUBSYSTEM=="i2c-dev", ATTRS{name}=="NVIDIA i2c adapter*", ENV{ID_VORSSAINT_DDC_CANDIDATE}="1"
+
+# 3. Mark the buses the helper must never be pointed at, so a misconfigured
+#    client cannot be the thing that discovers what is on the SMBus.
+SUBSYSTEM=="i2c-dev", ATTRS{name}=="SMBus*", ENV{ID_VORSSAINT_DDC_CANDIDATE}="0"

@@ -1,0 +1,106 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE policyconfig PUBLIC
+ "-//freedesktop//DTD PolicyKit Policy Configuration 1.0//EN"
+ "http://www.freedesktop.org/standards/PolicyKit/1/policyconfig.dtd">
+<policyconfig>
+
+  <vendor>Vorssaint</vendor>
+  <vendor_url>https://github.com/vorssaint/vorssaint-utils</vendor_url>
+
+  <!--
+    Six actions, because they are six different powers, and a user who wants
+    a quieter fan should not have to grant a keylogger to get one.
+
+    enable and set-rules turn the helper into a device that can see and forge
+    every keystroke in the session. fan-control can damage hardware silently.
+    ddc drives a general-purpose bus. All four are auth_admin_keep: one
+    administrator prompt per session, not one per adjustment.
+
+    get-devices and get-capabilities only report; both are allowed without a
+    prompt, so the capabilities page can show what *would* happen without
+    handing out the power to make it happen.
+
+    allow_inactive is no on every action, so a user on a switched-away session
+    cannot enable the relay, drive the fans, or change the brightness on the
+    active one.
+  -->
+
+  <action id="org.vorssaint.helper.enable">
+    <description>Intercept and re-emit keyboard and pointer input</description>
+    <description xml:lang="de">Tastatur- und Zeigereingaben abfangen und neu senden</description>
+    <message>Authentication is required to let Vorssaint intercept all keyboard and pointer input.</message>
+    <message xml:lang="de">Zur Freigabe des Abfangens aller Tastatur- und Zeigereingaben ist eine Authentifizierung erforderlich.</message>
+    <icon_name>input-keyboard</icon_name>
+    <defaults>
+      <allow_any>no</allow_any>
+      <allow_inactive>no</allow_inactive>
+      <allow_active>auth_admin_keep</allow_active>
+    </defaults>
+  </action>
+
+  <action id="org.vorssaint.helper.set-rules">
+    <description>Change the input relay rules</description>
+    <description xml:lang="de">Regeln der Eingabeweiterleitung ändern</description>
+    <message>Authentication is required to change how Vorssaint rewrites keyboard input.</message>
+    <message xml:lang="de">Zum Ändern der Tastaturregeln von Vorssaint ist eine Authentifizierung erforderlich.</message>
+    <icon_name>input-keyboard</icon_name>
+    <defaults>
+      <allow_any>no</allow_any>
+      <allow_inactive>no</allow_inactive>
+      <allow_active>auth_admin_keep</allow_active>
+    </defaults>
+  </action>
+
+  <action id="org.vorssaint.helper.fan-control">
+    <description>Control the computer's fans</description>
+    <description xml:lang="de">Lüfter des Computers steuern</description>
+    <message>Authentication is required to let Vorssaint set fan speeds. Setting a fan too slow can overheat the computer.</message>
+    <message xml:lang="de">Zum Einstellen der Lüfterdrehzahl durch Vorssaint ist eine Authentifizierung erforderlich. Eine zu niedrige Drehzahl kann den Computer überhitzen.</message>
+    <icon_name>sensors-fan</icon_name>
+    <defaults>
+      <allow_any>no</allow_any>
+      <allow_inactive>no</allow_inactive>
+      <allow_active>auth_admin_keep</allow_active>
+    </defaults>
+  </action>
+
+  <action id="org.vorssaint.helper.ddc">
+    <description>Adjust external monitors over DDC/CI</description>
+    <description xml:lang="de">Externe Monitore über DDC/CI einstellen</description>
+    <message>Authentication is required to let Vorssaint adjust external monitors over the display data channel.</message>
+    <message xml:lang="de">Zum Einstellen externer Monitore über den Display-Datenkanal durch Vorssaint ist eine Authentifizierung erforderlich.</message>
+    <icon_name>video-display</icon_name>
+    <defaults>
+      <allow_any>no</allow_any>
+      <allow_inactive>no</allow_inactive>
+      <allow_active>auth_admin_keep</allow_active>
+    </defaults>
+  </action>
+
+  <action id="org.vorssaint.helper.get-devices">
+    <description>List the input devices the relay would claim</description>
+    <description xml:lang="de">Eingabegeräte auflisten, die die Weiterleitung übernehmen würde</description>
+    <message>Authentication is required to list input devices.</message>
+    <message xml:lang="de">Zum Auflisten der Eingabegeräte ist eine Authentifizierung erforderlich.</message>
+    <icon_name>input-keyboard</icon_name>
+    <defaults>
+      <allow_any>no</allow_any>
+      <allow_inactive>no</allow_inactive>
+      <allow_active>yes</allow_active>
+    </defaults>
+  </action>
+
+  <action id="org.vorssaint.helper.get-capabilities">
+    <description>Report which hardware features are available</description>
+    <description xml:lang="de">Verfügbare Hardwarefunktionen melden</description>
+    <message>Authentication is required to report the computer's hardware capabilities.</message>
+    <message xml:lang="de">Zum Melden der Hardwarefunktionen des Computers ist eine Authentifizierung erforderlich.</message>
+    <icon_name>computer</icon_name>
+    <defaults>
+      <allow_any>no</allow_any>
+      <allow_inactive>no</allow_inactive>
+      <allow_active>yes</allow_active>
+    </defaults>
+  </action>
+
+</policyconfig>
