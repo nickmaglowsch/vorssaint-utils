@@ -10,15 +10,20 @@ one-to-one by a C header rather than reimplemented in Swift.
 ```
 linux/platform/
   include/vorssaint_platform.h   the contract; one section per concern
+  vs_result.c                    the contract symbols that belong to no concern
   window/                        WP-C1: X11, wlroots, Hyprland, KWin, GNOME
     kwin/vorssaint-window.js     the KWin bridge script
     protocols/                   vendored Wayland protocol XML
     tools/vs_window_cli.c        the `vs-window` harness
     tests/                       ctest suites, real and fake compositors
+  capture/                       WP-B1: portal ScreenCast/Screenshot + PipeWire
+    scripts/                     the headless portal stack; the build matrix
+    tools/vs_capture_cli.c       the `vs-capture` harness
+    tests/                       ctest suites against a real portal
 ```
 
 Concerns still to land add their own directory and their own section of the
-header: capture (WP-B1), audio, sensors, power, input, portals, helper-client.
+header: audio, sensors, power, input, portals, helper-client.
 
 ## The contract
 
@@ -42,6 +47,11 @@ Rules every section follows, and every reviewer should check:
 - **One instance, one thread, no surprises.** Nothing here starts a thread, and
   no call is reentrant. The event callback runs only inside that instance's own
   `dispatch`, on the thread that called it; separate instances are independent.
+  The capture section is the single exception and says so in its own banner: a
+  capture stream owns a PipeWire thread, because PipeWire hands buffers over on
+  its loop and a frame not taken is a frame lost. It still delivers only from
+  `dispatch`, on the caller's thread, unless the caller explicitly asks for the
+  zero-copy mode.
 - **Success is read back, not assumed.** Compositors, window managers and
   D-Bus bridges all acknowledge a request and then do something else.
   `VS_ERR_NOT_APPLIED` is the answer for "we asked, it agreed, the state did
@@ -50,7 +60,8 @@ Rules every section follows, and every reviewer should check:
 - **"Unknown" is never zero.** `pid` and `workspace` are -1 when the backend
   cannot say, because 0 is a real pid and a real workspace.
 - **Ownership is explicit.** Every array a backend returns is released by that
-  backend's matching `free_*`.
+  backend's matching `free_*`, and every buffer handed to a callback is borrowed
+  for the length of that call unless the section says otherwise.
 - **Events are delivered from `dispatch`, never from another thread.** A
   backend exposes a pollable `event_fd` (or -1) and drains into the callback
   when the caller asks it to. Nothing in this layer starts a thread.
@@ -105,6 +116,14 @@ missing): `xvfb`, `openbox`, `xterm`, `x11-utils` for X11; `sway`, `foot` for
 wlroots; `dbus-x11` (`dbus-run-session`), `python3-dbus`, `python3-gi` for the
 D-Bus fakes; `nodejs` to lint the KWin script.
 
+`linux/platform/capture/scripts/build-matrix.sh` builds and tests the whole tree
+in all four CMake configurations -- no build type, Debug, Release,
+RelWithDebInfo -- because they are not the same configuration: GCC inlines more
+at `-O2` and so reasons differently about `-Wmaybe-uninitialized` and
+`-Wformat-truncation`, and with `-Werror` a warning only one of them sees is a
+build failure for whoever hits it first. A bare `cmake -S linux/platform -B
+build` defaults to RelWithDebInfo, which is what ships.
+
 Everything is built with `-Wall -Wextra -Werror` plus `-Wshadow`,
 `-Wstrict-prototypes`, `-Wmissing-prototypes`, `-Wpointer-arith` and
 `-Wwrite-strings`. The only exception is `wayland-scanner`'s generated code,
@@ -115,3 +134,5 @@ because it is not ours to fix.
 
 - [`window/`](window/) — backends, capability matrix and measured behaviour:
   `docs/linux-port/WINDOW_BACKENDS.md`.
+- [`capture/`](capture/) — the capture engine, its two delivery modes and the
+  session defects it is built around: `docs/linux-port/CAPTURE_ENGINE.md`.

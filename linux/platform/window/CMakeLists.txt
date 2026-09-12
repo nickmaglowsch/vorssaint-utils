@@ -62,6 +62,7 @@ target_compile_options(vs_window_protocols PRIVATE -Wno-missing-prototypes)
 # ------------------------------------------------------------------ library
 
 add_library(vs_window STATIC
+    $<TARGET_OBJECTS:vorssaint_platform_common>
     vs_window.c
     backend_x11.c
     backend_wlr.c

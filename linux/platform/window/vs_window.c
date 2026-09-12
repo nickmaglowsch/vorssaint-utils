@@ -8,22 +8,6 @@
 
 #include <stdarg.h>
 
-const char *vs_result_string(int result)
-{
-    switch (result) {
-    case VS_OK: return "ok";
-    case VS_ERR_UNSUPPORTED: return "unsupported by this backend";
-    case VS_ERR_NOT_FOUND: return "no such window";
-    case VS_ERR_BACKEND: return "backend refused or failed";
-    case VS_ERR_TIMEOUT: return "backend timed out";
-    case VS_ERR_NO_MEM: return "out of memory";
-    case VS_ERR_INVALID: return "invalid argument";
-    case VS_ERR_NO_BACKEND: return "no window backend for this session";
-    case VS_ERR_NOT_APPLIED: return "request acknowledged but state did not change";
-    default: return "unknown error";
-    }
-}
-
 void vs_window_log(const char *format, ...)
 {
     static int enabled = -1;

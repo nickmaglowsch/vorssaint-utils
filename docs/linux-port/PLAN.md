@@ -475,6 +475,7 @@ with what carries it and how it ships.
 | zxing-cpp | QR | bundled static | QR off |
 | libevdev, libudev, sd-bus (libsystemd), libpolkit-gobject-1 | privileged helper | linked by the helper, which is installed onto the host by the app (not run from the AppImage) | relay, fan control and DDC off |
 | libxkbcommon | shortcut recorder keycode resolution | bundled | recorder falls back to raw keycodes |
+| zlib | PNG encode/decode in the capture engine (WP-B1), which carries its own ~200-line encoder rather than take libpng | already pulled in by GLib, PipeWire and ffmpeg, so nothing new ships | screenshots cannot be written |
 | libddcutil (optional) | external brightness | dlopen if present, else our own I2C path | DDC off |
 | NVML (optional) | NVIDIA GPU metrics | dlopen from driver | GPU rows hidden |
 | PackageKit, Flatpak (optional, runtime D-Bus/CLI) | Packages, updates, uninstaller | host | those rows hidden |

@@ -1,0 +1,32 @@
+WP-02: let xdg-desktop-portal-wlr 0.7.1 screencast a GPU-less wlroots session.
+
+`start_screencast()` treats a missing DMA-BUF format as fatal whenever the
+compositor advertises zwlr_screencopy_manager_v1 version >= 3:
+
+    if (shm.format == DRM_FORMAT_INVALID ||
+        (screencast_version >= 3 && dmabuf.format == DRM_FORMAT_INVALID))
+            return -1;
+
+On a wlroots compositor with the pixman (software) renderer and no DRM node
+-- sway headless in a container, and any machine with no /dev/dri -- the
+compositor still advertises screencopy v3 but never sends the linux_dmabuf
+event, so dmabuf.format stays DRM_FORMAT_INVALID and every Start() fails,
+even though the shared-memory path works perfectly: build_formats() below
+already falls back to an SHM-only EnumFormat when no modifier list can be
+built, and the whole buffer path handles buffer_type == WL_SHM.
+
+This makes the DMA-BUF format optional and keeps the SHM format required.
+
+--- a/src/screencast/screencast.c
++++ b/src/screencast/screencast.c
+@@ -196,9 +196,7 @@ static int start_screencast(struct xdpw_screencast_instance *cast) {
+ 	wl_display_dispatch(cast->ctx->state->wl_display);
+ 	wl_display_roundtrip(cast->ctx->state->wl_display);
+
+-	if (cast->screencopy_frame_info[WL_SHM].format == DRM_FORMAT_INVALID ||
+-			(cast->ctx->state->screencast_version >= 3 &&
+-			 cast->screencopy_frame_info[DMABUF].format == DRM_FORMAT_INVALID)) {
++	if (cast->screencopy_frame_info[WL_SHM].format == DRM_FORMAT_INVALID) {
+ 		logprint(INFO, "wlroots: unable to receive a valid format from wlr_screencopy");
+ 		return -1;
+ 	}

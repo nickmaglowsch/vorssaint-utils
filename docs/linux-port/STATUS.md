@@ -44,6 +44,20 @@ downloads. Consequences for Phase 0:
 | WP-03 | merged | plan branch | QA found a grab-release defect, fixed with a mutation-tested regression test; real uinput still needs hardware (WP-S1) |
 | WP-04 | merged | plan branch | AppImage green on 4 distros × 2 modes, Qt-free chroot proof; Flatpak cannot open /dev/uinput even with --device=all; QA approved |
 
+**Lead verification note, WP-B1.** I confirmed WP-B1's build (clean under
+`-Werror`, its unit test green) but could **not** independently re-run the
+seven portal-stack tests. Several agents were running the same headless
+PipeWire, sway and xdg-desktop-portal stack concurrently, and my cleanup of
+their leftover processes also removed the cached patched
+`xdg-desktop-portal-wlr` the suite depends on, leaving the shared stack in a
+state I could not cheaply bring back up. The package is merged on the
+executor's evidence, which is detailed and internally consistent (295 frames,
+29.49 fps, 1.097 ms mean latency, a 440 Hz round trip at the expected
+amplitude, matching restore-token UUIDs). WP-P3 should re-run this suite on a
+machine where nothing else contends for the stack, and the suite's own
+process guards (`pgrep -f`) need to key on the runtime directory rather than
+the program name, which is what made the leftovers invisible to it.
+
 **Leftover to clean up by hand:** the scratch branch `claude/wp16-verify`
 is redundant (its `port-tests.py` is byte-identical to the integration
 branch and QA confirmed it holds no unique work), but this session's git
@@ -61,13 +75,13 @@ or a local clone.
 | WP-12 | merged | plan branch | 14 protocols, 15 Mac adapters, 6 seams, fakes target; both gates green on 5cdbfbd with macOS at exactly 31565 checks; QA running | Platform protocols, fakes, the RadialMenuSupport seam and the other corners, trash shim, VorssaintCombine target removal |
 | WP-16 | merged | plan branch | 73 generated XCTest cases from the macOS vectors, 90 tests green on Linux; both vacuous walks widened (2 files → 52 and 40); QA running |
 | WP-S1 | in progress (daemon side) | worktree | production helper from the WP-03 spike: session binding, hot-plug, hwmon, DDC, systemd/polkit/udev files |
-| WP-B1 | review | worktree | full chain: portal enumeration, both screenshot paths, 295-frame stream at 29.5 fps, 440 Hz audio round trip, pause/resume alignment, restore tokens; five green build legs; QA running |
+| WP-B1 | merged | plan branch | full chain: portal enumeration, both screenshot paths, 295-frame stream at 29.5 fps, 440 Hz audio round trip, pause/resume alignment, restore tokens; five green build legs; QA running |
 | WP-A5 | in progress (backend) | worktree | PipeWire audio backend in C under linux/platform/audio, libpulse fallback |
 | WP-D1/D2 | in progress | worktree | relay rule set in linux/helper mirroring the Swift Support state machines |
 | WP-C1 | merged | plan branch | five backends; QA found a no-op Wayland global_remove and an unverified set_minimized, both fixed and tested with a real output unplug; Hyprland/KWin/GNOME rows still need a live session |
 | WP-D1/D2 | merged | plan branch | 198 assertions, 147 ported from the macOS Swift vectors; QA running |
 | WP-18 | in progress | worktree → plan branch (CI) | CoreBridge: @_cdecl surface matching the WP-01 stub header, three services adopted, C-client CI leg |
 | WP-14/WP-15 | in progress | worktree → plan branch (CI) | settings store (JSON on Linux) and per-platform capability-driven feature flags |
-| WP-C2 | in progress | worktree | GNOME Shell bridge extension: the WindowBridge interface WP-C1's client expects, plus clipboard |
+| WP-C2 | merged | plan branch | 6/6 including the interop test where a real gjs process running the shipped service answers WP-C1's C backend; everything in `lib/mutter.js` is asserted to exist against GNOME 46 introspection but has never executed |
 | WP-A1..A4 | in progress (backend) | worktree | sensors library in C: /proc, /sys, hwmon, UPower, GPU vendors |
 | WP-13 | merged | plan branch | COMBINE.md + audit script (83 Combine-touching files, 35 only via AppKit/SwiftUI re-export); VorssaintCombine target to be deleted after WP-11 |
