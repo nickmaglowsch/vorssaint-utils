@@ -82,6 +82,16 @@ uint64_t rules_deadline_ns(const rules_state *st);
 /* Run any transition whose deadline has passed. */
 int rules_timer(rules_state *st, uint64_t now_ns, rules_event *out, int out_cap);
 
+/* The largest SetRules document the helper will look at. The schema is seven
+ * short keys, so a valid document is well under 200 bytes; 64 KiB is three
+ * orders of magnitude of slack and still a bound. It matters because the
+ * reader below is not a streaming parser: json_find() restarts from the
+ * beginning of the string for every key, so the work is O(keys x length) and
+ * an unbounded string is an unbounded amount of a root process's time for one
+ * unprivileged D-Bus call. D-Bus already caps a message at 128 MiB, which is
+ * not a useful limit here. */
+#define RULES_JSON_MAX (64 * 1024)
+
 /* Minimal JSON config parser for the D-Bus SetRules(s) method. Accepts
  *   {"tap_hold":true,"tap_threshold_ms":200,"chatter":true,"chatter_ms":40,
  *    "tap_source":58,"tap_output":1,"hold_output":29}

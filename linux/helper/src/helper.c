@@ -305,6 +305,15 @@ static int method_set_rules(sd_bus_message *m, void *userdata, sd_bus_error *ret
     if (r < 0)
         return r;
 
+    /* Checked here as well as in the parser so the refusal names the size the
+     * caller actually sent, and so nothing downstream ever sees the string. */
+    if (strnlen(json, RULES_JSON_MAX + 1) > RULES_JSON_MAX) {
+        fprintf(stderr, "helper: SetRules refused: document over %d bytes\n", RULES_JSON_MAX);
+        return sd_bus_error_setf(ret_error, SD_BUS_ERROR_INVALID_ARGS,
+                                 "bad rules: document is longer than the %d byte limit",
+                                 RULES_JSON_MAX);
+    }
+
     if (rules_config_from_json(json, &cfg, err, sizeof(err)) < 0)
         return sd_bus_error_setf(ret_error, SD_BUS_ERROR_INVALID_ARGS, "bad rules: %s", err);
 

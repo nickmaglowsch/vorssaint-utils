@@ -17,7 +17,12 @@
  */
 #include "ddc.h"
 
+#include "pathguard.h"
+
 #include <errno.h>
+#include <fcntl.h>
+#include <stdlib.h>
+#include <unistd.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -212,6 +217,52 @@ int main(void)
             ok("ddc_transport_i2c refuses a path before opening anything");
         else
             fail("ddc_transport_i2c refuses a path before opening anything", err);
+    }
+
+    printf("\nthe node itself must be a character device, not a link to one\n");
+    {
+        /* The name `i2c-99` is valid; what would be wrong is /dev/i2c-99 being
+         * a symlink to something else. The real check runs against /dev, which
+         * this test cannot write to, so the two halves are checked separately:
+         * that a non-character-device is refused (here, through a path we can
+         * create), and that the open uses O_NOFOLLOW (pathguard.c, and the
+         * hwmon half of the same guard is exercised in test_fan.c). */
+        char tmp[] = "/tmp/vorssaint-ddc-node-XXXXXX";
+        char link[512];
+        int fd = mkstemp(tmp);
+
+        if (fd >= 0)
+            close(fd);
+        snprintf(link, sizeof(link), "%s.link", tmp);
+        if (symlink(tmp, link) != 0)
+            perror(link);
+
+        if (path_guard_open_chardev(tmp, O_RDONLY, err, sizeof(err)) == -EINVAL &&
+            strstr(err, "character device"))
+            ok("a regular file where a device node belongs is refused");
+        else
+            fail("a regular file where a device node belongs is refused", err);
+
+        if (path_guard_open_chardev(link, O_RDONLY, err, sizeof(err)) == -ELOOP &&
+            strstr(err, "symbolic link"))
+            ok("a symlink where a device node belongs is refused with ELOOP");
+        else
+            fail("a symlink where a device node belongs is refused with ELOOP", err);
+
+        /* And the guard must still accept a real character device, or it would
+         * refuse every genuine i2c node too. */
+        {
+            int ok_fd = path_guard_open_chardev("/dev/null", O_RDONLY, err, sizeof(err));
+            if (ok_fd >= 0) {
+                ok("a real character device is accepted");
+                close(ok_fd);
+            } else {
+                fail("a real character device is accepted", err);
+            }
+        }
+
+        unlink(link);
+        unlink(tmp);
     }
 
     printf("\nenumeration for GetCapabilities\n");

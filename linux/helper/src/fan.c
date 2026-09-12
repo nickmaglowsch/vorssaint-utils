@@ -1,7 +1,11 @@
 #include "fan.h"
 
+#include "pathguard.h"
+
 #include <ctype.h>
+#include <fcntl.h>
 #include <dirent.h>
+#include <limits.h>
 #include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -29,24 +33,34 @@ bool fan_hwmon_name_ok(const char *name)
     return digits > 0;
 }
 
-static int attr_path(const fan_state *st, const char *hwmon, const char *attr, char *buf,
-                     size_t cap)
+/* Resolve <root>/<hwmon> once, through the boundary check in pathguard.c, and
+ * build every attribute path from the *resolved* directory. The name has
+ * already been validated as hwmonN; this is what stops a `hwmon0` that is a
+ * symlink to somewhere else -- the name is not wrong in that case, the tree
+ * is. See pathguard.h for why the entry may be a link but the attributes may
+ * not. */
+static int resolve_hwmon(const fan_state *st, const char *hwmon, char *dir, size_t cap, char *err,
+                         size_t err_cap)
 {
-    int n = snprintf(buf, cap, "%s/%s/%s", st->root, hwmon, attr);
-    if (n < 0 || (size_t)n >= cap)
-        return -ENAMETOOLONG;
-    return 0;
+    return path_guard_dir(st->root, hwmon, dir, cap, err, err_cap);
 }
 
-static int read_int_file(const char *path, long *out)
+static int read_int_file(const char *dir, const char *attr, long *out)
 {
     char buf[64];
-    FILE *f = fopen(path, "re");
+    char err[256];
     char *end;
     long v;
+    int fd = path_guard_open_leaf(dir, attr, O_RDONLY, err, sizeof(err));
+    FILE *f;
 
-    if (!f)
+    if (fd < 0)
+        return fd;
+    f = fdopen(fd, "r");
+    if (!f) {
+        close(fd);
         return -errno;
+    }
     if (!fgets(buf, sizeof(buf), f)) {
         fclose(f);
         return -EIO;
@@ -59,13 +73,20 @@ static int read_int_file(const char *path, long *out)
     return 0;
 }
 
-static int write_int_file(const char *path, long value)
+static int write_int_file(const char *dir, const char *attr, long value)
 {
+    char err[256];
+    int fd = path_guard_open_leaf(dir, attr, O_WRONLY | O_TRUNC, err, sizeof(err));
+    FILE *f;
     int n;
-    FILE *f = fopen(path, "we");
 
-    if (!f)
+    if (fd < 0)
+        return fd;
+    f = fdopen(fd, "w");
+    if (!f) {
+        close(fd);
         return -errno;
+    }
     n = fprintf(f, "%ld\n", value);
     if (n < 0) {
         fclose(f);
@@ -81,26 +102,27 @@ static int write_int_file(const char *path, long value)
 /* Write, then read back. A sysfs store handler can accept the write and
  * clamp, round or silently drop the value; the only way to know what the
  * driver actually holds is to ask it. */
-static int write_verified(const char *path, long value, long *seen, char *err, size_t err_cap)
+static int write_verified(const char *dir, const char *attr, long value, long *seen, char *err,
+                          size_t err_cap)
 {
     long got = 0;
     int r;
 
-    r = write_int_file(path, value);
+    r = write_int_file(dir, attr, value);
     if (r < 0) {
-        snprintf(err, err_cap, "write %s: %s", path, strerror(-r));
+        snprintf(err, err_cap, "write %s/%s: %s", dir, attr, strerror(-r));
         return r;
     }
-    r = read_int_file(path, &got);
+    r = read_int_file(dir, attr, &got);
     if (r < 0) {
-        snprintf(err, err_cap, "read back %s: %s", path, strerror(-r));
+        snprintf(err, err_cap, "read back %s/%s: %s", dir, attr, strerror(-r));
         return r;
     }
     if (seen)
         *seen = got;
     if (got != value) {
-        snprintf(err, err_cap, "%s did not take the value: wrote %ld, read back %ld", path, value,
-                 got);
+        snprintf(err, err_cap, "%s/%s did not take the value: wrote %ld, read back %ld", dir, attr,
+                 value, got);
         return -EIO;
     }
     return 0;
@@ -117,7 +139,9 @@ static fan_channel *find_channel(fan_state *st, const char *hwmon, uint32_t chan
 int fan_set_pwm(fan_state *st, const char *hwmon, uint32_t channel, uint8_t value, uint64_t now_ns,
                 char *err, size_t err_cap)
 {
-    char p_pwm[512], p_en[512];
+    char dir[PATH_MAX];
+    char a_pwm[32], a_en[32];
+    char probe[PATH_MAX + 64];
     fan_channel *c;
     long prev_enable = PWM_ENABLE_AUTO;
     int r;
@@ -130,23 +154,19 @@ int fan_set_pwm(fan_state *st, const char *hwmon, uint32_t channel, uint8_t valu
         snprintf(err, err_cap, "pwm channel %u out of range (1..99)", channel);
         return -EINVAL;
     }
+    r = resolve_hwmon(st, hwmon, dir, sizeof(dir), err, err_cap);
+    if (r < 0)
+        return r;
 
-    {
-        char attr[32];
-        snprintf(attr, sizeof(attr), "pwm%u", channel);
-        r = attr_path(st, hwmon, attr, p_pwm, sizeof(p_pwm));
-        if (r == 0) {
-            snprintf(attr, sizeof(attr), "pwm%u_enable", channel);
-            r = attr_path(st, hwmon, attr, p_en, sizeof(p_en));
-        }
-        if (r < 0) {
-            snprintf(err, err_cap, "path under %s is too long", st->root);
-            return r;
-        }
-    }
+    snprintf(a_pwm, sizeof(a_pwm), "pwm%u", channel);
+    snprintf(a_en, sizeof(a_en), "pwm%u_enable", channel);
 
-    if (access(p_pwm, W_OK) != 0) {
-        snprintf(err, err_cap, "%s is not writable: %s", p_pwm, strerror(errno));
+    /* Cheap early refusal with a message that names the attribute. The real
+     * gate is O_NOFOLLOW inside write_int_file: access(2) as root only tells
+     * us the file exists, and there is no TOCTOU window in the open itself. */
+    snprintf(probe, sizeof(probe), "%s/%s", dir, a_pwm);
+    if (access(probe, W_OK) != 0) {
+        snprintf(err, err_cap, "%s is not writable: %s", probe, strerror(errno));
         return -errno;
     }
 
@@ -162,7 +182,7 @@ int fan_set_pwm(fan_state *st, const char *hwmon, uint32_t channel, uint8_t valu
          * pwmN_enable at all is manual-only; PWM_ENABLE_AUTO is then the
          * value we would write to restore, and the write below will tell us
          * it cannot be done. */
-        if (read_int_file(p_en, &prev_enable) < 0)
+        if (read_int_file(dir, a_en, &prev_enable) < 0)
             prev_enable = PWM_ENABLE_AUTO;
         c = &st->ch[st->n_ch++];
         memset(c, 0, sizeof(*c));
@@ -176,13 +196,13 @@ int fan_set_pwm(fan_state *st, const char *hwmon, uint32_t channel, uint8_t valu
      * by the firmware at the next update, which looks like a fan that obeys
      * for a second and then drifts back. */
     if (!c->manual) {
-        r = write_verified(p_en, PWM_ENABLE_MANUAL, NULL, err, err_cap);
+        r = write_verified(dir, a_en, PWM_ENABLE_MANUAL, NULL, err, err_cap);
         if (r < 0)
             return r;
         c->manual = true;
     }
 
-    r = write_verified(p_pwm, (long)value, NULL, err, err_cap);
+    r = write_verified(dir, a_pwm, (long)value, NULL, err, err_cap);
     if (r < 0) {
         /* Do not leave the channel in manual mode at whatever duty cycle it
          * happened to hold: that is the state the watchdog exists to prevent,
@@ -200,7 +220,7 @@ int fan_set_pwm(fan_state *st, const char *hwmon, uint32_t channel, uint8_t valu
 
 int fan_set_auto(fan_state *st, const char *hwmon, uint32_t channel, char *err, size_t err_cap)
 {
-    char p_en[512];
+    char dir[PATH_MAX];
     char attr[32];
     fan_channel *c;
     long restore;
@@ -214,11 +234,10 @@ int fan_set_auto(fan_state *st, const char *hwmon, uint32_t channel, char *err, 
         snprintf(err, err_cap, "pwm channel %u out of range (1..99)", channel);
         return -EINVAL;
     }
-    snprintf(attr, sizeof(attr), "pwm%u_enable", channel);
-    if ((r = attr_path(st, hwmon, attr, p_en, sizeof(p_en))) < 0) {
-        snprintf(err, err_cap, "path too long");
+    r = resolve_hwmon(st, hwmon, dir, sizeof(dir), err, err_cap);
+    if (r < 0)
         return r;
-    }
+    snprintf(attr, sizeof(attr), "pwm%u_enable", channel);
 
     c = find_channel(st, hwmon, channel);
     /* Restore what was there before, not a fixed 2: a board whose fans were
@@ -226,7 +245,7 @@ int fan_set_auto(fan_state *st, const char *hwmon, uint32_t channel, char *err, 
      * not to a curve it was not using. */
     restore = c ? c->restore_enable : PWM_ENABLE_AUTO;
 
-    r = write_verified(p_en, restore, NULL, err, err_cap);
+    r = write_verified(dir, attr, restore, NULL, err, err_cap);
     if (r < 0)
         return r;
 
@@ -320,12 +339,20 @@ int fan_state_to_json(const fan_state *st, uint64_t now_ns, char *buf, size_t ca
 
 /* --- enumeration for GetCapabilities -------------------------------------- */
 
-static void read_str_file(const char *path, char *out, size_t cap)
+static void read_str_file(const char *dir, const char *attr, char *out, size_t cap)
 {
-    FILE *f = fopen(path, "re");
+    char err[256];
+    int fd = path_guard_open_leaf(dir, attr, O_RDONLY, err, sizeof(err));
+    FILE *f;
+
     out[0] = '\0';
-    if (!f)
+    if (fd < 0)
         return;
+    f = fdopen(fd, "r");
+    if (!f) {
+        close(fd);
+        return;
+    }
     if (fgets(out, (int)cap, f)) {
         size_t n = strlen(out);
         while (n > 0 && (out[n - 1] == '\n' || out[n - 1] == '\r'))
@@ -371,11 +398,17 @@ int fan_enumerate_json(const char *root, char *buf, size_t cap)
     qsort(names, n_names, sizeof(names[0]), cmp_name);
 
     for (size_t i = 0; i < n_names; i++) {
-        char path[512], label[128];
+        char dir[PATH_MAX], label[128], gerr[256];
         bool first_pwm = true;
 
-        snprintf(path, sizeof(path), "%s/%s/name", root, names[i]);
-        read_str_file(path, label, sizeof(label));
+        /* A hwmon entry that resolves outside the boundary is skipped rather
+         * than listed: offering it in the capabilities page would be offering
+         * the user a control the write path will then refuse. */
+        if (path_guard_dir(root, names[i], dir, sizeof(dir), gerr, sizeof(gerr)) < 0) {
+            free(names[i]);
+            continue;
+        }
+        read_str_file(dir, "name", label, sizeof(label));
 
         if (used < cap)
             used += (size_t)snprintf(buf + used, cap - used,
@@ -383,15 +416,17 @@ int fan_enumerate_json(const char *root, char *buf, size_t cap)
                                      names[i], label);
 
         for (unsigned ch = 1; ch <= 9 && used < cap; ch++) {
-            char p_pwm[512], p_en[512];
+            char a_pwm[32], a_en[32], p_pwm[PATH_MAX + 64], p_en[PATH_MAX + 64];
             long cur = -1, en = -1;
 
-            snprintf(p_pwm, sizeof(p_pwm), "%s/%s/pwm%u", root, names[i], ch);
+            snprintf(a_pwm, sizeof(a_pwm), "pwm%u", ch);
+            snprintf(a_en, sizeof(a_en), "pwm%u_enable", ch);
+            snprintf(p_pwm, sizeof(p_pwm), "%s/%s", dir, a_pwm);
             if (access(p_pwm, F_OK) != 0)
                 continue;
-            snprintf(p_en, sizeof(p_en), "%s/%s/pwm%u_enable", root, names[i], ch);
-            read_int_file(p_pwm, &cur);
-            read_int_file(p_en, &en);
+            snprintf(p_en, sizeof(p_en), "%s/%s", dir, a_en);
+            read_int_file(dir, a_pwm, &cur);
+            read_int_file(dir, a_en, &en);
             used += (size_t)snprintf(buf + used, cap - used,
                                      "%s{\"channel\":%u,\"writable\":%s,\"value\":%ld,"
                                      "\"enable\":%ld,\"enable_writable\":%s}",
