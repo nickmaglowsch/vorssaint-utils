@@ -27,13 +27,19 @@ public struct CPUSample: Equatable {
 public struct MemorySample: Equatable {
     public let totalBytes: UInt64
     public let usedBytes: UInt64
-    /// macOS's "app memory"; `/proc/meminfo`'s `MemTotal - MemAvailable` on
-    /// Linux. Named for what it means rather than for either source.
+    /// macOS's "app memory"; `/proc/meminfo`'s `AnonPages` on Linux — the
+    /// memory processes have actually allocated, as against `usedBytes`,
+    /// which is `MemTotal - MemAvailable` and includes what the kernel would
+    /// have to reclaim. Named for what it means rather than for either source.
     public let activeBytes: UInt64
     public let cachedBytes: UInt64
     public let swapUsedBytes: UInt64
-    /// macOS memory pressure, 0...1. Derived from `MemAvailable` on Linux;
-    /// the capability flag says which.
+    /// macOS memory pressure, 0...1. On Linux this is the PSI stall fraction
+    /// (`/proc/pressure/memory`, `some avg10`) where the kernel reports one,
+    /// and a fill level derived from `MemAvailable` where it does not. The
+    /// two are different quantities, not two estimates of one: the capability
+    /// flag says which arrived, and a panel must not label a fill level as
+    /// pressure.
     public let pressure: Double?
 
     public init(totalBytes: UInt64, usedBytes: UInt64, activeBytes: UInt64,
