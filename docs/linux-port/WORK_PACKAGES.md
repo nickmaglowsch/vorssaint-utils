@@ -244,7 +244,7 @@ uninstall features. No features yet beyond a CPU readout used as a probe.
 | WP-P2 | Flatpak manifest with the reduced permission set only (per WP-04 no Flatpak can run the input relay), AppStream/desktop metadata, and a first-launch notice listing the features the sandbox removes | M | WP-P1 | Packaging/CI | todo |
 | WP-P3 | Headless GUI smoke harness in CI (sway headless + Xvfb), smoke matrix runner across ubuntu 22.04/24.04, fedora, arch containers in FUSE and extract-and-run modes (build on oldest Qt, test on newest distro); capture smoke needs the WP-02 `xdpw-shm-only.patch` on the pixman renderer or a DRM-capable runner; re-run the WP-04 Flatpak sandbox probe on a real desktop | M | WP-P1 | Packaging/CI | todo |
 | WP-P4 | Self-update: AppImageUpdate zsync feed, reuse feed parser | S | WP-P1 | Packaging/CI | todo |
-| WP-S1 | `vorssaint-helper` privileged daemon in C, grown from `spikes/wp03-input-relay`: D-Bus API, polkit policy, systemd unit, udev rules, install/uninstall from the app, `PRIVILEGES.md`. Acceptance adds (per WP-03 review): `Enable(true)` bound to the caller's logind session; on real hardware `evtest` succeeds on a device immediately after `Enable(false)`; latency measured end to end on hardware; refused `EVIOCGRAB` names the holding process in the hub; hot-plug via `udev_monitor` | L | WP-03, WP-20 | Systems squad | todo |
+| WP-S1 | `vorssaint-helper` privileged daemon in C under `linux/helper`, grown from `spikes/wp03-input-relay` (daemon side first; the in-app installer waits for WP-20): D-Bus API, polkit policy, systemd unit, udev rules, install/uninstall from the app, `PRIVILEGES.md`. Acceptance adds (per WP-03 review): `Enable(true)` bound to the caller's logind session; on real hardware `evtest` succeeds on a device immediately after `Enable(false)`; latency measured end to end on hardware; refused `EVIOCGRAB` names the holding process in the hub; hot-plug via `udev_monitor` | L | WP-03 (daemon); WP-20 (installer) | Systems squad | in progress (daemon) |
 
 Notes for the shell squad: the SwiftUI views in `Sources/Vorssaint/UI` are
 the spec. Port screen by screen (one QML file per SwiftUI view, same
@@ -307,7 +307,7 @@ the triage matrix update for its feature(s).
 
 | ID | Feature(s) | Size | after | Status |
 |---|---|---|---|---|
-| WP-C1 | `WindowSystem` backends: X11 EWMH, `ext-foreign-toplevel-list` + `wlr-foreign-toplevel-management`, KWin scripting D-Bus, Hyprland/Sway IPC; capability flags per backend | L | WP-12, WP-20 | todo |
+| WP-C1 | `WindowSystem` backends in C under `linux/platform/window`: X11 EWMH, `ext-foreign-toplevel-list` + `wlr-foreign-toplevel-management`, KWin scripting D-Bus, Hyprland/Sway IPC; capability flags per backend; the C API in `vorssaint_platform.h` is the contract WP-12's Swift protocol mirrors | L | WP-10 (C side); WP-12, WP-20 (Swift wiring) | in progress |
 | WP-C2 | GNOME Shell extension (`vorssaint-bridge`) exposing window list/activate/move-resize/workspace and clipboard change/read/write over D-Bus, installed and updated from the Capabilities page, CI against the two latest Shell versions | L | WP-C1 | todo |
 | WP-C3 | switcher: list, MRU order, search, simple mode, per-app rules, display filtering; previews from portal window streams where available | L | WP-C1, WP-B1, WP-24 | todo |
 | WP-C4 | windowLayout keyboard snapping + display move on backends that can move/resize; edge-drag on X11 | L | WP-C1, WP-24 | todo |

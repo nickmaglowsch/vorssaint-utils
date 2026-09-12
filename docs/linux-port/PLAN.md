@@ -334,14 +334,23 @@ Sources/
                           SwiftUI views, calling the core through the
                           Platform protocols (adapter written in WP-12).
   Vorssaint/main.swift    macOS executable (unchanged entry point).
-  VorssaintLinux/         Linux backends: Portals, Wayland, X11, PipeWire,
-                          Sensors, Logind, UPower, BlueZ, PackageKit,
-                          Flatpak, HelperClient, GnomeBridgeClient,
-                          KWinScriptClient, CompositorIPC. CoreBridge
-                          (@_cdecl surface).
+  VorssaintLinux/         Swift side of the Linux build: the Platform
+                          protocol implementations as thin wrappers over a
+                          C callback table (`PlatformCallbacks`) that the
+                          shell registers at start-up, plus CoreBridge
+                          (@_cdecl surface). No Wayland/PipeWire/D-Bus
+                          code lives here.
 linux/helper/           privileged C daemon (from the WP-03 spike):
                           InputRelay, Hwmon, DDC. sd-bus + polkit.
 linux/
+  platform/               C/C++ backends, one directory per concern, each
+                          a library with a CLI harness testable under
+                          headless sway/Xvfb: window (EWMH, foreign-toplevel,
+                          KWin script, Hyprland/Sway IPC, GNOME bridge),
+                          capture (from the WP-02 spike), audio (PipeWire),
+                          sensors, power (logind, UPower), bluez, packages,
+                          portals, helper-client. They fill the
+                          `PlatformCallbacks` table.
   shell/                  Qt 6 Quick app: CoreModel bridge, QML screens
                           (one file per SwiftUI view it replaces), tray,
                           panel, overlays, capture UI, editors.
@@ -355,6 +364,16 @@ docs/linux-port/          this plan, triage, backlog, playbook, spikes,
 ```
 
 Rules of the architecture:
+
+- **Linux platform code is C/C++ under `linux/platform`, not Swift.**
+  Decided at the Phase 0 gate: the spikes for capture and input are C, the
+  toolkit is Qt, the system libraries are C, and Swift cannot be compiled in
+  the team's execution environment (only on CI, at ~15 minutes a cycle).
+  The Swift `Platform` protocols (WP-12) are therefore mirrored one-to-one by
+  a C header `linux/platform/include/vorssaint_platform.h` (a struct of
+  function pointers plus event callbacks); `Sources/VorssaintLinux` wraps
+  that table and nothing else. Backends are developed and tested locally
+  with their CLI harnesses; the Swift wrappers are exercised on CI.
 
 - SwiftPM has no Linux platform declaration and `platforms:` constrains only
   Apple platforms, so "macOS-only" and "Linux-only" are `#if os(...)` guards
