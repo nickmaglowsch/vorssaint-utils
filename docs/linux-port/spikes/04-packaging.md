@@ -268,7 +268,8 @@ Local `mksquashfs` proves the payload builds; the AppImage wrapper needs
 | 1 | 34657593238 | jammy `qt6-base-dev` does not pull `Qt6OpenGL`/XKB dev packages; artifact paths may not contain `*` |
 | 2 | 34657886539 | Qt found; `qt_standard_project_setup()` is Qt 6.3+, jammy has 6.2.4; flatpak-builder ran `ninja install` on a target that does not exist |
 | 5 | 34659029670 | AppImage 1 built; `linuxdeploy-plugin-qt` failed (`/usr/bin/qmake` is the qtchooser wrapper); both Flatpaks built but failed export on SVG icon validation; smoke steps aborted under `bash -e` before printing anything |
-| **7** | **34659311011** | **all ten jobs green; the numbers below come from this run** |
+| 7 | 34659311011 | all ten jobs green; the sizes and probe output below come from this run, and it is where the QML bug was caught |
+| **9** | **34659989460** | **all ten jobs green with the QML fix; both AppImages now render identically** |
 
 ### Hand-built AppDir on the oldest glibc (run 7, ubuntu-22.04, glibc 2.35, Qt 6.2.4)
 
@@ -354,15 +355,41 @@ resolvable `path` on 6.2, and the script only bundled modules whose `path` the
 scanner filled in. Fixed in this WP: `build-appdir.sh` now also resolves every
 reported module *name* against `QT_INSTALL_QML` and sweeps every nested
 `qmldir` under a bundled module. The fix produces a byte-identical AppDir on
-Qt 6.4 (`diff -rq` clean), so it is a pure widening; its effect on Qt 6.2 is
-verified by the next CI run, not by this report.
+Qt 6.4 (`diff -rq` clean), so it is a pure widening.
+
+**Verified fixed** in run **34659989460** (all ten jobs green), same container,
+same command:
+
+```
+===================== vorssaint-spike-hand-x86_64 (extract)
+exit=0
+--- log
+Failed to create wl_display (No such file or directory)
+qt.qpa.plugin: Could not load the Qt platform plugin "wayland" in "" even though it was found.
+tray: isSystemTrayAvailable=false
+tray: visible=true
+--- missing-library / platform-plugin diagnostics
+qt.qpa.plugin: Could not load the Qt platform plugin "wayland" in "" even though it was found.
+===================== vorssaint-spike-linuxdeploy-x86_64 (extract)
+exit=0
+...
+-rw-r--r-- 1 root root   204  extract-vorssaint-spike-hand-x86_64.log
+-rw-r--r-- 1 root root 10411  extract-vorssaint-spike-hand-x86_64.png
+-rw-r--r-- 1 root root    53  extract-vorssaint-spike-linuxdeploy-x86_64.log
+-rw-r--r-- 1 root root 10411  extract-vorssaint-spike-linuxdeploy-x86_64.png
+```
+
+Both AppImages now exit 0 and both screenshots are 10,411 bytes — the same
+rendered panel, byte for byte. The hand-built log went from 511 bytes of QML
+errors to 204 bytes containing only the designed Wayland fallback line.
 
 Two lessons worth keeping:
 
 1. The hand-built script is good for understanding what is in the bundle and
    for a CI without github access, but **`linuxdeploy-plugin-qt` is the safer
    production path** — it got the QML deployment right on the Qt version where
-   the hand-rolled scan did not.
+   the hand-rolled scan did not, without being told anything extra. Running
+   both and comparing is what turned a silent bug into a one-line fix.
 2. Build on the oldest Qt, test on the newest distro. The bug only existed in
    the jammy-built AppImage and only showed up when *run* elsewhere; a
    build-host-only test would have missed it entirely.
