@@ -1,7 +1,12 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Vorssaint
 
+// swift-corelibs-foundation has the CGFloat/CGPoint/CGSize/CGRect family but
+// there is no CoreGraphics *module* on Linux, so the import (not the code) is
+// guarded, exactly as Services/Recorder/RecorderMotion.swift already is.
+#if canImport(CoreGraphics)
 import CoreGraphics
+#endif
 import Foundation
 
 /// A picture laid over the recording for a while: a logo, a badge, a mark of

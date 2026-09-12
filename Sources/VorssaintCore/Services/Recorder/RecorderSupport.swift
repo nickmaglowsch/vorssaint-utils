@@ -1,7 +1,12 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Vorssaint
 
+// swift-corelibs-foundation has the CGFloat/CGPoint/CGSize/CGRect family but
+// there is no CoreGraphics *module* on Linux, so the import (not the code) is
+// guarded, exactly as Services/Recorder/RecorderMotion.swift already is.
+#if canImport(CoreGraphics)
 import CoreGraphics
+#endif
 import Foundation
 
 /// Lets cancellation win while an asynchronous capture start is suspended.
@@ -222,11 +227,10 @@ enum RecorderSupport {
         featureIsAvailable && requestGeneration == currentGeneration
     }
 
-
     // MARK: - What is being recorded
 
-    static func exceptedOwnWindowIDs(ownWindowIDs: Set<CGWindowID>,
-                                     protectedWindowIDs: Set<CGWindowID>) -> Set<CGWindowID> {
+    static func exceptedOwnWindowIDs(ownWindowIDs: Set<PlatformWindowID>,
+                                     protectedWindowIDs: Set<PlatformWindowID>) -> Set<PlatformWindowID> {
         ownWindowIDs.subtracting(protectedWindowIDs)
     }
 
@@ -234,10 +238,10 @@ enum RecorderSupport {
     /// and never recomputed: a window that moves keeps recording the region it
     /// was picked in, which is what the pointer track and the zoom assume.
     struct Region: Equatable {
-        let displayID: CGDirectDisplayID
+        let displayID: PlatformDisplayID
         /// Set only when a window was clicked, so the stream can follow that
         /// window's own buffer instead of a slice of the display.
-        let windowID: CGWindowID?
+        let windowID: PlatformWindowID?
         /// Top-left origin, in the display's pixels, already even on both axes.
         let pixelRect: CGRect
         /// The same area in Cocoa global points, for anchoring panels to it.
@@ -388,32 +392,6 @@ enum RecorderSupport {
 
     static func sanitizedAspect(_ raw: String?) -> Aspect {
         Aspect(rawValue: raw ?? "") ?? .original
-    }
-
-    struct VideoGeometry: Equatable {
-        let size: CGSize
-        let transform: CGAffineTransform
-    }
-
-    /// Normalizes a movie track's orientation into a display-sized rectangle
-    /// whose origin is zero. Screen recordings are already identity; imported
-    /// portrait and rotated movies commonly are not.
-    static func videoGeometry(naturalSize: CGSize,
-                              preferredTransform: CGAffineTransform) -> VideoGeometry {
-        guard naturalSize.width.isFinite, naturalSize.height.isFinite,
-              naturalSize.width > 0, naturalSize.height > 0
-        else { return VideoGeometry(size: .zero, transform: .identity) }
-        let naturalRect = CGRect(origin: .zero, size: naturalSize)
-        let displayed = naturalRect.applying(preferredTransform)
-        guard displayed.width.isFinite, displayed.height.isFinite,
-              displayed.width != 0, displayed.height != 0
-        else { return VideoGeometry(size: .zero, transform: .identity) }
-        var normalized = preferredTransform
-        normalized.tx -= displayed.minX
-        normalized.ty -= displayed.minY
-        return VideoGeometry(
-            size: evenSize(CGSize(width: abs(displayed.width), height: abs(displayed.height))),
-            transform: normalized)
     }
 
     /// Nothing is ever encoded larger than this on its long edge: a background

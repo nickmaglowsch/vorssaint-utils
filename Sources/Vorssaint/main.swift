@@ -3,6 +3,7 @@
 
 import AppKit
 
+MacPlatformSeams.install()
 SuperKeyMappingGuard.runIfRequestedAndExit()
 Defaults.register()
 MouseAccelerationGuard.runIfRequestedAndExit()

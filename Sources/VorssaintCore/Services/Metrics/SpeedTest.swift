@@ -1,8 +1,17 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Vorssaint
 
+#if canImport(Darwin)
 import Combine
+#else
+import OpenCombine
+#endif
 import Foundation
+// URLSession and its delegates live in FoundationNetworking on Linux;
+// on Darwin they are part of Foundation and this module does not exist.
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
 
 /// A user-triggered internet speed test: latency, then download, then upload,
 /// using Cloudflare's public speed endpoints (the same backend speed.cloudflare.com
@@ -43,7 +52,9 @@ final class SpeedTest: NSObject, ObservableObject {
     private var task: URLSessionTask?
     private var kind: Kind = .none           // touched only on `queue`
     private var transferred: Int64 = 0       // touched only on `queue`
-    private var startedAt: CFAbsoluteTime = 0
+    /// Seconds since the reference date, the value `CFAbsoluteTimeGetCurrent`
+    /// returned before WP-12 replaced it with its Foundation spelling.
+    private var startedAt: TimeInterval = 0
     private var finished = false
     private var generation = 0
     private var stopWork: DispatchWorkItem?
@@ -94,11 +105,11 @@ final class SpeedTest: NSObject, ObservableObject {
             return
         }
         let url = URL(string: "\(host)/__down?bytes=0")!
-        let started = CFAbsoluteTimeGetCurrent()
+        let started = Date().timeIntervalSinceReferenceDate
         let generation = self.generation
         task = session.dataTask(with: url) { [weak self] _, response, error in
             guard let self else { return }
-            let rtt = (CFAbsoluteTimeGetCurrent() - started) * 1000
+            let rtt = (Date().timeIntervalSinceReferenceDate - started) * 1000
             // Continue on the delegate queue so the transfer phase's `kind` is set
             // there too — otherwise the byte-counting delegate could miss it.
             self.queue.addOperation {
@@ -121,7 +132,7 @@ final class SpeedTest: NSObject, ObservableObject {
         transferred = 0
         finished = false
         setPhase(transfer == .download ? .download : .upload)
-        startedAt = CFAbsoluteTimeGetCurrent()
+        startedAt = Date().timeIntervalSinceReferenceDate
 
         let generation = self.generation
         let work = DispatchWorkItem { [weak self] in
@@ -158,7 +169,7 @@ final class SpeedTest: NSObject, ObservableObject {
         finished = true
         stopWork?.cancel(); stopWork = nil
 
-        let elapsed = CFAbsoluteTimeGetCurrent() - startedAt
+        let elapsed = Date().timeIntervalSinceReferenceDate - startedAt
         let bytes = transferred
         if timedOut { task?.cancel() }
         task = nil

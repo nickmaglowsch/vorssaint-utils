@@ -19,6 +19,10 @@ import VMStatisticsCompat
 @main
 struct MetricsTests {
     static func main() {
+        // The platform seams the core reads through (WP-12). The app installs
+        // these on the first line of main.swift; the harness has no main.swift,
+        // so it installs them here, before any check runs.
+        MacPlatformSeams.install()
         var failures: [String] = []
         var checks = 0
 
@@ -24781,7 +24785,7 @@ struct MetricsTests {
         for path in ["Sources/Vorssaint/Services/Clipboard/ClipboardHistorySupport.swift",
                      "Sources/Vorssaint/UI/Settings/SettingsSearchSupport.swift",
                      "Sources/Vorssaint/Services/Switcher/SwitcherSupport.swift",
-                     "Sources/Vorssaint/Services/CommandBar/CommandBarSupport.swift"] {
+                     "Sources/VorssaintCore/Services/CommandBar/CommandBarSupport.swift"] {
             let source = (try? String(contentsOfFile: path, encoding: .utf8)) ?? ""
             expect(!source.isEmpty, "\(path) reads back for its folding check")
             let code = source.components(separatedBy: "\n")
@@ -26250,7 +26254,7 @@ struct MetricsTests {
         expect(!selfUninstallSource.isEmpty && !uninstallScriptSource.isEmpty,
                "uninstall sources read back for uninstallation alignment check")
         let queryHabitSupportSource = (try? String(
-            contentsOfFile: "Sources/Vorssaint/Services/CommandBar/CommandBarSupport.swift",
+            contentsOfFile: "Sources/Vorssaint/Services/CommandBar/CommandBarSupport+Mac.swift",
             encoding: .utf8)) ?? ""
         expect(selfUninstallSource.contains("CommandBarQueryHabits.removeInstallationKey()")
                 && queryHabitSupportSource.contains("installationKeyCache.stopAndRemove {")
