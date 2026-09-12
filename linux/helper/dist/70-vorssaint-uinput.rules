@@ -1,0 +1,23 @@
+# Vorssaint input relay: udev rules.
+#
+# Installed to /usr/lib/udev/rules.d/70-vorssaint-uinput.rules.
+#
+# Note what this file does NOT do: it does not widen access to /dev/uinput or
+# to /dev/input/event* for any user or group. The helper runs as root and needs
+# no rule to open them. Granting a group write access to /dev/uinput is the
+# alternative this port rejected, because it makes every process of that user
+# able to forge input; see docs/linux-port/PRIVILEGES.md.
+
+# 1. Start the helper when the uinput device appears. Without this, the helper
+#    can be activated before the module that provides its only output path.
+ACTION=="add", KERNEL=="uinput", SUBSYSTEM=="misc", TAG+="systemd", ENV{SYSTEMD_WANTS}+="vorssaint-helper.service"
+
+# 2. Tag the relay's own output device. The relay reads this property during
+#    discovery and skips the device: grabbing its own output is a feedback loop
+#    that locks the session out of its keyboard.
+SUBSYSTEM=="input", ATTRS{name}=="Vorssaint Relay", ENV{ID_INPUT_VORSSAINT_RELAY}="1"
+
+# 3. The virtual device carries the union of every real device's capabilities,
+#    so a model-specific libinput quirk matched against it would be applied to
+#    all of them at once. Mark it plainly as a keyboard and nothing more.
+SUBSYSTEM=="input", ENV{ID_INPUT_VORSSAINT_RELAY}=="1", ENV{ID_INPUT_KEYBOARD}="1", ENV{LIBINPUT_IGNORE_DEVICE}="0"
