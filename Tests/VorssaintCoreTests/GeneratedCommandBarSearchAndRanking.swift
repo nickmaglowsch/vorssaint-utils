@@ -41,6 +41,276 @@ final class GeneratedCommandBarSearchAndRankingTests: XCTestCase {
 
         let secondBarPresentation = UUID()
 
+        var barLifecycle = CommandBarPresentationLifecycle()
+
+        barLifecycle.beginHome(firstBarPresentation)
+
+        expect(barLifecycle.isLoadingHome,
+               "home presents with no stale runnable rows while its catalog hydrates")
+
+        barLifecycle.hide()
+
+        expect(!barLifecycle.completeHomeHydration(firstBarPresentation, isVisible: false),
+               "closing the panel cancels deferred hydration")
+
+        barLifecycle.beginHome(firstBarPresentation)
+
+        barLifecycle.beginHome(secondBarPresentation)
+
+        expect(!barLifecycle.completeHomeHydration(firstBarPresentation, isVisible: true)
+                && barLifecycle.completeHomeHydration(secondBarPresentation, isVisible: true),
+               "only the latest visible home presentation may receive deferred work")
+
+        expect(barLifecycle.acceptsHomeUpdates(secondBarPresentation, isVisible: true)
+                && !barLifecycle.acceptsHomeUpdates(firstBarPresentation, isVisible: true)
+                && !barLifecycle.acceptsHomeUpdates(secondBarPresentation, isVisible: false),
+               "background rows update only their still-visible home presentation")
+
+        expect(barLifecycle.acceptsSharedCacheCompletion(
+                    startedBy: firstBarPresentation,
+                    currentID: secondBarPresentation,
+                    isVisible: true),
+               "a shared cache completion refreshes the newer visible Home")
+
+        barLifecycle.hide()
+
+        expect(!barLifecycle.acceptsSharedCacheCompletion(
+                    startedBy: firstBarPresentation,
+                    currentID: secondBarPresentation,
+                    isVisible: true),
+               "a shared cache completion never mutates a hidden panel")
+
+        var deferredShortcut = CommandBarDeferredRowShortcut()
+
+        deferredShortcut.schedule("action.trash", for: firstBarPresentation)
+
+        expect(deferredShortcut.key(for: secondBarPresentation) == nil
+                && deferredShortcut.key(for: firstBarPresentation) == "action.trash"
+                && deferredShortcut.take(for: secondBarPresentation) == nil
+                && deferredShortcut.take(for: firstBarPresentation) == "action.trash"
+                && deferredShortcut.take(for: firstBarPresentation) == nil,
+               "an async row shortcut waits without being consumed, then runs once on its presentation")
+
+        deferredShortcut.schedule("action.trash", for: firstBarPresentation)
+
+        deferredShortcut.cancel()
+
+        expect(deferredShortcut.take(for: firstBarPresentation) == nil,
+               "closing or superseding a presentation cancels its prompt shortcut")
+
+        expect(CommandBarSearch.normalized("  Brilho   da\tTela ") == "brilho da tela",
+               "command bar folds case and collapses whitespace")
+
+        expect(CommandBarSearch.matches(title: "Reunião com João", query: "reuniao joao"),
+               "command bar search ignores accents and case")
+
+        expect(CommandBarSearch.matches(title: "Brilho da tela", query: "brilho"),
+               "a plain word finds its command")
+
+        expect(CommandBarSearch.matches(title: "Brilho da tela", query: "Brilho"),
+               "capitalized queries land in the same place")
+
+        expect(CommandBarSearch.matches(title: "Brilho da tela", query: "brlho"),
+               "a dropped letter still finds the command")
+
+        expect(CommandBarSearch.matches(title: "Brilho da tela", query: "birlho"),
+               "two swapped letters still find the command")
+
+        expect(CommandBarSearch.matches(title: "Zen", query: "zne"),
+               "a swapped pair still finds a three-letter name")
+
+        expect(!CommandBarSearch.matches(title: "Brilho da tela", query: "volume"),
+               "an unrelated word stays out")
+
+        expect(!CommandBarSearch.matches(title: "Zen", query: "zip"),
+               "short substitutions do not make unrelated names match")
+
+        expect(CommandBarSearch.matches(title: "Capturar tela", keywords: "screenshot print", query: "print"),
+               "keywords match like the title does")
+
+        expect(CommandBarSearch.matches(title: "Capturas recentes",
+                                        keywords: "Recent captures screenshot recording",
+                                        query: "recent captures"),
+               "recent captures stays searchable by its familiar English name")
+
+        expect(CommandBarSearch.pinyinKeywords("云笔记") == "yunbiji ybj",
+               "pinyin keywords run the syllables together and add the initials")
+
+        expect(CommandBarSearch.pinyinKeywords("Reader").isEmpty,
+               "a name without Han characters gets no pinyin keywords")
+
+        let pinyinKeywords = CommandBarSearch.pinyinKeywords("云笔记")
+
+        expect(CommandBarSearch.matches(title: "云笔记", keywords: pinyinKeywords,
+                                        query: "yunbiji"),
+               "a Chinese title is found by its pinyin")
+
+        expect(CommandBarSearch.matches(title: "云笔记", keywords: pinyinKeywords, query: "ybj"),
+               "a Chinese title is found by its pinyin initials")
+
+        let applicationKeywords = CommandBarSearch.applicationKeywords(
+            title: "云笔记", diskName: "CloudNotes", alternateNames: ["Former Notes"])
+
+        expect(CommandBarSearch.matches(title: "云笔记", keywords: applicationKeywords,
+                                        query: "cloudnotes")
+                && CommandBarSearch.matches(title: "云笔记", keywords: applicationKeywords,
+                                            query: "former")
+                && CommandBarSearch.matches(title: "云笔记", keywords: applicationKeywords,
+                                            query: "yunbiji"),
+               "an app keeps its disk, alternate and phonetic names searchable")
+
+        expect(CommandBarSearch.matches(title: "Silenciar microfone", query: "silenciar micro"),
+               "tokens match in any order as prefixes")
+
+        expect(!CommandBarSearch.matches(title: "Silenciar microfone", query: "silenciar tela"),
+               "every token must land somewhere")
+
+        expect(CommandBarSearch.isSubsequence("brlho", of: "brilho")
+                && !CommandBarSearch.isSubsequence("brilhoo", of: "brilho"),
+               "subsequence needs every letter in order")
+
+        expect(CommandBarSearch.withinOneEdit("birlho", "brilho")
+                && CommandBarSearch.withinOneEdit("brilo", "brilho")
+                && CommandBarSearch.withinOneEdit("brilyo", "brilho")
+                && !CommandBarSearch.withinOneEdit("brolyo", "brilho"),
+               "one edit means one swap, one gap or one wrong letter")
+
+        expect(CommandBarSearch.isAdjacentTransposition("zne", "zen")
+                && !CommandBarSearch.isAdjacentTransposition("zne", "zone")
+                && !CommandBarSearch.isAdjacentTransposition("zip", "zen"),
+               "short typo tolerance accepts one neighboring swap only")
+
+        let barCandidates = [
+            CommandBarCandidate(index: 0, title: "Capturar tela"),
+            CommandBarCandidate(index: 1, title: "Copiar texto da tela"),
+            CommandBarCandidate(index: 2, title: "Bloquear a tela"),
+            CommandBarCandidate(index: 3, title: "Manter acordado"),
+        ]
+
+        expect(CommandBarSearch.rankedIndexes(candidates: barCandidates, matching: "tela")
+                == [0, 1, 2],
+               "matching rows keep catalog order on equal scores")
+
+        expect(CommandBarSearch.rankedIndexes(candidates: barCandidates, matching: "capturar tela")
+                .first == 0,
+               "the full title wins the top row")
+
+        let boosted = [
+            CommandBarCandidate(index: 0, title: "Capturar tela"),
+            CommandBarCandidate(index: 1, title: "Copiar texto da tela", boost: 300),
+        ]
+
+        expect(CommandBarSearch.rankedIndexes(candidates: boosted, matching: "tela") == [1, 0],
+               "usage boost reorders equally good matches")
+
+        expect(CommandBarSearch.rankedIndexes(candidates: boosted, matching: "capturar") == [0],
+               "a boost never resurrects a non-match")
+
+        expect(CommandBarSearch.rankedIndexes(candidates: barCandidates, matching: " ").isEmpty,
+               "a blank query ranks nothing; suggestions handle it")
+
+        let typoCandidates = [
+            CommandBarCandidate(index: 0, title: "Zebra"),
+            CommandBarCandidate(index: 1, title: "Zen"),
+            CommandBarCandidate(index: 2, title: "Zne Tools"),
+        ]
+
+        expect(CommandBarSearch.rankedIndexes(candidates: typoCandidates, matching: "zne")
+                == [2, 1],
+               "literal short matches rank above a transposition and unrelated names stay out")
+
+        // One widely installed app carries a left-to-right mark in front of
+        // its name, which made it stop being an exact match for the name it
+        // shows and sink under every menu row that merely started with it.
+        expect(CommandBarSearch.normalized("\u{200E}WhatsApp") == "whatsapp"
+                && CommandBarSearch.normalized("Soft\u{00AD}hyphen") == "softhyphen",
+               "characters that take up no space never reach the matching")
+
+        let invisible = [
+            CommandBarCandidate(index: 0, title: "WhatsApp Business (and 1 more tab)",
+                                keywords: "Menu Safari History Recently Closed"),
+            CommandBarCandidate(index: 1, title: "\u{200E}WhatsApp"),
+        ]
+
+        expect(CommandBarSearch.rankedIndexes(candidates: invisible, matching: "whatsapp")
+                == [1, 0],
+               "the app named exactly what was typed leads, invisible mark and all")
+
+        expect(CommandBarPreferences.rankBias(for: .menus) < 0
+                && CommandBarPreferences.rankBias(for: .apps)
+                    > CommandBarPreferences.rankBias(for: .actions)
+                && CommandBarPreferences.rankBias(for: .actions) == 0,
+               "apps lead owned actions, and borrowed menu rows sit below both")
+
+        let borrowed = [
+            CommandBarCandidate(index: 0, title: "Tela cheia",
+                                boost: CommandBarPreferences.rankBias(for: .menus)),
+            CommandBarCandidate(index: 1, title: "Tela cheia"),
+        ]
+
+        expect(CommandBarSearch.rankedIndexes(candidates: borrowed, matching: "tela cheia")
+                == [1, 0],
+               "at equal quality the app's own row wins over the menu of the app in front")
+
+        let sharper = [
+            CommandBarCandidate(index: 0, title: "Fechar aba",
+                                boost: CommandBarPreferences.rankBias(for: .menus)),
+            CommandBarCandidate(index: 1, title: "Fechar todas as abas do navegador"),
+        ]
+
+        expect(CommandBarSearch.rankedIndexes(candidates: sharper, matching: "fechar aba")
+                .first == 0,
+               "the step down never buries a menu command that is what was typed")
+
+        let appBeforeDiscovery = [
+            CommandBarCandidate(index: 0, title: "What's New",
+                                boost: CommandBarPreferences.rankBias(for: .settingsPages)),
+            CommandBarCandidate(index: 1, title: "Whatever",
+                                boost: CommandBarPreferences.rankBias(for: .apps)),
+        ]
+
+        expect(CommandBarSearch.rankedIndexes(candidates: appBeforeDiscovery, matching: "what")
+                .first == 1,
+               "an equally good app match leads a low-priority discovery page")
+
+        let learnedBeforeExact = [
+            CommandBarCandidate(index: 0, title: "Passwords"),
+            CommandBarCandidate(index: 1, title: "Secure Pass", priority: 1),
+        ]
+
+        expect(CommandBarSearch.rankedIndexes(candidates: learnedBeforeExact, matching: "pass")
+                .first == 1,
+               "a learned query choice outranks an unselected stronger text match")
+
+        let namedApp = [
+            CommandBarCandidate(index: 0, title: "Editor"),
+            CommandBarCandidate(index: 1, title: "Source Studio",
+                                keywords: "editor", priority: 2_400),
+        ]
+
+        expect(CommandBarSearch.rankedIndexes(candidates: namedApp, matching: "editor")
+                .first == 1,
+               "a name deliberately given to an app still leads its ordinary title match")
+
+        let aliasBeforeLearning = [
+            CommandBarCandidate(index: 0, title: "Passwords", priority: 1_100),
+            CommandBarCandidate(index: 1, title: "Secure Pass", priority: 720),
+        ]
+
+        expect(CommandBarSearch.rankedIndexes(candidates: aliasBeforeLearning, matching: "pass")
+                .first == 0,
+               "an explicit alias remains stronger than learned query behavior")
+
+        // Two rows with one id is undefined behaviour in a SwiftUI list, and
+        // the list is stitched from six providers plus whatever was saved.
+        expect(CommandBarSearch.firstOccurrences(of: ["a", "b", "a", "c", "b"]) == [0, 1, 3],
+               "a repeated id keeps the better ranked row and drops the other")
+
+        expect(CommandBarSearch.firstOccurrences(of: []).isEmpty, "an empty list stays empty")
+
+        expect(CommandBarSearch.firstOccurrences(of: ["a", "b"]) == [0, 1],
+               "a list with nothing repeated is left alone")
+
         let commandBarSource = (try? String(
             contentsOfFile: "Sources/Vorssaint/Services/CommandBar/CommandBarService.swift",
             encoding: .utf8)) ?? ""
@@ -108,6 +378,54 @@ final class GeneratedCommandBarSearchAndRankingTests: XCTestCase {
         let english = Locale(identifier: "en_US")
 
         let tuesday = Date(timeIntervalSince1970: 1_785_240_000)   // 2026-07-28
+
+        func dated(_ input: String, _ locale: Locale = english) -> String? {
+            CommandBarDates.evaluate(input, now: tuesday, calendar: gregorian, locale: locale)?.formatted
+        }
+
+        expect(dated("in 3 weeks") == "August 18, 2026",
+               "three weeks from now is a date, not a search")
+
+        expect(dated("daqui 10 dias", Locale(identifier: "pt_BR")) == "7 de agosto de 2026",
+               "the same question in the person's own words, written their way")
+
+        expect(dated("3 days ago") == "July 25, 2026" && dated("ha 3 dias") == "July 25, 2026",
+               "backwards counts backwards, before or after the number")
+
+        expect(dated("today + 10 days") == "August 7, 2026"
+                && dated("today - 10 days") == "July 18, 2026",
+               "a plain sign decides the direction")
+
+        expect(dated("3 days") == nil && dated("2+2") == nil && dated("100 km to mi") == nil,
+               "without a direction it is not a question, and a sum is not a date")
+
+        expect(CommandBarDates.evaluate("in 3 weeks", now: tuesday, calendar: gregorian,
+                                        locale: english)?.detail == "Tuesday",
+               "the answer says which weekday it lands on")
+
+        expect(dated("days until 12/25")?.contains("150") == true,
+               "how far away a written date is, counted in whole days")
+
+        expect(CommandBarDates.evaluate("time in tokyo", now: tuesday, calendar: gregorian,
+                                        locale: english)?.detail.hasPrefix("Tokyo") == true,
+               "the clock somewhere else, from the time zones the Mac already knows")
+
+        expect(CommandBarDates.evaluate("hora em londres", now: tuesday, calendar: gregorian,
+                                        locale: english)?.detail.hasPrefix("London") == true,
+               "a city named the way the person's language names it")
+
+        expect(CommandBarDates.evaluate("time", now: tuesday, calendar: gregorian,
+                                        locale: english) == nil,
+               "a time word with nowhere to look is not an answer")
+
+        // The gate is the whole safety of this: anything a person might be
+        // searching for that happens to carry a number must fall through.
+        for innocent in ["1password", "2 monitors", "3 tags", "notes", "day one",
+                         "5 minutes", "2026-07-28", "the 3 body problem"] {
+            expect(CommandBarDates.evaluate(innocent, now: tuesday, calendar: gregorian,
+                                            locale: english) == nil,
+                   "\"\(innocent)\" is a search, not a date")
+        }
 
         print("[generated-checks] CommandBarSearchAndRanking \(checks)")
     }

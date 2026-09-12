@@ -47,7 +47,7 @@ final class GeneratedUninstallationPathsStayAlignedAcrossSelfUninstallAndToolsUn
                "uninstall sources read back for uninstallation alignment check")
 
         let queryHabitSupportSource = (try? String(
-            contentsOfFile: "Sources/Vorssaint/Services/CommandBar/CommandBarSupport.swift",
+            contentsOfFile: "Sources/Vorssaint/Services/CommandBar/CommandBarSupport+Mac.swift",
             encoding: .utf8)) ?? ""
 
         expect(selfUninstallSource.contains("CommandBarQueryHabits.removeInstallationKey()")

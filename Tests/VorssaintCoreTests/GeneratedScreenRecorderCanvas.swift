@@ -37,7 +37,22 @@ final class GeneratedScreenRecorderCanvasTests: XCTestCase {
             GeneratedSupport.formatSpecifiers(in: format)
         }
 
+        expect(RecorderSupport.videoGeometry(naturalSize: .zero,
+                                             preferredTransform: .identity).size == .zero,
+               "missing video dimensions stay invalid instead of becoming an artificial frame")
+
+        expect(RecorderSupport.sanitizedZoomAmount(99) == RecorderSupport.zoomAmountRange.upperBound
+                && RecorderSupport.sanitizedZoomAmount(.nan) == 1.8,
+               "a broken zoom amount falls back instead of magnifying to nothing")
+
         let takeID = UUID()
+
+        expect(RecorderSupport.takeID(fromFolderName: RecorderSupport.takeFolderName(id: takeID))
+                == takeID,
+               "a recording folder name round-trips its id")
+
+        expect(RecorderSupport.takeID(fromFolderName: "Downloads") == nil,
+               "an unrelated folder is never mistaken for a recording")
 
         var englishFormats: [String: [String]] = [:]
 
@@ -108,7 +123,7 @@ final class GeneratedScreenRecorderCanvasTests: XCTestCase {
         for path in ["Sources/Vorssaint/Services/Clipboard/ClipboardHistorySupport.swift",
                      "Sources/Vorssaint/UI/Settings/SettingsSearchSupport.swift",
                      "Sources/Vorssaint/Services/Switcher/SwitcherSupport.swift",
-                     "Sources/Vorssaint/Services/CommandBar/CommandBarSupport.swift"] {
+                     "Sources/VorssaintCore/Services/CommandBar/CommandBarSupport.swift"] {
             let source = (try? String(contentsOfFile: path, encoding: .utf8)) ?? ""
             expect(!source.isEmpty, "\(path) reads back for its folding check")
             let code = source.components(separatedBy: "\n")
@@ -161,6 +176,25 @@ final class GeneratedScreenRecorderCanvasTests: XCTestCase {
             expect(recordingShareValues.allSatisfy { !$0.contains("—") },
                    "no em-dash in recording share strings (\(language.rawValue))")
         }
+
+        // A heavy, rare verb stays out of the list until it is asked for, in
+        // every language the app speaks.
+        for language in AppLanguage.allCases {
+            let format = FeatureStrings.commandBar(language).quitFormat
+            let verb = format.replacingOccurrences(of: "%@", with: " ")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            expect(CommandBarSearch.matchesVerb(verb, in: format),
+                   "the quit verb finds its own rows in \(language.rawValue)")
+        }
+
+        expect(CommandBarSearch.matchesVerb("quit saf", in: "Quit %@")
+                && CommandBarSearch.matchesVerb("encerrar", in: "Encerrar %@")
+                && CommandBarSearch.matchesVerb("終了", in: "%@を終了"),
+               "the verb is recognized with the name typed after it, and without spaces too")
+
+        expect(!CommandBarSearch.matchesVerb("safari", in: "Quit %@")
+                && !CommandBarSearch.matchesVerb("", in: "Quit %@"),
+               "an app name alone never drags the quit rows in")
 
         print("[generated-checks] ScreenRecorderCanvas \(checks)")
     }

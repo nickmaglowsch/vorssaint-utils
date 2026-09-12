@@ -70,7 +70,11 @@ final class GeneratedLocalizationFormatContractsTests: XCTestCase {
         // the marks their language uses.
         var typewriterMarks: [String] = []
 
-        for folder in ["Sources/Vorssaint/Core", "Sources/Vorssaint/Core/Localizations"] {
+        // The string catalogs live under Sources/VorssaintCore/Core since the
+        // core extraction (docs/linux-port/CORE_MOVES.md § 5); both roots are
+        // walked so the sweep keeps reading every file it used to read.
+        for folder in ["Sources/Vorssaint/Core", "Sources/Vorssaint/Core/Localizations",
+                       "Sources/VorssaintCore/Core", "Sources/VorssaintCore/Core/Localizations"] {
             for name in (try? FileManager.default.contentsOfDirectory(atPath: folder)) ?? [] {
                 guard name.hasSuffix("Strings.swift") || name.hasPrefix("Strings+")
                         || name == "Localization.swift" else { continue }
@@ -109,13 +113,16 @@ final class GeneratedLocalizationFormatContractsTests: XCTestCase {
 
         var breakingFrench: [String] = []
 
-        var frenchSources = ["Sources/Vorssaint/Core/Localizations/Strings+French.swift"]
+        var frenchSources = ["Sources/Vorssaint/Core/Localizations/Strings+French.swift",
+                             "Sources/VorssaintCore/Core/Localizations/Strings+French.swift"]
 
-        frenchSources += ((try? FileManager.default
-            .contentsOfDirectory(atPath: "Sources/Vorssaint/Core")) ?? [])
-            .filter { $0.hasSuffix("Strings.swift") }
-            .sorted()
-            .map { "Sources/Vorssaint/Core/" + $0 }
+        for root in ["Sources/Vorssaint/Core", "Sources/VorssaintCore/Core"] {
+            frenchSources += ((try? FileManager.default
+                .contentsOfDirectory(atPath: root)) ?? [])
+                .filter { $0.hasSuffix("Strings.swift") }
+                .sorted()
+                .map { root + "/" + $0 }
+        }
 
         for path in frenchSources {
             for line in frenchLines(path) {

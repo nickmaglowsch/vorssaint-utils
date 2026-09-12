@@ -60,7 +60,46 @@ final class GeneratedScreenRecorderWiringTests: XCTestCase {
                 && appDelegateSource.contains("WindowActivationPolicy.release()"),
                "Settings retains Command Tab presence only while its window is visible")
 
+        expect(RecorderSupport.exceptedOwnWindowIDs(
+            ownWindowIDs: [1, 2, 3], protectedWindowIDs: [2, 4]) == [1, 3],
+               "recording keeps existing ordinary app windows but never its protected chrome")
+
+        expect(RecordingShareDuration.allCases.map(\.rawValue) == [3_600, 21_600],
+               "recording links allow only one or six hours")
+
+        let recordingShareEndpoint = RecordingSharingSupport.endpoint(
+            bundleIdentifier: RecordingSharingSupport.developerBundleIdentifier,
+            developerOverride: "https://test.example/")
+
+        expect(RecordingSharingSupport.uploadURL(endpoint: recordingShareEndpoint,
+                                                 duration: .sixHours)?.absoluteString
+                == "https://test.example/v1/recordings?expiresIn=21600",
+               "recording sharing uses its fixed endpoint and expiration query")
+
         let recordingID = String(repeating: "r", count: 32)
+
+        let recordingResponse = RecordingShareResponse(
+            id: recordingID,
+            viewPath: "/s/\(recordingID)",
+            expiresAt: "1970-01-01T06:16:40.000Z",
+            deleteToken: String(repeating: "t", count: 43))
+
+        expect(RecordingSharingSupport.record(response: recordingResponse,
+                                              endpoint: recordingShareEndpoint,
+                                              now: Date(timeIntervalSince1970: 1_000))?.id
+                == recordingID,
+               "a valid six-hour recording response becomes an owner-held record")
+
+        if let recordingPlan {
+            let plannedBytes = (recordingPlan.videoBitRate + recordingPlan.audioBitRate)
+                * 30 / 8
+            expect(plannedBytes < RecordingSharingSupport.targetUploadBytes,
+                   "the first compression pass stays inside the upload budget")
+        }
+
+        expect(RecordingSharingSupport.retryScale(current: 1,
+                                                  actualBytes: 100_000_000) ?? 1 < 1,
+               "an oversized first pass retries at a lower bitrate")
 
         print("[generated-checks] ScreenRecorderWiring \(checks)")
     }

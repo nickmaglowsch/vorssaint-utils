@@ -133,6 +133,12 @@ final class GeneratedFindingAFileFromTheBarTests: XCTestCase {
         expect(CommandBarFileSearchSupport.candidateLimit >= CommandBarFileSearchSupport.resultLimit,
                "more names are asked for than are shown, since most are filtered away")
 
+        expect(CommandBarPreferences.rankBias(for: .files)
+                    < CommandBarPreferences.rankBias(for: .actions)
+                && CommandBarPreferences.rankBias(for: .apps)
+                    > CommandBarPreferences.rankBias(for: .actions),
+               "apps lead commands, while a file needs a plainly better match")
+
         print("[generated-checks] FindingAFileFromTheBar \(checks)")
     }
 }

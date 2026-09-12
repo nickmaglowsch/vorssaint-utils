@@ -37,6 +37,88 @@ final class GeneratedScreenRecorderTimelineTests: XCTestCase {
             GeneratedSupport.formatSpecifiers(in: format)
         }
 
+        let cutTrim = RecorderSupport.Trim(start: 0, end: 20)
+
+        let oneCut = [RecorderTimeline.Cut(start: 5, end: 8)]
+
+        let kept = RecorderTimeline.keptRanges(trim: cutTrim, cuts: oneCut)
+
+        expect(kept.count == 2 && kept[0] == 0...5 && kept[1] == 8...20,
+               "a cut in the middle leaves the two pieces around it")
+
+        expect(abs(RecorderTimeline.outputDuration(trim: cutTrim, cuts: oneCut) - 17) < 0.001,
+               "the finished video is shorter by exactly what was cut")
+
+        expect(abs(RecorderTimeline.sourceTime(forOutput: 4, trim: cutTrim, cuts: oneCut) - 4) < 0.001,
+               "before the cut the two clocks agree")
+
+        expect(abs(RecorderTimeline.sourceTime(forOutput: 6, trim: cutTrim, cuts: oneCut) - 9) < 0.001,
+               "after the cut the recording is ahead of the video by the cut's length")
+
+        expect(RecorderTimeline.outputTime(forSource: 6.5, trim: cutTrim, cuts: oneCut) == nil,
+               "a moment that was cut out does not exist in the finished video")
+
+        expect(abs((RecorderTimeline.outputTime(forSource: 12, trim: cutTrim, cuts: oneCut) ?? 0)
+                    - 9) < 0.001,
+               "a moment after the cut maps back to where it really lands")
+
+        // The two clocks are inverses everywhere the moment survives.
+        for step in stride(from: 0.0, through: 17.0, by: 0.37) {
+            let source = RecorderTimeline.sourceTime(forOutput: step, trim: cutTrim, cuts: oneCut)
+            let back = RecorderTimeline.outputTime(forSource: source, trim: cutTrim, cuts: oneCut)
+            expect(abs((back ?? -99) - step) < 0.01,
+                   "the recording clock and the video clock are inverses of each other")
+        }
+
+        expect(RecorderTimeline.normalized(cuts: [RecorderTimeline.Cut(start: 2, end: 6),
+                                                  RecorderTimeline.Cut(start: 5, end: 9)],
+                                           duration: 20)
+                == [RecorderTimeline.Cut(start: 2, end: 9)],
+               "two cuts that touch become one")
+
+        expect(RecorderTimeline.normalized(cuts: [RecorderTimeline.Cut(start: 3, end: 3.02)],
+                                           duration: 20).isEmpty,
+               "a cut too short to see is not a cut")
+
+        let overlapping = [
+            RecorderTimeline.ZoomSegment(start: 1, end: 4, amount: 2),
+            RecorderTimeline.ZoomSegment(start: 3, end: 6, amount: 2),
+        ]
+
+        let tidy = RecorderTimeline.normalized(segments: overlapping, duration: 20)
+
+        expect(tidy.count == 2 && tidy[0].end <= tidy[1].start + 0.001,
+               "two zooms that overlap are pushed apart instead of one being dropped")
+
+        let moved = RecorderTimeline.moved(tidy[1], to: 0, among: tidy, duration: 20)
+
+        expect(moved.start >= tidy[0].end - 0.001,
+               "dragging a zoom stops at its neighbour instead of pushing it")
+
+        expect(abs(moved.duration - tidy[1].duration) < 0.001,
+               "moving a zoom never changes how long it is")
+
+        let squeezed = RecorderTimeline.resized(tidy[0], edge: .end, to: 1.05,
+                                                among: tidy, duration: 20)
+
+        expect(squeezed.duration >= RecorderTimeline.minimumSegment - 1e-9,
+               "a zoom cannot be dragged shorter than something you could grab again")
+
+        expect(RecorderTimeline.slotForNewSegment(at: 10, existing: tidy, duration: 20) != nil,
+               "there is room for a new zoom in an empty stretch")
+
+        expect(RecorderTimeline.slotForNewSegment(at: 2, existing: tidy, duration: 20)
+                .map { $0.start >= tidy[0].end - 0.001 } ?? false,
+               "adding a zoom inside another one puts it after that one, never on top")
+
+        let aimed = RecorderTimeline.ZoomSegment(start: 0, end: 3, amount: 2,
+                                                 focusX: 0.9, focusY: 0.5)
+
+        let state = RecorderTimeline.zoomState(at: 1.5, segments: [aimed])
+
+        expect(state.progress == 1 && state.amount == 2 && state.focus != nil,
+               "in the middle of a zoom it is fully in, at its own strength, aimed where it was put")
+
         // A hand-aimed spot near the edge must land there, not be pulled in by
         // the calming band the automatic follow uses.
         expect(abs(RecorderMotion.travelParameter(exactFocus: 0.9, zoom: 2) - 1) < 0.001,

@@ -247,6 +247,22 @@ final class GeneratedScreenshotToolTests: XCTestCase {
                    "the empty zoom state has its own button label in \(language.rawValue)")
         }
 
+        // A menu row says where the command lives. Every Mac app has a menu
+        // named after itself, so the app menu read its own name twice.
+        expect(CommandBarMenuPath.crumb(appName: "Notes", path: ["Notes"]) == "Notes",
+               "the app menu does not say the app name twice")
+
+        expect(CommandBarMenuPath.crumb(appName: "Notes", path: ["File", "Export"])
+                == "Notes \u{203A} File \u{203A} Export",
+               "a real trail keeps every step")
+
+        expect(CommandBarMenuPath.crumb(appName: "Notes", path: []) == "Notes",
+               "a command straight off the app names only the app")
+
+        expect(CommandBarMenuPath.crumb(appName: "Notes", path: ["", "View"])
+                == "Notes \u{203A} View",
+               "an empty step leaves no dangling separator")
+
         // The cleanup above is the only kind that survives exit(). A defer
         // that removes a file here would look like housekeeping and do none.
         let suiteSource = (try? String(contentsOfFile: "Tests/MetricsTests.swift",

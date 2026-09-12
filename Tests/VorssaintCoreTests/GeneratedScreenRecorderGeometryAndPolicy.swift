@@ -37,6 +37,88 @@ final class GeneratedScreenRecorderGeometryAndPolicyTests: XCTestCase {
             GeneratedSupport.formatSpecifiers(in: format)
         }
 
+        expect(RecorderSupport.elapsedLabel(seconds: 0) == "0:00"
+                && RecorderSupport.elapsedLabel(seconds: 7) == "0:07"
+                && RecorderSupport.elapsedLabel(seconds: 754) == "12:34"
+                && RecorderSupport.elapsedLabel(seconds: 3723) == "1:02:03",
+               "elapsed time reads like a player position and grows an hour field only when needed")
+
+        expect(RecorderSupport.elapsedLabel(seconds: -5) == "0:00",
+               "a clock that never went forward still reads as zero")
+
+        expect(RecorderSupport.trustsSystemAudioTap(previously: false, tapHeardSound: true,
+                                                    streamHeardSound: true)
+                && RecorderSupport.trustsSystemAudioTap(previously: false, tapHeardSound: true,
+                                                        streamHeardSound: false),
+               "a tap that heard sound is trusted for the next recording")
+
+        expect(!RecorderSupport.trustsSystemAudioTap(previously: true, tapHeardSound: false,
+                                                     streamHeardSound: true),
+               "a tap that stayed silent through sound the stream heard loses its trust")
+
+        expect(RecorderSupport.trustsSystemAudioTap(previously: true, tapHeardSound: false,
+                                                    streamHeardSound: false)
+                && !RecorderSupport.trustsSystemAudioTap(previously: false, tapHeardSound: false,
+                                                         streamHeardSound: false),
+               "a silent recording proves nothing about the tap")
+
+        var pauseTimeline = RecorderPauseTimeline()
+
+        expect(pauseTimeline.pause(at: 3) && !pauseTimeline.pause(at: 4),
+               "a recording enters one pause only once")
+
+        expect(pauseTimeline.elapsed(since: 0, at: 7) == 3
+                && pauseTimeline.sampleTime(start: 5, duration: 0.01, since: 0) == nil,
+               "an open pause freezes elapsed time and discards captured samples")
+
+        expect(pauseTimeline.resume(at: 8) && !pauseTimeline.resume(at: 9),
+               "a recording resumes one open pause only once")
+
+        expect(pauseTimeline.sampleTime(start: 2, duration: 0.01, since: 0) == 2
+                && pauseTimeline.sampleTime(start: 8, duration: 0.01, since: 0) == 3
+                && pauseTimeline.eventTime(10, since: 0) == 5,
+               "video, audio and event time close the paused gap exactly")
+
+        expect(pauseTimeline.sampleTime(start: 2.99, duration: 0.02, since: 0) == nil,
+               "an audio buffer crossing the pause edge is dropped instead of overlapping")
+
+        expect(pauseTimeline.sampleTime(start: -0.01, duration: 0.01, since: 0) == nil,
+               "a late sample from before the recording origin stays out")
+
+        _ = pauseTimeline.pause(at: 12)
+
+        _ = pauseTimeline.resume(at: 14)
+
+        expect(pauseTimeline.eventTime(13, since: 0) == nil
+                && pauseTimeline.elapsed(since: 0, at: 16) == 9,
+               "several pauses stay excluded from every recording track")
+
+        expect(RecorderSupport.sanitizedFrameRate(60) == 60
+                && RecorderSupport.sanitizedFrameRate(30) == 30
+                && RecorderSupport.sanitizedFrameRate(144) == 60,
+               "an unknown frame rate falls back to the smooth default")
+
+        expect(RecorderSupport.sanitizedQuality("high") == .high
+                && RecorderSupport.sanitizedQuality("nonsense") == .balanced
+                && RecorderSupport.sanitizedQuality(nil) == .balanced,
+               "an unknown quality falls back to balanced")
+
+        let highRate = RecorderSupport.averageBitRate(width: 2940, height: 1912, fps: 60,
+                                                      quality: .high)
+
+        let smallRate = RecorderSupport.averageBitRate(width: 1470, height: 956, fps: 60,
+                                                       quality: .small)
+
+        expect(highRate > smallRate,
+               "a bigger picture at a higher preset asks the encoder for more")
+
+        expect(RecorderSupport.averageBitRate(width: 64, height: 64, fps: 30, quality: .small)
+                >= 800_000,
+               "even a tiny area gets a usable stream")
+
+        expect(highRate <= 60_000_000,
+               "no preset asks for more than the media engine sustains")
+
         let now = Date(timeIntervalSince1970: 1_000_000)
 
         let beingEdited = UUID()
@@ -55,6 +137,17 @@ final class GeneratedScreenRecorderGeometryAndPolicyTests: XCTestCase {
             (id: beingWritten, finishedAt: nil, createdAt: now.addingTimeInterval(-5)),
             (id: deadOnArrival, finishedAt: nil, createdAt: now.addingTimeInterval(-8 * 3600)),
         ]
+
+        let swept = Set(RecorderSupport.orphanTakeIDs(takeHistory, now: now))
+
+        expect(swept == [leftBehind, deadOnArrival],
+               "the sweep only takes what a crash or a quit left behind")
+
+        expect(!swept.contains(beingEdited),
+               "a recording whose editor is open is never swept out from under it")
+
+        expect(!swept.contains(beingWritten),
+               "a recording being written right now has no file yet and is left alone")
 
         let directSaveRoot = FileManager.default.temporaryDirectory
             .appendingPathComponent("vorssaint-recorder-save-\(UUID().uuidString)",
@@ -111,9 +204,136 @@ final class GeneratedScreenRecorderGeometryAndPolicyTests: XCTestCase {
         expect(compositionsAsked > 0 && compositionsAsked == compositionsGuarded,
                "an export stops when the edit cannot be composed, instead of saving the recording bare")
 
+        expect(RecorderSupport.canStart(freeBytes: 10_000_000_000)
+                && !RecorderSupport.canStart(freeBytes: 100_000_000),
+               "a recording refuses to start when the disk is nearly full")
+
+        expect(RecorderSupport.pendingStartIsAuthorized(requestGeneration: 4,
+                                                        currentGeneration: 4,
+                                                        featureIsAvailable: true)
+                && !RecorderSupport.pendingStartIsAuthorized(requestGeneration: 4,
+                                                             currentGeneration: 5,
+                                                             featureIsAvailable: true)
+                && !RecorderSupport.pendingStartIsAuthorized(requestGeneration: 4,
+                                                             currentGeneration: 4,
+                                                             featureIsAvailable: false),
+               "a late microphone response cannot start a cancelled or uninstalled recorder")
+
+        let recorderStartGate = RecorderStartGate()
+
+        expect(recorderStartGate.begin() && recorderStartGate.isAuthorized,
+               "recorder start gate admits one authorized capture start")
+
+        expect(recorderStartGate.cancelAndClaimStop()
+                && !recorderStartGate.claimStartFailure(),
+               "stop atomically owns writer finalization when it wins the start race")
+
         let recorderStartFinished = DispatchSemaphore(value: 0)
 
+        Task.detached {
+            await recorderStartGate.waitUntilFinished()
+            recorderStartFinished.signal()
+        }
+
+        expect(recorderStartFinished.wait(timeout: .now() + 0.05) == .timedOut,
+               "recorder stop waits while capture start is suspended")
+
+        recorderStartGate.finish()
+
+        expect(recorderStartFinished.wait(timeout: .now() + 0.5) == .success
+                && !recorderStartGate.isAuthorized,
+               "recorder cancellation resumes stop only after start has unwound")
+
+        let recorderFailureGate = RecorderStartGate()
+
+        expect(recorderFailureGate.begin() && recorderFailureGate.claimStartFailure()
+                && !recorderFailureGate.cancelAndClaimStop(),
+               "start failure atomically owns writer cancellation when it wins the stop race")
+
+        recorderFailureGate.finish()
+
+        var captureLifecycle = RecorderCaptureLifecycle()
+
+        expect(!captureLifecycle.acceptsSamples && captureLifecycle.beginStart()
+                && captureLifecycle.acceptsSamples && !captureLifecycle.isRunning
+                && captureLifecycle.didStart() && captureLifecycle.isRunning,
+               "recorder capture accepts samples only while its one start is active")
+
+        captureLifecycle.stop()
+
+        expect(!captureLifecycle.acceptsSamples && !captureLifecycle.isRunning
+                && !captureLifecycle.beginStart() && !captureLifecycle.didStart(),
+               "recorder capture stays terminal after stop so queued samples cannot revive it")
+
+        expect(RecorderSupport.shouldStopForDisk(freeBytes: 100_000_000)
+                && !RecorderSupport.shouldStopForDisk(freeBytes: 10_000_000_000),
+               "a recording already running stops before it fills the disk")
+
+        expect(RecorderSupport.minimumFreeBytesToContinue < RecorderSupport.minimumFreeBytesToStart,
+               "stopping a recording is allowed to get closer to full than starting one")
+
+        let wholeClip = RecorderSupport.sanitizedTrim(start: 0, end: 0, duration: 12)
+
+        expect(wholeClip.start == 0 && wholeClip.end == 12,
+               "an end of zero means the whole recording, so an untouched edit shows everything")
+
+        let inside = RecorderSupport.sanitizedTrim(start: 2, end: 9, duration: 12)
+
+        expect(inside.start == 2 && inside.end == 9 && inside.duration == 7,
+               "a trim inside the recording is kept as it is")
+
+        let collapsed = RecorderSupport.sanitizedTrim(start: 8, end: 8, duration: 12)
+
+        // A hair of tolerance: the floor is added to a start time in binary
+        // floating point, so the difference lands a few ulps under it.
+        expect(collapsed.duration >= RecorderSupport.minimumTrimSeconds - 1e-9,
+               "dragging both handles together still leaves a clip you can play")
+
+        let past = RecorderSupport.sanitizedTrim(start: 20, end: 30, duration: 12)
+
+        expect(past.end <= 12 && past.start >= 0 && past.duration > 0,
+               "a trim past the end of the recording is brought back inside it")
+
+        expect(RecorderSupport.sanitizedTrim(start: 0, end: 5, duration: 0).duration == 0,
+               "a recording with no duration produces no clip instead of a broken one")
+
+        expect(RecorderSupport.filmstripTimes(duration: 10, count: 4)
+                == [1.25, 3.75, 6.25, 8.75],
+               "filmstrip frames are sampled at the middle of each slot")
+
+        expect(RecorderSupport.filmstripTimes(duration: 0, count: 4).isEmpty
+                && RecorderSupport.filmstripTimes(duration: 10, count: 0).isEmpty,
+               "an empty recording asks for no thumbnails")
+
+        expect(RecorderSupport.gifFrameCount(duration: 10, fps: 12) == 120,
+               "a GIF holds one frame per tick of its own rate")
+
+        expect(RecorderSupport.gifFitsBudget(duration: 10, fps: 12)
+                && !RecorderSupport.gifFitsBudget(duration: 120, fps: 12),
+               "a GIF long enough to eat the memory of the machine is refused before it starts")
+
+        expect(Int(RecorderSupport.maximumGIFSeconds(fps: 12)) == 25,
+               "the refusal can say exactly how long a GIF may be at that rate")
+
+        expect(RecorderSupport.gifDelay(fps: 10) == 0.1,
+               "the frame delay is the reciprocal of the rate")
+
+        expect(RecorderSupport.sanitizedGIFFrameRate(99) == 12
+                && RecorderSupport.sanitizedGIFSize("nonsense") == .medium,
+               "unknown GIF settings fall back to the middle choice")
+
+        expect(RecorderSupport.sanitizedAudioGain(-1) == 0
+                && RecorderSupport.sanitizedAudioGain(3) == 1
+                && RecorderSupport.sanitizedAudioGain(.nan) == 1,
+               "audio gain stays inside the editor's safe range")
+
         let click = RecorderMotion.Click(time: 3, isDown: true)
+
+        var intentionalZoom = RecorderTimeline.ZoomSegment(start: 2, end: 4, amount: 2.2)
+
+        intentionalZoom.focusX = 0.2
+
+        intentionalZoom.focusY = 0.3
 
         print("[generated-checks] ScreenRecorderGeometryAndPolicy \(checks)")
     }

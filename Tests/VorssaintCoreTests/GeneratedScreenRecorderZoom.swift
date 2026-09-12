@@ -85,6 +85,22 @@ final class GeneratedScreenRecorderZoomTests: XCTestCase {
         expect(RecorderMotion.zoomSegments(clicks: [], duration: 20).isEmpty,
                "a recording with no clicks has no zoom")
 
+        let segment = RecorderMotion.ZoomSegment(start: 2, end: 6)
+
+        expect(RecorderMotion.zoomProgress(at: 1.5, segments: [segment]) == 0,
+               "before the segment the picture is untouched")
+
+        expect(RecorderMotion.zoomProgress(at: 4, segments: [segment]) == 1,
+               "in the middle of the segment the zoom is fully in")
+
+        let rampingIn = RecorderMotion.zoomProgress(at: 2.2, segments: [segment])
+
+        expect(rampingIn > 0 && rampingIn < 1, "the zoom eases in rather than cutting")
+
+        let rampingOut = RecorderMotion.zoomProgress(at: 6.3, segments: [segment])
+
+        expect(rampingOut > 0 && rampingOut < 1, "the zoom eases out rather than cutting")
+
         expect(RecorderMotion.travelParameter(focus: 0.05) == 0
                 && RecorderMotion.travelParameter(focus: 0.95) == 1,
                "a pointer near an edge pins the view flush to it, so corners stay reachable")

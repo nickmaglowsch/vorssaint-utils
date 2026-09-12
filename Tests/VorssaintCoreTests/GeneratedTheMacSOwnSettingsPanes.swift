@@ -102,6 +102,133 @@ final class GeneratedTheMacSOwnSettingsPanesTests: XCTestCase {
                 == AppLanguage.allCases.count,
                "each language reads its own words, so no two share a folder")
 
+        expect(CommandBarPreferences.source(ofRowID: "app.x") == .apps
+                && CommandBarPreferences.source(ofRowID: "menu.1.Bold") == .menus
+                && CommandBarPreferences.source(ofRowID: "folder./tmp") == .folders
+                && CommandBarPreferences.source(ofRowID: "macsettings.com.apple.Sound-Settings.extension")
+                    == .macSettings
+                && CommandBarPreferences.source(ofRowID: "settings.general") == .settingsPages
+                && CommandBarPreferences.source(ofRowID: "action.screenshot") == .actions
+                && CommandBarPreferences.source(ofRowID: "action.recentCaptures") == .actions
+                && CommandBarPreferences.emojiBrowserRowID == "emoji.browse"
+                && CommandBarPreferences.source(ofRowID: CommandBarPreferences.emojiBrowserRowID)
+                    == .emoji,
+               "every row knows which source it came from")
+
+        expect(CommandBarPreferences.isEnabled(.folders, disabledRaw: "folders,emoji") == false
+                && CommandBarPreferences.isEnabled(.apps, disabledRaw: "folders,emoji") == true
+                && CommandBarPreferences.isEnabled(.actions, disabledRaw: "actions") == true,
+               "a switched off source stays off, and actions never can be")
+
+        expect(CommandBarPreferences.storageValue(for: [.emoji, .folders, .actions])
+                == "emoji,folders",
+               "the disabled list writes the same way every time")
+
+        expect(CommandBarPreferences.disabledSources(from: "folders, nonsense ,emoji")
+                == Set([.folders, .emoji]),
+               "an unknown source id is dropped instead of corrupting the set")
+
+        var barAliases = CommandBarPreferences.settingAlias("codex", for: "app./Applications/Chat.app",
+                                                            in: [:])
+
+        expect(barAliases["app./Applications/Chat.app"] == "codex", "a row takes the name it was given")
+
+        expect(CommandBarPreferences.aliasMatches("codex", query: "codex")
+                && CommandBarPreferences.aliasMatches("codex", query: "cod")
+                && !CommandBarPreferences.aliasMatches("codex", query: "codexx"),
+               "the name matches whole or as it is being typed, never beyond it")
+
+        expect(CommandBarPreferences.aliasMatches("meu chat codex", query: "codex"),
+               "several words all find the same row")
+
+        expect(CommandBarPreferences.aliasMatches("Códex", query: "codex"),
+               "accents in a name never break it")
+
+        barAliases = CommandBarPreferences.settingAlias("  ", for: "app./Applications/Chat.app",
+                                                        in: barAliases)
+
+        expect(barAliases.isEmpty, "clearing the field removes the name")
+
+        expect(CommandBarPreferences.decodeAliases(
+                CommandBarPreferences.encodeAliases(["a": "one", "b": "two"])) == ["a": "one", "b": "two"],
+               "names survive the round trip")
+
+        expect(CommandBarPreferences.decodeAliases("not json").isEmpty,
+               "a corrupt name list decodes as none")
+
+        expect(CommandBarPreferences.acceptsAlias(rowID: "app.x")
+                && !CommandBarPreferences.acceptsAlias(rowID: "menu.1.Bold")
+                && !CommandBarPreferences.acceptsAlias(rowID: "window.4")
+                && !CommandBarPreferences.acceptsAlias(rowID: "clipboard.abc"),
+               "only rows that are the same thing tomorrow can be named")
+
+        var barPins = CommandBarPreferences.togglingPin("action.screenshot", in: [])
+
+        barPins = CommandBarPreferences.togglingPin("app.chat", in: barPins)
+
+        expect(barPins == ["action.screenshot", "app.chat"], "pins keep the order they were made in")
+
+        expect(CommandBarPreferences.togglingPin("action.screenshot", in: barPins) == ["app.chat"],
+               "the same gesture unpins")
+
+        expect(CommandBarPreferences.leadingPins(["app.chat", "app.gone"],
+                                                 available: ["app.chat", "action.a"])
+                == ["app.chat"],
+               "the empty bar leads with the pins that still exist")
+
+        expect(CommandBarPreferences.listedPins(
+                    ["action.cleaningMode", "app.chat", "settings.cleaningMode"],
+                    present: ["app.chat"])
+                == ["app.chat"],
+               "an uninstalled feature is not listed as a pin")
+
+        expect(CommandBarPreferences.listedPins(
+                    ["action.cleaningMode", "app.gone"],
+                    present: ["action.cleaningMode"])
+                == ["action.cleaningMode", "app.gone"],
+               "an app that left this Mac still appears so its pin can be removed")
+
+        expect(CommandBarPreferences.pinTieBreak < 700,
+               "a pin breaks a tie and never jumps over a better match")
+
+        expect(CommandBarPreferences.aliasHit("codex", query: "codex") == .exact
+                && CommandBarPreferences.aliasHit("codex", query: "cod") == .prefix
+                && CommandBarPreferences.aliasHit("codex", query: "zzz") == nil,
+               "a finished name outranks one still being typed")
+
+        expect(CommandBarPreferences.AliasHit.exact.rawValue > 1200
+                && CommandBarPreferences.AliasHit.prefix.rawValue > 900,
+               "the name the person gave beats the app's own title")
+
+        expect(CommandBarPreferences.rowUsingAlias("codex", in: ["app.a": "codex"], excluding: "app.b")
+                == "app.a",
+               "a name already taken is reported instead of being stolen")
+
+        expect(CommandBarPreferences.rowUsingAlias("codex", in: ["app.a": "codex"], excluding: "app.a")
+                == nil,
+               "renaming a row never conflicts with itself")
+
+        var barHidden = CommandBarPreferences.togglingHidden("app.x", in: [])
+
+        expect(barHidden == ["app.x"], "a row can be told never to show")
+
+        barHidden = CommandBarPreferences.togglingHidden("app.x", in: barHidden)
+
+        expect(barHidden.isEmpty, "and told to come back")
+
+        expect(CommandBarPreferences.decodeHidden(
+                CommandBarPreferences.encodeHidden(["b", "a"])) == ["a", "b"],
+               "hidden rows survive the round trip")
+
+        expect(CommandBarPreferences.decodePins(CommandBarPreferences.encodePins(["a", "b"])) == ["a", "b"]
+                && CommandBarPreferences.decodePins("a\na\n\nb") == ["a", "b"],
+               "pins survive the round trip and never repeat")
+
+        for invalidOffset in ["", "12", "12,", "12,nope", "12,nope,20", "nan,1", "inf,1"] {
+            expect(CommandBarPreferences.decodePositionOffset(invalidOffset) == .zero,
+                   "an invalid command bar position offset is ignored (\(invalidOffset))")
+        }
+
         print("[generated-checks] TheMacSOwnSettingsPanes \(checks)")
     }
 }
