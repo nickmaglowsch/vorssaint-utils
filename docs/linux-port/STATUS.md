@@ -59,4 +59,7 @@ downloads. Consequences for Phase 0:
 | WP-A5 | in progress (backend) | worktree | PipeWire audio backend in C under linux/platform/audio, libpulse fallback |
 | WP-D1/D2 | in progress | worktree | relay rule set in linux/helper mirroring the Swift Support state machines |
 | WP-C1 | merged | plan branch | five backends; QA found a no-op Wayland global_remove and an unverified set_minimized, both fixed and tested with a real output unplug; Hyprland/KWin/GNOME rows still need a live session |
+| WP-D1/D2 | review | worktree | 198 assertions, 147 ported from the macOS Swift vectors; QA running |
+| WP-C2 | in progress | worktree | GNOME Shell bridge extension: the WindowBridge interface WP-C1's client expects, plus clipboard |
+| WP-A1..A4 | in progress (backend) | worktree | sensors library in C: /proc, /sys, hwmon, UPower, GPU vendors |
 | WP-13 | merged | plan branch | COMBINE.md + audit script (83 Combine-touching files, 35 only via AppKit/SwiftUI re-export); VorssaintCombine target to be deleted after WP-11 |
