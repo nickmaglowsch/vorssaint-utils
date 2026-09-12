@@ -7,10 +7,13 @@ import Foundation
 /// how an incoming file is validated. Pure logic so the harness can pin down
 /// exactly which keys travel (and, more importantly, which never do).
 enum SettingsBackupSupport {
-    static let formatVersionKey = "vorssaintBackupVersion"
-    static let appVersionKey = "vorssaintBackupAppVersion"
-    static let settingsKey = "settings"
-    static let formatVersion = 1
+    // The envelope itself is `SettingsBackupFormat` in VorssaintCore (WP-14),
+    // so the Linux build names the same keys and the same version; these stay
+    // as the spelling every call site here already uses.
+    static let formatVersionKey = SettingsBackupFormat.formatVersionKey
+    static let appVersionKey = SettingsBackupFormat.appVersionKey
+    static let settingsKey = SettingsBackupFormat.settingsKey
+    static let formatVersion = SettingsBackupFormat.formatVersion
 
     /// Keys the backup carries: every registered preference, the availability
     /// layer, and the deliberately unregistered selection/layout keys — minus

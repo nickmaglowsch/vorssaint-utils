@@ -120,6 +120,15 @@ struct FeatureHubStrings {
     let onboardingNoSelectedPermissions: String
     let onboardingOtherPermissionsTitle: String
     let onboardingOtherPermissionsCaption: String
+    // Linux presets and the platform-support explanations (WP-15).
+    let presetLinuxEssentialsName: String
+    let presetLinuxEssentialsDesc: String
+    let presetLinuxWindowsName: String
+    let presetLinuxWindowsDesc: String
+    let presetLinuxBatteryQuietName: String
+    let presetLinuxBatteryQuietDesc: String
+    let unsupportedOnThisSystem: String
+    let unsupportedMissingCapabilitiesFormat: String   // "... needs: %@"
 }
 
 extension FeatureStrings {
@@ -251,7 +260,15 @@ extension FeatureHubStrings {
         onboardingSelectedPermissionsTitle: "선택한 기능에 필요한 권한",
         onboardingNoSelectedPermissions: "설정을 마치는 데 필요한 권한이 없습니다.",
         onboardingOtherPermissionsTitle: "기타 권한",
-        onboardingOtherPermissionsCaption: "선택 사항입니다. 기능에서 필요할 때 지금 또는 나중에 허용할 수 있습니다."
+        onboardingOtherPermissionsCaption: "선택 사항입니다. 기능에서 필요할 때 지금 또는 나중에 허용할 수 있습니다.",
+        presetLinuxEssentialsName: "기본 기능",
+        presetLinuxEssentialsDesc: "시스템 모니터, 볼륨 믹서, 절전 방지, 클립보드 기록, 스니펫 및 스크린샷.",
+        presetLinuxWindowsName: "윈도우",
+        presetLinuxWindowsDesc: "윈도우 전환기, 윈도우 정렬 및 마지막 윈도우를 닫으면 종료.",
+        presetLinuxBatteryQuietName: "배터리 및 조용함",
+        presetLinuxBatteryQuietDesc: "전원 모니터, 절전 방지 자동화, 잠잘 때 블루투스 끄기 및 밝기.",
+        unsupportedOnThisSystem: "이 시스템에는 이 기능에 해당하는 것이 없습니다.",
+        unsupportedMissingCapabilitiesFormat: "현재 데스크톱 세션은 이 기능에 필요한 것을 제공하지 않습니다: %@"
     )
 }
 
@@ -364,7 +381,15 @@ extension FeatureHubStrings {
         onboardingSelectedPermissionsTitle: "Permissions for your choices",
         onboardingNoSelectedPermissions: "You do not need to grant any permission to finish setup.",
         onboardingOtherPermissionsTitle: "Other permissions",
-        onboardingOtherPermissionsCaption: "Optional. Grant these now or later, when a feature needs them."
+        onboardingOtherPermissionsCaption: "Optional. Grant these now or later, when a feature needs them.",
+        presetLinuxEssentialsName: "Essentials",
+        presetLinuxEssentialsDesc: "System monitor, volume mixer, keep awake, clipboard history, snippets and screenshots.",
+        presetLinuxWindowsName: "Windows",
+        presetLinuxWindowsDesc: "Window switcher, window layout and quit on last window.",
+        presetLinuxBatteryQuietName: "Battery and quiet",
+        presetLinuxBatteryQuietDesc: "Power monitor, keep awake automations, Bluetooth on sleep and brightness.",
+        unsupportedOnThisSystem: "This feature has no counterpart on this system.",
+        unsupportedMissingCapabilitiesFormat: "This desktop session does not provide what this feature needs: %@"
     )
 
     static let ptBR = FeatureHubStrings(
@@ -475,7 +500,15 @@ extension FeatureHubStrings {
         onboardingSelectedPermissionsTitle: "Permissões para suas escolhas",
         onboardingNoSelectedPermissions: "Você não precisa conceder nenhuma permissão para concluir a configuração.",
         onboardingOtherPermissionsTitle: "Outras permissões",
-        onboardingOtherPermissionsCaption: "Opcional. Você pode concedê-las agora ou depois, quando algum recurso precisar."
+        onboardingOtherPermissionsCaption: "Opcional. Você pode concedê-las agora ou depois, quando algum recurso precisar.",
+        presetLinuxEssentialsName: "Essencial",
+        presetLinuxEssentialsDesc: "Monitor do sistema, mixer de volume, manter acordado, histórico da área de transferência, atalhos de texto e capturas de tela.",
+        presetLinuxWindowsName: "Janelas",
+        presetLinuxWindowsDesc: "Alternador de janelas, layout de janelas e encerrar ao fechar a última janela.",
+        presetLinuxBatteryQuietName: "Bateria e silêncio",
+        presetLinuxBatteryQuietDesc: "Monitor de energia, automações de manter acordado, Bluetooth ao dormir e brilho.",
+        unsupportedOnThisSystem: "Este recurso não tem equivalente neste sistema.",
+        unsupportedMissingCapabilitiesFormat: "Esta sessão de desktop não oferece o que este recurso precisa: %@"
     )
 
     static let tr = FeatureHubStrings(
@@ -586,7 +619,15 @@ extension FeatureHubStrings {
         onboardingSelectedPermissionsTitle: "Seçimleriniz için gereken izinler",
         onboardingNoSelectedPermissions: "Kurulumu tamamlamak için izin vermeniz gerekmiyor.",
         onboardingOtherPermissionsTitle: "Diğer izinler",
-        onboardingOtherPermissionsCaption: "İsteğe bağlıdır. Bir özellik gerektiğinde şimdi veya daha sonra izin verebilirsiniz."
+        onboardingOtherPermissionsCaption: "İsteğe bağlıdır. Bir özellik gerektiğinde şimdi veya daha sonra izin verebilirsiniz.",
+        presetLinuxEssentialsName: "Temel",
+        presetLinuxEssentialsDesc: "Sistem monitörü, ses karıştırıcı, uyanık tutma, pano geçmişi, metin kısayolları ve ekran görüntüleri.",
+        presetLinuxWindowsName: "Pencereler",
+        presetLinuxWindowsDesc: "Pencere değiştirici, pencere düzeni ve son pencere kapanınca çıkma.",
+        presetLinuxBatteryQuietName: "Pil ve sessizlik",
+        presetLinuxBatteryQuietDesc: "Güç monitörü, uyanık tutma otomasyonları, uykuda Bluetooth ve parlaklık.",
+        unsupportedOnThisSystem: "Bu özelliğin bu sistemde bir karşılığı yok.",
+        unsupportedMissingCapabilitiesFormat: "Bu masaüstü oturumu bu özelliğin ihtiyaç duyduğunu sağlamıyor: %@"
     )
 
     static let ru = FeatureHubStrings(
@@ -697,7 +738,15 @@ extension FeatureHubStrings {
         onboardingSelectedPermissionsTitle: "Разрешения для выбранных функций",
         onboardingNoSelectedPermissions: "Для завершения настройки разрешения не нужны.",
         onboardingOtherPermissionsTitle: "Другие разрешения",
-        onboardingOtherPermissionsCaption: "Необязательно. Их можно выдать сейчас или позже, когда они понадобятся функции."
+        onboardingOtherPermissionsCaption: "Необязательно. Их можно выдать сейчас или позже, когда они понадобятся функции.",
+        presetLinuxEssentialsName: "Основное",
+        presetLinuxEssentialsDesc: "Системный монитор, микшер громкости, режим без сна, история буфера обмена, сниппеты и снимки экрана.",
+        presetLinuxWindowsName: "Окна",
+        presetLinuxWindowsDesc: "Переключатель окон, раскладка окон и выход при закрытии последнего окна.",
+        presetLinuxBatteryQuietName: "Батарея и тишина",
+        presetLinuxBatteryQuietDesc: "Монитор питания, автоматика режима без сна, Bluetooth при засыпании и яркость.",
+        unsupportedOnThisSystem: "У этой функции нет аналога в этой системе.",
+        unsupportedMissingCapabilitiesFormat: "Этот сеанс рабочего стола не предоставляет того, что нужно функции: %@"
     )
 
     static let es = FeatureHubStrings(
@@ -808,7 +857,15 @@ extension FeatureHubStrings {
         onboardingSelectedPermissionsTitle: "Permisos para tus elecciones",
         onboardingNoSelectedPermissions: "No necesitas conceder permisos para terminar la configuración.",
         onboardingOtherPermissionsTitle: "Otros permisos",
-        onboardingOtherPermissionsCaption: "Opcional. Concédelos ahora o después, cuando una función los necesite."
+        onboardingOtherPermissionsCaption: "Opcional. Concédelos ahora o después, cuando una función los necesite.",
+        presetLinuxEssentialsName: "Esencial",
+        presetLinuxEssentialsDesc: "Monitor del sistema, mezclador de volumen, mantener despierto, historial del portapapeles, fragmentos de texto y capturas de pantalla.",
+        presetLinuxWindowsName: "Ventanas",
+        presetLinuxWindowsDesc: "Selector de ventanas, disposición de ventanas y salir al cerrar la última ventana.",
+        presetLinuxBatteryQuietName: "Batería y silencio",
+        presetLinuxBatteryQuietDesc: "Monitor de energía, automatizaciones de mantener despierto, Bluetooth al dormir y brillo.",
+        unsupportedOnThisSystem: "Esta función no tiene equivalente en este sistema.",
+        unsupportedMissingCapabilitiesFormat: "Esta sesión de escritorio no ofrece lo que esta función necesita: %@"
     )
 
     static let de = FeatureHubStrings(
@@ -919,7 +976,15 @@ extension FeatureHubStrings {
         onboardingSelectedPermissionsTitle: "Berechtigungen für deine Auswahl",
         onboardingNoSelectedPermissions: "Zum Abschließen der Einrichtung ist keine Berechtigung nötig.",
         onboardingOtherPermissionsTitle: "Weitere Berechtigungen",
-        onboardingOtherPermissionsCaption: "Optional. Erlaube sie jetzt oder später, wenn eine Funktion sie benötigt."
+        onboardingOtherPermissionsCaption: "Optional. Erlaube sie jetzt oder später, wenn eine Funktion sie benötigt.",
+        presetLinuxEssentialsName: "Essentials",
+        presetLinuxEssentialsDesc: "Systemmonitor, Lautstärkemixer, Wachhalten, Zwischenablageverlauf, Textbausteine und Bildschirmfotos.",
+        presetLinuxWindowsName: "Fenster",
+        presetLinuxWindowsDesc: "Fensterumschalter, Fensterlayout und Beenden beim letzten Fenster.",
+        presetLinuxBatteryQuietName: "Batterie und Ruhe",
+        presetLinuxBatteryQuietDesc: "Energiemonitor, Automatiken zum Wachhalten, Bluetooth beim Ruhezustand und Helligkeit.",
+        unsupportedOnThisSystem: "Für diese Funktion gibt es auf diesem System keine Entsprechung.",
+        unsupportedMissingCapabilitiesFormat: "Diese Desktop-Sitzung bietet nicht, was diese Funktion braucht: %@"
     )
 
     static let fr = FeatureHubStrings(
@@ -1030,7 +1095,15 @@ extension FeatureHubStrings {
         onboardingSelectedPermissionsTitle: "Autorisations pour vos choix",
         onboardingNoSelectedPermissions: "Aucune autorisation n’est nécessaire pour terminer la configuration.",
         onboardingOtherPermissionsTitle: "Autres autorisations",
-        onboardingOtherPermissionsCaption: "Facultatif. Accordez-les maintenant ou plus tard, lorsqu’une fonction en aura besoin."
+        onboardingOtherPermissionsCaption: "Facultatif. Accordez-les maintenant ou plus tard, lorsqu’une fonction en aura besoin.",
+        presetLinuxEssentialsName: "Essentiel",
+        presetLinuxEssentialsDesc: "Moniteur système, mixeur de volume, maintien éveillé, historique du presse-papiers, extraits de texte et captures d’écran.",
+        presetLinuxWindowsName: "Fenêtres",
+        presetLinuxWindowsDesc: "Sélecteur de fenêtres, disposition des fenêtres et fermeture à la dernière fenêtre.",
+        presetLinuxBatteryQuietName: "Batterie et silence",
+        presetLinuxBatteryQuietDesc: "Moniteur d’énergie, automatisations de maintien éveillé, Bluetooth à la mise en veille et luminosité.",
+        unsupportedOnThisSystem: "Cette fonction n’a pas d’équivalent sur ce système.",
+        unsupportedMissingCapabilitiesFormat: "Cette session de bureau ne fournit pas ce dont cette fonction a besoin : %@"
     )
 
     static let it = FeatureHubStrings(
@@ -1141,7 +1214,15 @@ extension FeatureHubStrings {
         onboardingSelectedPermissionsTitle: "Permessi per le tue scelte",
         onboardingNoSelectedPermissions: "Non servono permessi per completare la configurazione.",
         onboardingOtherPermissionsTitle: "Altri permessi",
-        onboardingOtherPermissionsCaption: "Facoltativo. Concedili ora o più tardi, quando una funzione ne avrà bisogno."
+        onboardingOtherPermissionsCaption: "Facoltativo. Concedili ora o più tardi, quando una funzione ne avrà bisogno.",
+        presetLinuxEssentialsName: "Essenziale",
+        presetLinuxEssentialsDesc: "Monitor di sistema, mixer del volume, mantieni sveglio, cronologia degli appunti, frammenti di testo e schermate.",
+        presetLinuxWindowsName: "Finestre",
+        presetLinuxWindowsDesc: "Selettore di finestre, layout delle finestre e chiusura all’ultima finestra.",
+        presetLinuxBatteryQuietName: "Batteria e silenzio",
+        presetLinuxBatteryQuietDesc: "Monitor dell’energia, automazioni di mantieni sveglio, Bluetooth alla sospensione e luminosità.",
+        unsupportedOnThisSystem: "Questa funzione non ha un equivalente su questo sistema.",
+        unsupportedMissingCapabilitiesFormat: "Questa sessione desktop non fornisce ciò di cui questa funzione ha bisogno: %@"
     )
 
     static let ja = FeatureHubStrings(
@@ -1252,7 +1333,15 @@ extension FeatureHubStrings {
         onboardingSelectedPermissionsTitle: "選んだ機能に必要な許可",
         onboardingNoSelectedPermissions: "設定を完了するための許可は必要ありません。",
         onboardingOtherPermissionsTitle: "その他の許可",
-        onboardingOtherPermissionsCaption: "任意です。機能で必要になったときに、今または後で許可できます。"
+        onboardingOtherPermissionsCaption: "任意です。機能で必要になったときに、今または後で許可できます。",
+        presetLinuxEssentialsName: "エッセンシャル",
+        presetLinuxEssentialsDesc: "システムモニタ、音量ミキサー、スリープ防止、クリップボード履歴、スニペット、スクリーンショット。",
+        presetLinuxWindowsName: "ウインドウ",
+        presetLinuxWindowsDesc: "ウインドウスイッチャー、ウインドウレイアウト、最後のウインドウで終了。",
+        presetLinuxBatteryQuietName: "バッテリーと静けさ",
+        presetLinuxBatteryQuietDesc: "電源モニタ、スリープ防止の自動化、スリープ時のBluetooth、明るさ。",
+        unsupportedOnThisSystem: "この機能に相当するものはこのシステムにはありません。",
+        unsupportedMissingCapabilitiesFormat: "このデスクトップセッションは、この機能に必要なものを提供していません: %@"
     )
 
     static let zhHans = FeatureHubStrings(
@@ -1363,7 +1452,15 @@ extension FeatureHubStrings {
         onboardingSelectedPermissionsTitle: "所选功能需要的权限",
         onboardingNoSelectedPermissions: "完成设置无需授予任何权限。",
         onboardingOtherPermissionsTitle: "其他权限",
-        onboardingOtherPermissionsCaption: "可选。你可以现在授予，也可以等功能需要时再授予。"
+        onboardingOtherPermissionsCaption: "可选。你可以现在授予，也可以等功能需要时再授予。",
+        presetLinuxEssentialsName: "基础",
+        presetLinuxEssentialsDesc: "系统监视器、音量混音器、保持唤醒、剪贴板历史、文本片段和截屏。",
+        presetLinuxWindowsName: "窗口",
+        presetLinuxWindowsDesc: "窗口切换器、窗口布局和关闭最后一个窗口时退出。",
+        presetLinuxBatteryQuietName: "电池与安静",
+        presetLinuxBatteryQuietDesc: "电源监视器、保持唤醒自动化、睡眠时蓝牙和亮度。",
+        unsupportedOnThisSystem: "此系统没有与该功能对应的机制。",
+        unsupportedMissingCapabilitiesFormat: "当前桌面会话未提供该功能所需的能力：%@"
     )
 
     static let zhTW = FeatureHubStrings(
@@ -1474,7 +1571,15 @@ extension FeatureHubStrings {
         onboardingSelectedPermissionsTitle: "所選功能需要的權限",
         onboardingNoSelectedPermissions: "完成設定不需要授予任何權限。",
         onboardingOtherPermissionsTitle: "其他權限",
-        onboardingOtherPermissionsCaption: "可選。你可以現在授予，也可以等功能需要時再授予。"
+        onboardingOtherPermissionsCaption: "可選。你可以現在授予，也可以等功能需要時再授予。",
+        presetLinuxEssentialsName: "基本",
+        presetLinuxEssentialsDesc: "系統監視器、音量混音器、保持喚醒、剪貼簿記錄、文字片段與螢幕擷圖。",
+        presetLinuxWindowsName: "視窗",
+        presetLinuxWindowsDesc: "視窗切換器、視窗排列與關閉最後一個視窗時結束。",
+        presetLinuxBatteryQuietName: "電池與安靜",
+        presetLinuxBatteryQuietDesc: "電源監視器、保持喚醒自動化、睡眠時藍牙與亮度。",
+        unsupportedOnThisSystem: "此系統沒有與這項功能對應的機制。",
+        unsupportedMissingCapabilitiesFormat: "目前的桌面工作階段未提供這項功能所需的能力：%@"
     )
 
     static let zhHK = FeatureHubStrings(
@@ -1585,6 +1690,14 @@ extension FeatureHubStrings {
         onboardingSelectedPermissionsTitle: "所選功能需要嘅權限",
         onboardingNoSelectedPermissions: "完成設定唔需要授予任何權限。",
         onboardingOtherPermissionsTitle: "其他權限",
-        onboardingOtherPermissionsCaption: "可選。你可以而家授予，亦可以等功能需要時再授予。"
+        onboardingOtherPermissionsCaption: "可選。你可以而家授予，亦可以等功能需要時再授予。",
+        presetLinuxEssentialsName: "基本",
+        presetLinuxEssentialsDesc: "系統監視器、音量混音器、保持喚醒、剪貼簿記錄、文字片段與螢幕擷圖。",
+        presetLinuxWindowsName: "視窗",
+        presetLinuxWindowsDesc: "視窗切換器、視窗排列與關閉最後一個視窗時結束。",
+        presetLinuxBatteryQuietName: "電池與安靜",
+        presetLinuxBatteryQuietDesc: "電源監視器、保持喚醒自動化、睡眠時藍牙與亮度。",
+        unsupportedOnThisSystem: "此系統沒有與這項功能對應的機制。",
+        unsupportedMissingCapabilitiesFormat: "目前的桌面工作階段未提供這項功能所需的能力：%@"
     )
 }

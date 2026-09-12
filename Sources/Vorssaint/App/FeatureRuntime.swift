@@ -73,7 +73,7 @@ final class FeatureRuntime: ObservableObject {
     /// An install that predates the check still counts, so the tally can
     /// never read more installed than installable.
     var installableCount: Int {
-        AppFeature.allCases.filter { $0.isHardwareSupported || $0.isAvailable }.count
+        AppFeature.allCases.filter { $0.isSupportedOnThisPlatform || $0.isAvailable }.count
     }
 
     /// The one gate every install passes, whichever surface asks: the hub
@@ -87,7 +87,7 @@ final class FeatureRuntime: ObservableObject {
     /// feature reporting itself unsupported.
     private func mayFlip(_ feature: AppFeature, to available: Bool) -> Bool {
         guard feature.isAvailable != available else { return false }
-        return !available || feature.isHardwareSupported
+        return !available || feature.isSupportedOnThisPlatform
     }
 
     /// Flipping availability runs the feature's binding immediately: off
@@ -307,7 +307,25 @@ extension AppFeature {
         }
     }
 
-    var isHardwareSupported: Bool { hardwareUnsupportedReason == nil }
+    /// Why the running system cannot offer the feature at all: it has no
+    /// counterpart here, or the desktop session lacks a capability it needs
+    /// (WP-15). On macOS every feature is in the catalog with no capability
+    /// requirement, so this is always `nil` and the answer below is the
+    /// hardware check alone — which is what the macOS gate proves. The
+    /// capability reader is left at its default here because this file is the
+    /// macOS app; the Linux hub passes the session's `Capabilities.has`.
+    var platformUnsupportedReason: String? {
+        FeatureSupportCatalog.unsupportedReason(
+            rawValue, on: .current, language: L10n.shared.language)
+    }
+
+    /// Why the feature cannot be offered here, ready to show. Replaces
+    /// `isHardwareSupported`, which only ever answered for fan control.
+    var unsupportedOnThisPlatformReason: String? {
+        platformUnsupportedReason ?? hardwareUnsupportedReason
+    }
+
+    var isSupportedOnThisPlatform: Bool { unsupportedOnThisPlatformReason == nil }
 
     /// Why a feature list must refuse to install this feature, ready to show
     /// as a tooltip. `nil` once it is installed: the check reads hardware and
@@ -315,6 +333,6 @@ extension AppFeature {
     /// behind a greyed row. Both the hub and the first-run picker read this,
     /// so neither can drift from the gate in `FeatureRuntime`.
     var installBlockedReason: String? {
-        isAvailable ? nil : hardwareUnsupportedReason
+        isAvailable ? nil : unsupportedOnThisPlatformReason
     }
 }
