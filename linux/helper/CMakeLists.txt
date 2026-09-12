@@ -46,6 +46,7 @@ add_library(helpercore STATIC
   src/device_fake.c
   src/device_evdev.c
   src/grabholder.c
+  src/pathguard.c
   src/session.c
   src/fan.c
   src/ddc.c

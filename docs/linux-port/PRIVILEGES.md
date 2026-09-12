@@ -221,6 +221,18 @@ Every value is range-checked (`tap_threshold_ms` ≤ 5000, keycodes ≤ `KEY_MAX
 anything unparseable is rejected with `org.freedesktop.DBus.Error.InvalidArgs`
 and the previous rules stay in force.
 
+**The document is capped at 64 KiB** (`RULES_JSON_MAX`), checked on length
+before a byte of it is parsed, and rejected with `InvalidArgs` above that. A
+valid document is seven short keys and well under 200 bytes, so the cap is
+three orders of magnitude of slack — but it has to exist, because the reader
+is not a streaming parser: `json_find()` restarts from the beginning of the
+string for each key, so the work is O(keys × length) and an unbounded string
+would be an unbounded amount of a root process's time for one unprivileged
+D-Bus call. D-Bus's own 128 MiB message limit is not a useful bound here. The
+check is in `rules_config_from_json` so it holds for every caller, and
+repeated in `method_set_rules` so the refusal can name the size that was
+sent.
+
 `GetCapabilities` answers by *trying*, never by inferring from a name, because
 a device node can exist with no driver behind it — which is exactly what
 `/dev/uinput` did in the WP-03 container. The shape, taken verbatim from a run
@@ -298,6 +310,35 @@ state the machine boots in.
 A `hwmon` name from the bus is untrusted input that becomes a path in a root
 process, so it is **validated, not escaped**: exactly `hwmon` followed by one
 to eight digits, checked before the filesystem is touched at all.
+
+That stops traversal in the *name*. It does not stop traversal through a
+**symlink already on disk** — a `hwmon0` that is a link to somewhere else
+resolves to somewhere else, and the name was never wrong. The WP-S1 review
+demonstrated this live: a planted link let `SetFanPwm` write through it and
+return success. `src/pathguard.c` is the second layer, and the rule is not
+"no symlinks", because that would be wrong on every real machine:
+`/sys/class/<class>/<name>` is *always* a symlink into `/sys/devices` — that
+is how the sysfs class model works. So it is split:
+
+- the class entry (`hwmonN`) may be a symlink, but its resolved target must
+  stay inside the boundary: the root's own `realpath`, or anywhere under
+  `/sys` when the root is itself under `/sys`. Outside that it is refused with
+  `ELOOP`, naming where it would have landed, and the entry is not listed by
+  `GetCapabilities` either — offering a control the write path will refuse is
+  worse than not offering it;
+- the attributes (`pwmN`, `pwmN_enable`) are opened `O_NOFOLLOW` and must be
+  regular files. Real sysfs attributes never are anything else, and letting
+  the kernel refuse at `open(2)` leaves no window between a check and the use;
+- `/dev/i2c-N` is opened `O_NOFOLLOW` and must be a character device, for the
+  same reason.
+
+**This is depth, not the primary defence.** `/sys/class/hwmon`, `/sys/devices`
+and `/dev` are root-owned and not writable by the unprivileged caller, so it
+cannot plant the link in the first place; the primary defence is that the
+caller never names a path at all, only a `hwmonN`. The second layer is for
+what the first does not cover: a caller that is already root by another route,
+a container that bind-mounts something writable over part of `/sys`, and our
+own bugs.
 
 **DDC/CI.** This is the one that deserves more suspicion than it usually gets.
 `/dev/i2c-*` is root-only on every distribution, and the common packaging
@@ -523,6 +564,9 @@ claim above falls into one of three buckets.
 | The real `polkit_authority_check_authorization_sync` is on the path in the default build | § 14: the failure comes from *inside* libpolkit, looking for `org.freedesktop.PolicyKit1` |
 | The fan watchdog restores automatic control with no client involvement | § 9: ten seconds without `FanHeartbeat` and `pwm1_enable` goes `1` → `2`, with the journal line to match |
 | A hwmon or i2c name that is not `hwmonN` / `i2c-N` is refused before the filesystem is touched | § 9, § 10, and `tests/test_fan.c`, `tests/test_ddc.c` |
+| A `hwmonN` that is a symlink out of the root is refused, and nothing is written through it | `tests/test_fan.c` plants one; mutation-tested — disabling the boundary check reproduces the review's finding exactly (`"value":200` written into the outside directory). Also over D-Bus, `private-bus.sh` § 9 |
+| A `pwmN` attribute that is a symlink is refused, and a device node where an i2c node belongs is refused | `tests/test_fan.c` and `tests/test_ddc.c`; mutation-tested — removing `O_NOFOLLOW` fails both |
+| A `SetRules` document over 64 KiB is refused on length alone, and one at exactly the limit still parses | `tests/test_rules.c`, and over D-Bus in `private-bus.sh` § 6 |
 | Naming the process that holds a device open | `tests/test_grabholder.c`, against the real `/proc`, with a forked child holding a file |
 | The rules engine and the replay, unchanged from WP-03 | `ctest`: `rules` (28 assertions, up from 21) and `replay`, byte for byte against `tests/replay_expected.txt` |
 | The relay's own latency, unchanged from WP-03 | p50 34 ns, ~0.26 µs including the `write(2)` that `libevdev_uinput_write_event` makes |
@@ -539,7 +583,8 @@ claim above falls into one of three buckets.
 | evdev grab and uinput re-emit | `device_fake.c` | the whole kernel path. `CONFIG_INPUT_UINPUT` is unset in this kernel and `CONFIG_MODULES` is unset too, so no module can supply it; `/dev/input` does not exist and `/sys/class/input` is empty. The evdev backend has never executed. |
 | Hot-plug claims a keyboard plugged in after `Enable(true)` | an injected add/remove event through the same `DEV_READ_HOTPLUG` path the `udev_monitor` feeds | that `udev_monitor_receive_device` returns what is expected on real hardware, and that a real device's `ID_INPUT_*` properties are set when the add event arrives |
 | A refused `EVIOCGRAB` names the holder | a forked process holding an ordinary file | that `libevdev_grab` returns `-EBUSY` rather than something else when `keyd` holds the device |
-| hwmon `pwm` writes, read-back and restore | a temporary tree of plain files | drivers that clamp or round; chips with no `pwmN_enable`; laptop ECs that take the write and ignore it at the firmware level. `/sys/class/hwmon` **does not exist on this machine** — checked: `ls: cannot access '/sys/class/hwmon': No such file or directory` — so `fan_enumerate_json` on the real root returns `[]`, and that empty list is in the test output. |
+| hwmon `pwm` writes, read-back and restore | a temporary tree of plain files, plus a read-only tmpfs for a driver that refuses the store | drivers that clamp or round; chips with no `pwmN_enable`; laptop ECs that take the write and ignore it at the firmware level. `/sys/class/hwmon` **does not exist on this machine** — checked: `ls: cannot access '/sys/class/hwmon': No such file or directory` — so `fan_enumerate_json` on the real root returns `[]`, and that empty list is in the test output. |
+| The read-back catching a store that succeeded and did not stick | *nothing* | this branch of `write_verified` has **no model here at all**, and that is a deliberate trade made during the WP-S1 review. It was previously exercised by pointing the attribute at `/dev/zero`; the symlink guard added in the same review refuses that, correctly, because a sysfs attribute is a regular file. The guard closes a hole that was demonstrated live; the branch it costs is the less important half of a check whose other half (the write failing outright) is still covered. The read-back itself runs on every successful write and is asserted. It needs a real driver that ignores a store — a laptop EC, in WP-C6. |
 | DDC/CI framing and transactions | `ddc_transport_fake()`, a monitor model that validates address, length byte and checksum on every frame it is handed | **everything about real displays.** There is no `/dev/i2c-*` and no `/sys/bus/i2c` here. Whether a given monitor answers, tolerates the 40/50 ms spacing, or reports a sane maximum is unknown. `GetCapabilities` reports `"hardware_tested": false` for exactly this reason, and the hub must not claim otherwise until WP-B9 has run it on a display. |
 | The logind session lookup | `session_lookup_fake()`, keyed by pid in the unit test and by uid in the bus harness | that `sd_pid_get_session` returns what is expected for a desktop session, and what it returns across a fast user switch. The real lookup is compiled in, is the daemon's default, and is *called* in `tests/test_session.c` — where it returns `-ENXIO`, the honest answer on a machine with no logind. |
 

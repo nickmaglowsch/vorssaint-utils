@@ -1,5 +1,7 @@
 #include "ddc.h"
 
+#include "pathguard.h"
+
 #include <ctype.h>
 #include <dirent.h>
 #include <errno.h>
@@ -170,9 +172,14 @@ ddc_transport *ddc_transport_i2c(const char *bus, char *err, size_t err_cap)
         return NULL;
     }
     snprintf(p->path, sizeof(p->path), "/dev/%s", bus);
-    p->fd = open(p->path, O_RDWR | O_CLOEXEC);
+    /* The name is already validated as i2c-N, which stops traversal in the
+     * *name*. This stops it through a symlink already on disk: a real i2c
+     * device node is a character device and never a link, so O_NOFOLLOW plus
+     * the S_ISCHR check refuses anything that is not one. On a real system
+     * /dev is root-owned and the caller cannot plant such a link, so this is
+     * depth rather than the primary defence -- see pathguard.h. */
+    p->fd = path_guard_open_chardev(p->path, O_RDWR, err, err_cap);
     if (p->fd < 0) {
-        snprintf(err, err_cap, "open %s: %s", p->path, strerror(errno));
         free(p);
         free(t);
         return NULL;

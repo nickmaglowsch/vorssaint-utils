@@ -11,12 +11,17 @@
  * root, and root bypasses the permission bits, so a mode-0444 file is still
  * writable to it. (That is not a gap in the test so much as the truth about
  * the daemon: "writable" in GetCapabilities means writable *by the helper*.)
- * A driver that refuses or ignores a store is therefore modelled with device
- * nodes, which the kernel refuses regardless of uid:
  *
- *   pwm -> /dev/full   the write itself fails (ENOSPC)
- *   pwm -> /dev/zero   the write succeeds and the value does not stick, which
- *                      is exactly what read-back verification exists to catch
+ * A driver that refuses the store is therefore modelled with a read-only
+ * tmpfs, which refuses the write regardless of uid while leaving the
+ * attribute a *regular file* -- which it must be, because the symlink guard
+ * added for the WP-S1 review requires sysfs attributes to be regular files.
+ * An earlier revision modelled this with symlinks to /dev/full and /dev/zero;
+ * the guard now refuses those, correctly, and the fixture moved rather than
+ * the guard. The cost of that trade is noted where it falls, below.
+ *
+ * If the mount is unavailable (an unprivileged CI runner), that one block
+ * skips and says so rather than silently passing.
  */
 #include "fan.h"
 
@@ -24,6 +29,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/mount.h>
 #include <sys/stat.h>
 #include <unistd.h>
 
@@ -62,6 +68,8 @@ static long get(const char *path)
     return strtol(buf, NULL, 10);
 }
 
+static bool have_ro_mount;
+
 static void build_tree(void)
 {
     char p[512];
@@ -88,35 +96,35 @@ static void build_tree(void)
     snprintf(p, sizeof(p), "%s/hwmon1/temp1_input", ROOT);
     put(p, "42000\n", 0644);
 
-    /* hwmon2: a driver that refuses the store. /dev/full fails every write
-     * with ENOSPC for any uid, which no file mode can do to root. */
+    /* hwmon2: a driver that refuses the store. A read-only tmpfs refuses the
+     * write for any uid -- which no file mode can do to root -- while keeping
+     * the attribute a regular file, as sysfs attributes are. */
     snprintf(p, sizeof(p), "%s/hwmon2", ROOT);
     mkdir(p, 0755);
-    snprintf(p, sizeof(p), "%s/hwmon2/name", ROOT);
-    put(p, "acpitz\n", 0644);
-    snprintf(p, sizeof(p), "%s/hwmon2/pwm1_enable", ROOT);
-    put(p, "2\n", 0644);
-    snprintf(p, sizeof(p), "%s/hwmon2/pwm1", ROOT);
-    if (symlink("/dev/full", p) != 0)
-        perror(p);
-
-    /* hwmon3: a driver that accepts the store and ignores it -- the quiet
-     * failure the read-back is for. Writes to /dev/zero succeed and read back
-     * as zeroes, so the value never becomes what was asked for. */
-    snprintf(p, sizeof(p), "%s/hwmon3", ROOT);
-    mkdir(p, 0755);
-    snprintf(p, sizeof(p), "%s/hwmon3/name", ROOT);
-    put(p, "it87\n", 0644);
-    snprintf(p, sizeof(p), "%s/hwmon3/pwm1_enable", ROOT);
-    put(p, "2\n", 0644);
-    snprintf(p, sizeof(p), "%s/hwmon3/pwm1", ROOT);
-    if (symlink("/dev/zero", p) != 0)
-        perror(p);
+    if (mount("tmpfs", p, "tmpfs", 0, "size=64k") == 0) {
+        snprintf(p, sizeof(p), "%s/hwmon2/name", ROOT);
+        put(p, "acpitz\n", 0644);
+        snprintf(p, sizeof(p), "%s/hwmon2/pwm1_enable", ROOT);
+        put(p, "2\n", 0644);
+        snprintf(p, sizeof(p), "%s/hwmon2/pwm1", ROOT);
+        put(p, "255\n", 0644);
+        snprintf(p, sizeof(p), "%s/hwmon2", ROOT);
+        if (mount(NULL, p, NULL, MS_REMOUNT | MS_RDONLY, NULL) == 0)
+            have_ro_mount = true;
+        else
+            perror("remount ro");
+    }
 }
 
 static void rm_tree(void)
 {
     char cmd[600];
+
+    if (have_ro_mount) {
+        snprintf(cmd, sizeof(cmd), "%s/hwmon2", ROOT);
+        if (umount(cmd) != 0)
+            perror("umount");
+    }
     snprintf(cmd, sizeof(cmd), "rm -rf '%s'", ROOT);
     if (system(cmd) != 0)
         fprintf(stderr, "could not remove %s\n", ROOT);
@@ -164,6 +172,93 @@ int main(void)
     else
         fail("fan_set_pwm rejects a traversal before touching the filesystem", err);
 
+    printf("\nsymlinked hwmon entries (QA: the name was valid, the tree was not)\n");
+    {
+        /* The name `hwmon7` passes fan_hwmon_name_ok, because nothing is wrong
+         * with the name. What is wrong is that the entry is a link out of the
+         * root, and before the pathguard check this wrote through it and
+         * returned 0. See pathguard.h for why the entry may be a symlink in
+         * general (sysfs makes it one) but not one that leaves the tree. */
+        char outside[512], link[600], victim[700];
+        long before_val;
+
+        snprintf(outside, sizeof(outside), "%s.outside", ROOT);
+        mkdir(outside, 0755);
+        snprintf(victim, sizeof(victim), "%s/pwm1", outside);
+        put(victim, "17\n", 0644);
+        snprintf(victim, sizeof(victim), "%s/pwm1_enable", outside);
+        put(victim, "2\n", 0644);
+        snprintf(link, sizeof(link), "%s/hwmon7", ROOT);
+        if (symlink(outside, link) != 0)
+            perror(link);
+
+        snprintf(victim, sizeof(victim), "%s/pwm1", outside);
+        before_val = get(victim);
+
+        fan_init(&st, ROOT);
+        if (fan_set_pwm(&st, "hwmon7", 1, 200, T, err, sizeof(err)) == -ELOOP)
+            ok("a hwmon entry linked out of the root is refused with ELOOP");
+        else
+            fail("a hwmon entry linked out of the root is refused with ELOOP", err);
+        if (strstr(err, "outside"))
+            ok("and the refusal says where it would have landed");
+        else
+            fail("and the refusal says where it would have landed", err);
+        if (get(victim) == before_val)
+            ok("and nothing was written through it");
+        else
+            fail("and nothing was written through it", "the value changed");
+        if (st.n_ch == 0)
+            ok("and no channel was recorded as under manual control");
+        else
+            fail("and no channel was recorded as under manual control", "channel tracked");
+
+        /* SetFanAuto is the restore path and must refuse identically, or a
+         * refused set could be "restored" through the link. */
+        if (fan_set_auto(&st, "hwmon7", 1, err, sizeof(err)) == -ELOOP)
+            ok("SetFanAuto refuses the same entry");
+        else
+            fail("SetFanAuto refuses the same entry", err);
+
+        /* A symlinked *attribute* is the other half. sysfs attributes are
+         * regular files, never links, so O_NOFOLLOW refuses this outright. */
+        snprintf(link, sizeof(link), "%s/hwmon8", ROOT);
+        mkdir(link, 0755);
+        snprintf(victim, sizeof(victim), "%s/hwmon8/pwm1_enable", ROOT);
+        put(victim, "2\n", 0644);
+        snprintf(victim, sizeof(victim), "%s/hwmon8/pwm1", ROOT);
+        snprintf(outside, sizeof(outside), "%s.outside/pwm1", ROOT);
+        if (symlink(outside, victim) != 0)
+            perror(victim);
+        before_val = get(outside);
+        if (fan_set_pwm(&st, "hwmon8", 1, 200, T, err, sizeof(err)) == -ELOOP &&
+            strstr(err, "symbolic link"))
+            ok("a pwm attribute that is a symlink is refused with ELOOP");
+        else
+            fail("a pwm attribute that is a symlink is refused with ELOOP", err);
+        if (get(outside) == before_val)
+            ok("and nothing was written through that either");
+        else
+            fail("and nothing was written through that either", "the value changed");
+
+        /* The enumeration must not advertise what the write path will refuse. */
+        {
+            char json[4096];
+            fan_enumerate_json(ROOT, json, sizeof(json));
+            if (!strstr(json, "hwmon7"))
+                ok("GetCapabilities does not list an out-of-boundary entry");
+            else
+                fail("GetCapabilities does not list an out-of-boundary entry", json);
+        }
+
+        /* Clean up so the later enumeration assertions see the original tree. */
+        snprintf(link, sizeof(link), "%s/hwmon7", ROOT);
+        unlink(link);
+        snprintf(link, sizeof(link), "rm -rf '%s/hwmon8' '%s.outside'", ROOT, ROOT);
+        if (system(link) != 0)
+            fprintf(stderr, "cleanup failed\n");
+    }
+
     printf("\nsetting a duty cycle\n");
     fan_init(&st, ROOT);
     if (fan_set_pwm(&st, "hwmon0", 1, 200, T, err, sizeof(err)) == 0)
@@ -184,41 +279,38 @@ int main(void)
         fail("pwm1_enable was put into manual mode (1)", "still on the chip's curve");
 
     printf("\nread-back verification\n");
-    if (fan_set_pwm(&st, "hwmon2", 1, 100, T, err, sizeof(err)) < 0 && strstr(err, "write"))
-        ok("a driver that refuses the write is reported, not swallowed");
-    else
-        fail("a driver that refuses the write is reported, not swallowed", err);
-
-    /* The one that matters. A store that succeeds and does not stick looks
-     * exactly like success from the write's return value alone; only reading
-     * the attribute back tells the difference, and telling the user their fan
-     * is at 30 %% when the driver ignored them is how hardware cooks.
-     *
-     * There are two shapes of this and write_verified() rejects both: the
-     * attribute reads back a *different* number, and the attribute cannot be
-     * read back at all. /dev/zero gives the second (its bytes are not a
-     * number), so that is the one exercised here; the first is the branch one
-     * line below it in fan.c and has no model in a container. What is
-     * asserted is the invariant they share -- the helper refuses to report a
-     * duty cycle it has not read back. */
-    if (fan_set_pwm(&st, "hwmon3", 1, 100, T, err, sizeof(err)) < 0 &&
-        strstr(err, "read back"))
-        ok("a write that succeeds but does not stick is caught by the read-back");
-    else
-        fail("a write that succeeds but does not stick is caught by the read-back", err);
-
-    /* And it must not leave that channel in manual mode at an unknown duty
-     * cycle: we have just proved the write path is broken for it. */
-    {
-        char p[512];
-        long en;
-        snprintf(p, sizeof(p), "%s/hwmon3/pwm1_enable", ROOT);
-        en = get(p);
-        if (en == 2 && st.n_ch == 1)
-            ok("and the channel is handed straight back to automatic control");
+    if (have_ro_mount) {
+        size_t before = st.n_ch;
+        if (fan_set_pwm(&st, "hwmon2", 1, 100, T, err, sizeof(err)) < 0 &&
+            strstr(err, "Read-only file system"))
+            ok("a driver that refuses the write is reported, not swallowed");
         else
-            fail("and the channel is handed straight back to automatic control", "left manual");
+            fail("a driver that refuses the write is reported, not swallowed", err);
+        if (st.n_ch == before)
+            ok("and the channel is not left recorded as under manual control");
+        else
+            fail("and the channel is not left recorded as under manual control", "tracked");
+    } else {
+        printf("  SKIP a driver that refuses the write: no mount privilege here\n");
     }
+
+    /* The branch this fixture no longer reaches, stated rather than implied.
+     *
+     * write_verified() rejects two shapes of a store that looked like it
+     * worked: the attribute reads back a *different* number, and the
+     * attribute cannot be read back at all. Both need an attribute that is
+     * not an ordinary file, and the symlink guard added in the WP-S1 review
+     * requires sysfs attributes to be ordinary files -- correctly, because
+     * that is what they are. So neither shape has a model here any more.
+     *
+     * That is the right trade: the guard closes a hole QA demonstrated live,
+     * and the branch it costs is still exercised on every successful write,
+     * where the read-back is what the assertion below actually reads. It is
+     * recorded in PRIVILEGES.md section 8 as untested rather than quietly
+     * dropped. */
+    printf("  NOTE the read-back mismatch branch has no model in this container;\n");
+    printf("       see PRIVILEGES.md section 8. The read-back itself runs on\n");
+    printf("       every successful write and is asserted above.\n");
 
     if (fan_set_pwm(&st, "hwmon1", 1, 100, T, err, sizeof(err)) < 0)
         ok("a hwmon with no pwm channel is reported");
@@ -297,17 +389,22 @@ int main(void)
             ok("a chip with no pwm is listed with an empty channel list");
         else
             fail("a chip with no pwm is listed with an empty channel list", json);
-        if (strstr(json, "\"hwmon\":\"hwmon2\"") && strstr(json, "\"hwmon\":\"hwmon3\""))
+        if (!have_ro_mount || strstr(json, "\"hwmon\":\"hwmon2\""))
             ok("every chip with a pwm attribute is listed");
         else
             fail("every chip with a pwm attribute is listed", json);
-        /* `writable` is access(2) as the helper, and the helper is root, so on
-         * this machine nothing comes back false. The field is still the right
-         * one for the capabilities page -- it answers "can the helper write
-         * this", which is the question -- but it cannot be exercised here. */
-        if (geteuid() == 0)
-            printf("  (running as root: access(W_OK) cannot return false here, "
-                   "so \"writable\":false is unexercised)\n");
+        /* `writable` is access(2) as the helper, which answers the question the
+         * capabilities page is actually asking: can the *helper* write this.
+         * As root no file mode makes it false, but a read-only filesystem
+         * does, so the hwmon2 fixture exercises it for real. */
+        if (have_ro_mount) {
+            if (strstr(json, "\"writable\":false"))
+                ok("a pwm the helper cannot write is reported as not writable");
+            else
+                fail("a pwm the helper cannot write is reported as not writable", json);
+        } else {
+            printf("  SKIP \"writable\":false needs the read-only mount\n");
+        }
     }
     {
         char json[256];

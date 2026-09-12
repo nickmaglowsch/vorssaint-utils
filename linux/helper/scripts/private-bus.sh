@@ -157,6 +157,12 @@ c get Rules
 echo "-- set-rules with a malformed document (must be rejected) --"
 as "$UNPRIV" "$BUILD/vorssaint-helperctl" set-rules '{"tap_threshold_ms":"whenever"}' 2>&1 |
   sed 's/^/  /'
+echo "-- set-rules with a 64 KiB + 1 document (must be rejected on length alone) --"
+# The hand-written reader restarts from the start of the string for each of
+# its seven keys, so an unbounded document is an unbounded amount of a root
+# process's time for one unprivileged call.
+BIG=$(printf '{%*s' 65536 '' | tr ' ' 'a')
+as "$UNPRIV" "$BUILD/vorssaint-helperctl" set-rules "$BIG" 2>&1 | sed 's/^/  /'
 c listen 2
 
 say "7. the session binding: only the seat that enabled it may change it"
@@ -193,6 +199,19 @@ c fan-heartbeat
 echo "-- refusals: a bad hwmon name and a channel that does not exist --"
 c fan-pwm ../../etc 1 64
 c fan-pwm hwmon9 1 64
+echo "-- and a hwmon entry whose *name* is valid but which is a symlink out of"
+echo "   the root: the case QA demonstrated writing through --"
+mkdir -p "$RUN/outside"
+printf '17\n' > "$RUN/outside/pwm1"
+printf '2\n'  > "$RUN/outside/pwm1_enable"
+chmod -R 0777 "$RUN/outside"
+ln -sfn "$RUN/outside" "$RUN/hwmon/hwmon7"
+c fan-pwm hwmon7 1 200
+echo "  the target is untouched: pwm1 = $(cat "$RUN/outside/pwm1")"
+echo "  and it is not offered in GetCapabilities either:"
+as "$UNPRIV" "$BUILD/vorssaint-helperctl" get-capabilities 2>/dev/null |
+  grep -o '"hwmon":"[^"]*"' | sed 's/^/    /'
+rm -f "$RUN/hwmon/hwmon7"
 echo "-- now stop heart-beating and wait out the 10 s watchdog --"
 sleep 12
 echo "-- the helper restored automatic control with no client involvement --"

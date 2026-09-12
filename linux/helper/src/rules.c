@@ -269,7 +269,17 @@ int rules_config_from_json(const char *json, rules_config *cfg, char *err, size_
     unsigned long n;
     const char *bad = NULL;
 
-    if (!json || strchr(json, '{') == NULL) {
+    if (!json) {
+        snprintf(err, err_cap, "not a JSON object");
+        return -1;
+    }
+    /* Length before content: the reader walks the string once per key, so the
+     * bound has to be applied before any of that work is done. */
+    if (strnlen(json, RULES_JSON_MAX + 1) > RULES_JSON_MAX) {
+        snprintf(err, err_cap, "document is longer than the %d byte limit", RULES_JSON_MAX);
+        return -1;
+    }
+    if (strchr(json, '{') == NULL) {
         snprintf(err, err_cap, "not a JSON object");
         return -1;
     }

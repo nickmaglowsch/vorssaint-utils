@@ -292,6 +292,50 @@ int main(void)
         else
             printf("  %-46s ok (%s)\n", current_case, err);
 
+        current_case = "an oversized SetRules document is rejected";
+        {
+            /* The reader restarts from the start of the string for each of the
+             * seven keys, so an unbounded document is an unbounded amount of a
+             * root process's time for one unprivileged call. */
+            size_t n = RULES_JSON_MAX + 1;
+            char *big = malloc(n + 1);
+            if (!big) {
+                fail("out of memory");
+            } else {
+                memset(big, 'a', n);
+                big[0] = '{';
+                big[n] = '\0';
+                if (rules_config_from_json(big, &c2, err, sizeof(err)) == 0)
+                    fail("accepted a document of %zu bytes", n);
+                else
+                    printf("  %-46s ok (%s)\n", current_case, err);
+                free(big);
+            }
+        }
+
+        current_case = "a document at exactly the limit is still parsed";
+        {
+            /* The bound must be a bound, not an off-by-one that rejects valid
+             * input: a document padded to exactly RULES_JSON_MAX must work. */
+            size_t n = RULES_JSON_MAX;
+            char *big = malloc(n + 1);
+            if (!big) {
+                fail("out of memory");
+            } else {
+                int w = snprintf(big, n + 1, "{\"tap_threshold_ms\":120,\"pad\":\"");
+                memset(big + w, 'x', n - (size_t)w);
+                big[n - 2] = '"';
+                big[n - 1] = '}';
+                big[n] = '\0';
+                if (rules_config_from_json(big, &c2, err, sizeof(err)) == 0 &&
+                    c2.tap_threshold_ns == MS(120))
+                    printf("  %-46s ok (%d bytes)\n", current_case, RULES_JSON_MAX);
+                else
+                    fail("rejected a document of exactly %d bytes: %s", RULES_JSON_MAX, err);
+                free(big);
+            }
+        }
+
         current_case = "non-object SetRules is rejected";
         if (rules_config_from_json("nonsense", &c2, err, sizeof(err)) == 0)
             fail("accepted non-JSON");
