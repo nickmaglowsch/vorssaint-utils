@@ -1,0 +1,7 @@
+proc /proc proc rw,relatime 0 0
+sysfs /sys sysfs rw,relatime 0 0
+tmpfs /run tmpfs rw,nosuid,nodev 0 0
+/dev/nvme0n1p2 / ext4 rw,relatime 0 0
+/dev/nvme0n1p1 /boot/efi vfat rw,relatime 0 0
+/dev/sda /mnt/data xfs ro,relatime 0 0
+cgroup2 /sys/fs/cgroup cgroup2 rw,nosuid 0 0

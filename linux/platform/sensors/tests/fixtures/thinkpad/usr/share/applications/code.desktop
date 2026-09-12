@@ -1,0 +1,4 @@
+[Desktop Entry]
+Type=Application
+Name=Code
+Exec=/usr/share/code/code %F
