@@ -110,7 +110,7 @@ app is behaviourally unchanged.
 | WP-15 | Feature catalog: platform support flags and Linux presets | S | WP-12 | Core porter | todo |
 | WP-16 | Test harness: `swift test` on both platforms, port `Tests/*` pure checks | M | WP-11 | QA/reviewer | merged (73 generated cases, 90 Linux tests green; both vacuous walks widened) |
 | WP-17 | macOS CI job proves `main` unchanged (selftest + ui-smoke on the new layout) | S | WP-11 | Packaging/CI | merged (by WP-10) — the `macos` job of linux-port-ci.yml runs `./build.sh`, `--selftest` and `./build.sh --test` on every push; `Tools/ui-smoke.sh` is not run and cannot be (TESTS.md § 7) |
-| WP-18 | `CoreBridge`: `@_cdecl` subscribe/command/snapshot surface, `Codable` snapshots and commands per service, diffing, fake-service tests | M | WP-12, WP-13 | Core porter | todo |
+| WP-18 | `CoreBridge`: `@_cdecl` subscribe/command/snapshot surface, `Codable` snapshots and commands per service, diffing, fake-service tests. Carries one defect against WP-12 found by WP-B1: `CapturedFrame` declares "always premultiplied BGRA" while the portal negotiates BGRx, whose fourth byte is undefined — a wrapper that relabels it yields fully transparent screenshots, so the format must be carried through from the engine | M | WP-12, WP-13 | Core porter | in progress |
 
 **WP-10.** `Package.swift` gains three targets. `Vorssaint` (macOS app)
 depends on `VorssaintCore` and `VorssaintMac`; `VorssaintLinux` (executable)
@@ -287,10 +287,10 @@ the triage matrix update for its feature(s).
 | ID | Feature(s) | Size | after | Status |
 |---|---|---|---|---|
 | WP-B1 | Capture engine: portal ScreenCast/Screenshot → PipeWire frames, restore tokens, output/window enumeration. Per WP-02: read `AvailableSourceTypes` and verify each stream's `source_type` (wlr serves WINDOW as MONITOR); screenshot via a ScreenCast frame where the Screenshot portal is absent (no `impl.portal.Access`); audio on a second ordinary `pw_context_connect`, never the portal fd | L | WP-02 (engine); WP-29 (overlay) | in progress (engine) |
-| WP-B2 | screenshot: selector overlay, frozen frame, window/area/screen, quick preview, save/copy, recent captures | L | WP-B1 | todo |
+| WP-B2 | screenshot: selector overlay, frozen frame, window/area/screen, quick preview, save/copy, recent captures. Per WP-B1: **window capture on Linux is always an interactive pick** — the portal, not the app, chooses the window, so there is no "capture this window id" and the feature copy must say so in all thirteen languages; carry the engine's reported pixel format through instead of assuming BGRA (the portal negotiates BGRx, whose fourth byte is undefined) | L | WP-B1 | todo |
 | WP-B3 | screenshot editor (annotations, crop, redaction, backgrounds, pins) on cairo/GTK4 with `ScreenshotSupport` | L | WP-B2 | todo |
 | WP-B4 | screenOCR + QR (bundled Tesseract + tessdata, ZXing-C++) and colorPicker (portal PickColor + magnifier) | M | WP-B2 | todo |
-| WP-B5 | screenRecorder capture: video + system audio + mic via PipeWire, ffmpeg encode with the fallback chain libx264 → libopenh264 → h264_vaapi → mpeg4 (encoder decided by WP-04), pause/resume sync (reuse `RecorderSampleTiming`), timeline driven by capture timestamps because wlroots frame delivery is damage-driven (WP-02), floating controls | L | WP-B1, WP-A5 | todo |
+| WP-B5 | screenRecorder capture: video + system audio + mic via PipeWire, ffmpeg encode with the fallback chain libx264 → libopenh264 → h264_vaapi → mpeg4 (encoder decided by WP-04), pause/resume sync (reuse `RecorderSampleTiming`), timeline driven by capture timestamps because wlroots frame delivery is damage-driven (WP-02), floating controls. Per WP-B1: there is **no `excludedWindows`** on any portal, so the recorder must hide its own overlay and controls for the duration of a recording rather than ask the compositor to exclude them; use the engine's `direct_callbacks` zero-copy path (it reclaims ~2 % of a core the default memcpy costs) | L | WP-B1, WP-A5 | todo |
 | WP-B6 | screenRecorder editor and export (trim/cut/zoom/blur/overlays/GIF), presets | L | WP-B5 | todo |
 | WP-B7 | mediaTools (ffmpeg, libvips, Tesseract) | M | WP-B4 | todo |
 | WP-B8 | cameraPreview (portal Camera / v4l2 via GStreamer) | S | WP-B1 | todo |
