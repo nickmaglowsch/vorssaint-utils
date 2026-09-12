@@ -41,7 +41,7 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BIN="${1:?usage: build-appdir.sh <built-binary> [<appdir>]}"
 APPDIR="${2:-$HERE/AppDir}"
 APPID="${APPID:-com.example.vorssaint-linux-spike}"
-QML_SRC="${QML_SRC:-$HERE/../../wp01-toolkit/qt-quick/qml}"
+QML_SRC="${QML_SRC:-$HERE/../../../linux/shell/qml}"
 EXCLUDES="$HERE/excludelist"
 
 BIN="$(readlink -f "$BIN")"

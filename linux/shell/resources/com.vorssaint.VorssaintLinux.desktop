@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Name=Vorssaint
+GenericName=System utilities
+Comment=Tray utilities and a live system panel
+Exec=vorssaint
+Icon=com.vorssaint.VorssaintLinux
+Categories=Utility;System;Monitor;
+Keywords=tray;monitor;cpu;panel;utilities;
+Terminal=false
+StartupNotify=false
+StartupWMClass=vorssaint
+X-GNOME-UsesNotifications=true

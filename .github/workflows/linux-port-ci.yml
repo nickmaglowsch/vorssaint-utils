@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Copyright (C) 2026 Vorssaint
 #
-# Gate for the GNU/Linux port (docs/linux-port/). Three jobs, all hard gates:
+# Gate for the GNU/Linux port (docs/linux-port/). Five jobs, all hard gates:
 #   linux-core  the Swift core and the Linux executable compile and run under
 #               the official swift:6.1-noble container (the toolchain the
 #               WP-00 spike measured).
@@ -13,6 +13,15 @@
 #               rather than about the Swift compiler.
 #   macos       the macOS product is unchanged: ./build.sh, --selftest, tests,
 #               on the same Xcode as ci.yml's compatibility job.
+#   shell-appimage
+#               the downloadable artifact: linux/shell built on the oldest
+#               supported glibc against the real bridge, packaged with
+#               linuxdeploy, selftested and smoked with a fake
+#               StatusNotifierWatcher, then uploaded with its screenshot.
+#   shell-smoke-noble
+#               that artifact, downloaded and run in a clean ubuntu:24.04
+#               container with no Qt and no Swift (WP-04: build on the oldest
+#               glibc, test on the newest distro).
 name: Linux port CI
 
 on:
@@ -322,3 +331,231 @@ jobs:
 
       - name: Unit tests
         run: ./build.sh --test
+
+  # ---------------------------------------------------------------------
+  # The thing a person can download and run. Built on the oldest glibc the
+  # port supports (Ubuntu 22.04, glibc 2.35, Qt 6.2) per WP-04, against the
+  # real Swift bridge -- not the WP-01 stub -- and smoked here with a fake
+  # StatusNotifierWatcher before it is uploaded.
+  # ---------------------------------------------------------------------
+  shell-appimage:
+    name: Shell AppImage (ubuntu-22.04, glibc 2.35)
+    runs-on: ubuntu-22.04
+    timeout-minutes: 45
+    # jammy, because an AppImage links against the glibc it was built on and
+    # then refuses to start on anything older. The Swift toolchain has to be
+    # the same age as the C++ one for the archive and the shell to link.
+    container: swift:6.1-jammy
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Verify toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          swift --version
+          ldd --version | head -1
+          grep PRETTY_NAME /etc/os-release
+
+      - name: Qt 6, the sampler's dependencies and the packaging tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          export DEBIAN_FRONTEND=noninteractive
+          apt-get update -qq
+          apt-get install -y --no-install-recommends \
+            qt6-base-dev qt6-base-dev-tools qt6-declarative-dev \
+            qt6-declarative-dev-tools qt6-wayland qt6-wayland-dev \
+            qml6-module-qtquick qml6-module-qtquick-window \
+            qml6-module-qtqml-workerscript \
+            qt6-xdgdesktopportal-platformtheme \
+            libqt6opengl6-dev libxkbcommon-dev libxkbcommon-x11-dev \
+            libgl1-mesa-dev libvulkan-dev libsystemd-dev \
+            cmake ninja-build patchelf file desktop-file-utils squashfs-tools \
+            curl ca-certificates \
+            xvfb x11-utils imagemagick dbus-x11 python3-dbus python3-gi \
+            gir1.2-glib-2.0 fonts-dejavu-core
+          qmake6 -query QT_VERSION
+          cmake --version | head -1
+
+      # Exactly what the bridge-abi job does, and for the same reason: SwiftPM
+      # builds executables, not archives, so the archive is made from the
+      # objects it produced, minus main.swift.o (the shell brings its own
+      # main). swift-autolink-extract turns the Swift runtime's autolink
+      # entries into -l flags, because the C++ linker cannot read them.
+      - name: Build VorssaintLinux and archive the bridge
+        shell: bash
+        run: |
+          set -euo pipefail
+          swift build --target VorssaintLinux
+          bin=$(swift build --target VorssaintLinux --show-bin-path)
+          echo "bin path: $bin"
+          objects=$(find "$bin" -name '*.o' -path '*.build/*' \
+            \( -path '*VorssaintCore.build*' -o -path '*VorssaintLinux.build*' \
+               -o -path '*OpenCombine*' \) ! -name 'main.swift.o' | sort)
+          test -n "$objects"
+          echo "$objects" > /tmp/objects.txt
+          wc -l < /tmp/objects.txt | xargs echo "object files:"
+          ar crs /tmp/libvorssaintbridge.a $objects
+          ls -l /tmp/libvorssaintbridge.a
+          for symbol in vs_subscribe vs_command vs_snapshot vs_free; do
+            nm --defined-only -g /tmp/libvorssaintbridge.a | grep -qE " T $symbol\$" \
+              || { echo "missing $symbol"; exit 1; }
+          done
+          echo "ALL FOUR SYMBOLS EXPORTED"
+          swift-autolink-extract $(cat /tmp/objects.txt) -o /tmp/autolink.args
+          swiftlib=$(dirname "$(find /usr/lib/swift /usr/local/lib -name 'libswiftCore.so' 2>/dev/null | head -1)")
+          echo "swift runtime: $swiftlib"
+          # -lstdc++ because OpenCombine's lock is a C++ file; the rpath so the
+          # binary can find the Swift runtime before it is bundled.
+          {
+            echo "VORSSAINT_SWIFT_FLAGS=-L$swiftlib -Wl,-rpath,$swiftlib -lstdc++ $(tr '\n' ' ' < /tmp/autolink.args)"
+          } >> "$GITHUB_ENV"
+          tr '\n' ' ' < /tmp/autolink.args; echo
+
+      - name: Build the shell against the real bridge
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake -S linux/shell -B build-shell -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DVORSSAINT_REAL_BRIDGE=ON \
+            -DVORSSAINT_BRIDGE_LIB=/tmp/libvorssaintbridge.a \
+            -DVORSSAINT_SWIFT_RUNTIME_FLAGS="$VORSSAINT_SWIFT_FLAGS"
+          cmake --build build-shell -j"$(nproc)"
+          ls -l build-shell/vorssaint
+          echo "=== what it links against"
+          ldd build-shell/vorssaint > /tmp/ldd.out
+          grep -E 'swift|Foundation|Qt6(Core|Quick|Widgets)' /tmp/ldd.out || true
+
+      # The hard gate on the binary itself, before any packaging: the bridge
+      # answers for all three services, the sampler reaches /proc/stat, the
+      # sample comes back out of the snapshot the panel binds, and every
+      # screen's QML instantiates. No display is involved.
+      - name: --version and --selftest
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./build-shell/vorssaint --version
+          ./build-shell/vorssaint --selftest | tee /tmp/selftest.out
+          grep -qE '^SELFTEST OK \([0-9]+ checks, 0 failed\)' /tmp/selftest.out
+          grep -q '/proc/stat via vs_sensors' /tmp/selftest.out
+
+      - name: Package it as an AppImage
+        shell: bash
+        env:
+          APPIMAGE_EXTRACT_AND_RUN: '1'
+          ARCH: x86_64
+        run: |
+          set -euo pipefail
+          bash linux/packaging/build-appimage.sh build-shell "$PWD/Vorssaint-x86_64.AppImage"
+          ls -l Vorssaint-x86_64.AppImage
+
+      - name: The packaged AppImage runs
+        shell: bash
+        env:
+          APPIMAGE_EXTRACT_AND_RUN: '1'
+        run: |
+          set -euo pipefail
+          ./Vorssaint-x86_64.AppImage --version
+          ./Vorssaint-x86_64.AppImage --selftest | tee /tmp/appimage-selftest.out
+          grep -qE '^SELFTEST OK \([0-9]+ checks, 0 failed\)' /tmp/appimage-selftest.out
+
+      - name: Smoke it under Xvfb with a fake StatusNotifierWatcher
+        shell: bash
+        env:
+          APPIMAGE_EXTRACT_AND_RUN: '1'
+        run: |
+          set -euo pipefail
+          mkdir -p shots
+          LOGDIR=/tmp/smoke bash linux/shell/tests/smoke-tray.sh \
+            ./Vorssaint-x86_64.AppImage "$PWD/shots/panel-ubuntu-22.04.png" \
+            | tee /tmp/smoke.out
+          grep -q '^SMOKE OK' /tmp/smoke.out
+
+      - name: Upload the AppImage and the screenshot
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: vorssaint-linux-appimage
+          path: |
+            Vorssaint-x86_64.AppImage
+            shots/
+          if-no-files-found: error
+          retention-days: 30
+
+  # ---------------------------------------------------------------------
+  # WP-04's rule: build on the oldest glibc, test on the newest distro. This
+  # leg downloads the artifact a person would download and runs it in a clean
+  # ubuntu:24.04 container that has no Qt and no Swift installed.
+  # ---------------------------------------------------------------------
+  shell-smoke-noble:
+    name: AppImage smoke (ubuntu:24.04 container)
+    needs: shell-appimage
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    container: ubuntu:24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Runtime dependencies only (no Qt, no Swift)
+        shell: bash
+        run: |
+          set -euo pipefail
+          export DEBIAN_FRONTEND=noninteractive
+          apt-get update -qq
+          apt-get install -y --no-install-recommends \
+            xvfb x11-utils imagemagick dbus-x11 python3-dbus python3-gi \
+            gir1.2-glib-2.0 fonts-dejavu-core \
+            libgl1 libegl1 libopengl0 libglx-mesa0 libegl-mesa0 libgl1-mesa-dri \
+            libglib2.0-0t64 libfontconfig1 libfreetype6 libxkbcommon0 \
+            libx11-xcb1 libxcb-cursor0 libxcb-icccm4 libxcb-image0 \
+            libxcb-keysyms1 libxcb-randr0 libxcb-render-util0 libxcb-shape0 \
+            libxcb-xkb1 libxkbcommon-x11-0 ca-certificates file
+          grep PRETTY_NAME /etc/os-release
+          ldd --version | head -1
+          ! command -v qmake6 || { echo "Qt is installed here; the test is not clean"; exit 1; }
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: vorssaint-linux-appimage
+          path: /tmp/art
+
+      - name: Run the downloaded AppImage
+        shell: bash
+        env:
+          APPIMAGE_EXTRACT_AND_RUN: '1'
+        run: |
+          set -euo pipefail
+          chmod +x /tmp/art/Vorssaint-x86_64.AppImage
+          ls -l /tmp/art/Vorssaint-x86_64.AppImage
+          /tmp/art/Vorssaint-x86_64.AppImage --version
+          /tmp/art/Vorssaint-x86_64.AppImage --selftest | tee /tmp/selftest.out
+          grep -qE '^SELFTEST OK \([0-9]+ checks, 0 failed\)' /tmp/selftest.out
+          grep -q '/proc/stat via vs_sensors' /tmp/selftest.out
+
+      - name: Tray and panel under Xvfb
+        shell: bash
+        env:
+          APPIMAGE_EXTRACT_AND_RUN: '1'
+        run: |
+          set -euo pipefail
+          mkdir -p shots
+          LOGDIR=/tmp/smoke bash linux/shell/tests/smoke-tray.sh \
+            /tmp/art/Vorssaint-x86_64.AppImage "$PWD/shots/panel-ubuntu-24.04.png" \
+            | tee /tmp/smoke.out
+          grep -q '^SMOKE OK' /tmp/smoke.out
+
+      - name: Upload the ubuntu 24.04 screenshot
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: vorssaint-linux-smoke-noble
+          path: shots/
+          if-no-files-found: warn
+          retention-days: 30

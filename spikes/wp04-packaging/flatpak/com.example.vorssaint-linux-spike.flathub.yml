@@ -63,6 +63,10 @@ finish-args:
 #   FileChooser                   every user-chosen path
 #   Clipboard (RemoteDesktop)     clipboard history on GNOME
 
+  # NOTE (WP-20 slice): the Qt app was moved to `linux/shell`, so this
+  # manifest's `wp01-toolkit/qt-quick` source no longer exists and this module
+  # does not build. WP-P2 owns the real Flatpak manifest; this file stays as
+  # WP-04's permission-set evidence, which is what it was read for.
 modules:
   - name: vorssaint-qt-spike
     buildsystem: cmake-ninja

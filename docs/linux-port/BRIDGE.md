@@ -10,7 +10,7 @@ snapshot and accepts a `Codable` command, and the Qt side has exactly one
 what that turned into, and what you have to do to put your service behind it.
 
 Read with it: `linux/shell/include/corebridge.h` (the ABI),
-`spikes/wp01-toolkit/qt-quick/CoreModel.cpp` (the consumer, already written),
+`linux/shell/CoreModel.cpp` (the consumer, already written),
 and `PLATFORM.md` (the protocols underneath).
 
 ---
@@ -375,7 +375,7 @@ test holds them equal, so a field that is not a `String` cannot vanish silently.
 **`metrics` is a ring buffer and nothing else.** No `/proc` read, no sampler:
 `SystemSensors` (`PLATFORM.md` § 2) is where that belongs, and a second reader
 of the same hardware is what `PLATFORM.md` § 4 tells everyone not to write. The
-keys are `cpu` and `history` because `spikes/wp01-toolkit/qt-quick/qml/Panel.qml`
+keys are `cpu` and `history` because `linux/shell/qml/Panel.qml`
 already binds those against the C stub, which makes the swap from stub to real
 core a zero-line change to the QML — the cheapest possible proof that the ABI
 is the same one. `source` is `"placeholder"` until WP-A1, and the panel is meant
@@ -387,7 +387,8 @@ for a measurement. WP-A1 keeps the type, deletes
 
 ## 7. Wiring the Qt side
 
-`spikes/wp01-toolkit/qt-quick/CMakeLists.txt` gained an option:
+`linux/shell/CMakeLists.txt` carries an option (added to the spike's
+CMakeLists, which the WP-20 slice moved here unchanged):
 
 ```sh
 cmake -B build -DVORSSAINT_REAL_BRIDGE=ON \
@@ -397,12 +398,13 @@ cmake -B build -DVORSSAINT_REAL_BRIDGE=ON \
 which swaps the C stub for the Swift archive. Not one line of `CoreModel.cpp`,
 `main.cpp` or the QML changes between the two.
 
-**Why the option is in the spike and not in a new `linux/shell/` app.**
-`linux/shell` is WP-20's deliverable — the Qt Quick executable, the main loop,
-single-instance, `--selftest`. A skeleton of it now would be something WP-20
-has to delete. What WP-18 does put under `linux/shell` is the two files WP-20
-will keep unchanged: `include/corebridge.h`, which is the contract, and
-`tests/abi_client.c`, which is the conformance test for it.
+**Where the app lives.** WP-18 put only the contract under `linux/shell`:
+`include/corebridge.h` and `tests/abi_client.c`. The WP-20 slice then promoted
+the WP-01 app itself into the same directory — unchanged code, new name, icon,
+`.desktop` file, `--version`/`--selftest`, and the real bridge by default
+(`-DVORSSAINT_REAL_BRIDGE=OFF` is now what selects the stub). Not a line of
+`CoreModel.cpp` or of the QML changed in the move, which is the claim the
+option was written to prove.
 
 ---
 

@@ -80,34 +80,27 @@ jobs:
           echo "--- in ours but not upstream (we leave these to the host):"
           comm -13 /tmp/up.txt /tmp/ours.txt
 
-      - name: build the WP-01 Qt Quick spike (Release)
+      - name: build the shell against the WP-01 stub bridge (Release)
         continue-on-error: true
         run: |
-          # WP-01's CMakeLists calls qt_standard_project_setup(), which Qt
-          # added in 6.3; jammy ships 6.2.4, so the configure step fails with
-          # "Unknown CMake command". The call only sets AUTOMOC/AUTOUIC and a
-          # QML output dir, and this CMakeLists already sets AUTOMOC/AUTORCC
-          # itself, so it is dropped here for the 6.2 build. This is a real
-          # finding, not a workaround to hide: WP-01 should guard the call
-          # with `if (QT_VERSION VERSION_GREATER_EQUAL 6.3)` so the spike
-          # configures on the oldest glibc/Qt combination the port targets.
-          if [ "$(qmake6 -query QT_VERSION | cut -d. -f2)" -lt 3 ]; then
-            echo "Qt $(qmake6 -query QT_VERSION): dropping qt_standard_project_setup()"
-            sed -i 's/^qt_standard_project_setup()/# dropped by WP-04 CI: needs Qt >= 6.3/' \
-              spikes/wp01-toolkit/qt-quick/CMakeLists.txt
-          fi
-          cmake -S spikes/wp01-toolkit/qt-quick -B build -G Ninja \
+          # This job is the packaging comparison, and it has no Swift
+          # toolchain, so it builds the stub-bridge configuration. The real
+          # bridge is what `shell-appimage` in linux-port-ci.yml ships.
+          # The qt_standard_project_setup() call this job used to sed out is
+          # now guarded in the CMakeLists itself (it needs Qt 6.3; jammy has
+          # 6.2.4), which was WP-04's finding.
+          cmake -S linux/shell -B build -G Ninja -DVORSSAINT_REAL_BRIDGE=OFF \
             -DCMAKE_BUILD_TYPE=Release
           cmake --build build -j"$(nproc)"
-          ls -la build/vorssaint-qt-spike
+          ls -la build/vorssaint
 
       - name: hand-built AppDir
         continue-on-error: true
         run: |
           bash spikes/wp04-packaging/appdir/build-appdir.sh \
-            build/vorssaint-qt-spike "$PWD/AppDir-hand" | tee appdir-hand.log
+            build/vorssaint "$PWD/AppDir-hand" | tee appdir-hand.log
           echo "--- ldd closure of the main binary"
-          ldd AppDir-hand/usr/bin/vorssaint-qt-spike
+          ldd AppDir-hand/usr/bin/vorssaint
           echo "--- squashfs payload size (what an AppImage's payload costs)"
           mksquashfs AppDir-hand payload.squashfs -root-owned -noappend \
             -comp zstd -Xcompression-level 19 -b 128K -no-progress | tail -5
@@ -146,7 +139,7 @@ jobs:
         env:
           APPIMAGE_EXTRACT_AND_RUN: '1'
           ARCH: x86_64
-          QML_SOURCES_PATHS: ${{ github.workspace }}/spikes/wp01-toolkit/qt-quick/qml
+          QML_SOURCES_PATHS: ${{ github.workspace }}/linux/shell/qml
           EXTRA_QT_PLUGINS: wayland-decoration-client;wayland-graphics-integration-client;wayland-shell-integration;platformthemes
           # Debian/Ubuntu's /usr/bin/qmake is the qtchooser wrapper with no
           # default, so linuxdeploy-plugin-qt fails with "could not find a Qt
@@ -155,7 +148,7 @@ jobs:
         run: |
           mkdir -p AppDir-ld/usr/bin AppDir-ld/usr/share/applications \
                    AppDir-ld/usr/share/icons/hicolor/256x256/apps
-          cp build/vorssaint-qt-spike AppDir-ld/usr/bin/
+          cp build/vorssaint AppDir-ld/usr/bin/
           cp AppDir-hand/com.example.vorssaint-linux-spike.desktop \
              AppDir-ld/usr/share/applications/
           cp AppDir-hand/com.example.vorssaint-linux-spike.png \

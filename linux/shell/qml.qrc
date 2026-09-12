@@ -3,5 +3,6 @@
     <file>qml/Panel.qml</file>
     <file>qml/Preferences.qml</file>
     <file>qml/Overlay.qml</file>
+    <file alias="icons/vorssaint.png">resources/com.vorssaint.VorssaintLinux.png</file>
   </qresource>
 </RCC>

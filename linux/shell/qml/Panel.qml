@@ -3,13 +3,15 @@ import QtQuick.Window
 import Vorssaint
 
 // Screen 1: the panel that drops out of the tray item. Live CPU sparkline,
-// bound straight to the metrics service's snapshot.
+// bound straight to the metrics service's snapshot. WP-22 is what turns this
+// into the full panel (tabs, sections, anchored popover); this is the one
+// readout, and it says where its numbers come from.
 Window {
     id: panel
     visible: true
     width: 340
     height: 200
-    title: "Vorssaint panel"
+    title: "Vorssaint"
     color: "#1c1f26"
 
     CoreModel {
@@ -71,10 +73,16 @@ Window {
         }
     }
 
+    // Provenance, never decoration: a panel that cannot say whether it is
+    // showing a measurement or a generated series is a panel that lies.
     Text {
-        x: 16; y: panel.height - 22
-        text: (metrics.state.history || []).length + " samples"
-        color: "#6b7488"
+        x: 16; y: panel.height - 24
+        width: panel.width - 32
+        elide: Text.ElideRight
+        text: (metricsIsReal ? "" : "PLACEHOLDER DATA \u2014 ")
+              + metricsSource + " \u00b7 "
+              + (metrics.state.history || []).length + " samples"
+        color: metricsIsReal ? "#6b7488" : "#d98a4a"
         font.pixelSize: 11
     }
 }

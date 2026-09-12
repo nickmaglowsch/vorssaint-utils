@@ -1,9 +1,12 @@
 # WP-04: self-contained packaging proof
 
-Everything here packages the WP-01 winner (Qt 6 Quick,
-`spikes/wp01-toolkit/qt-quick`, C bridge stub in
-`spikes/wp01-toolkit/corebridge-stub`). The findings are in
-`docs/linux-port/spikes/04-packaging.md`.
+Everything here packages the WP-01 winner (Qt 6 Quick). That app was promoted
+to `linux/shell` by the WP-20 slice, so the paths below name it there; the C
+bridge stub it can still be built against is in
+`spikes/wp01-toolkit/corebridge-stub`. The findings are in
+`docs/linux-port/spikes/04-packaging.md`, and the AppImage the port actually
+ships is built by `linux/packaging/build-appimage.sh` -- this AppDir builder
+stays as the audit implementation.
 
 ```
 appdir/
@@ -25,13 +28,14 @@ The app id and icon are placeholders: branding is the lead's decision
 
 ```sh
 # 1. build the spike in Release
-cmake -S spikes/wp01-toolkit/qt-quick -B /tmp/wp04/build -DCMAKE_BUILD_TYPE=Release
+cmake -S linux/shell -B /tmp/wp04/build -DCMAKE_BUILD_TYPE=Release \
+    -DVORSSAINT_REAL_BRIDGE=OFF
 cmake --build /tmp/wp04/build -j"$(nproc)"
 
 # 2. build the AppDir (needs patchelf; qmake6 + qmlimportscanner come from Qt 6)
 apt-get install -y patchelf squashfs-tools
 ./spikes/wp04-packaging/appdir/build-appdir.sh \
-    /tmp/wp04/build/vorssaint-qt-spike /tmp/wp04/AppDir
+    /tmp/wp04/build/vorssaint /tmp/wp04/AppDir
 
 # 3. squashfs the payload (this is what an AppImage carries)
 mksquashfs /tmp/wp04/AppDir /tmp/wp04/payload.squashfs \
