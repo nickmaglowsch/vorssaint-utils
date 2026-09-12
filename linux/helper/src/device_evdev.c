@@ -14,6 +14,7 @@
 #include <libevdev/libevdev.h>
 #include <libudev.h>
 #include <poll.h>
+#include <sys/timerfd.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -38,8 +39,24 @@ typedef struct {
     char node[64];
     char name[128];
     char kind[64];
+    /* The udev classification reduced to one rules_dev_class, so a rule can
+     * apply to mice and not to touchpads. A device that is both (a keyboard
+     * with a built-in touchpad reports both properties) keeps the more
+     * specific pointer class, because that is the one a rule asks about. */
+    uint8_t dev_class;
     bool grabbed;
 } source;
+
+static uint8_t class_for_kind(const char *kind)
+{
+    if (strstr(kind, "TOUCHPAD") || strstr(kind, "touchpad"))
+        return RULES_DEV_TOUCHPAD;
+    if (strstr(kind, "MOUSE") || strstr(kind, "mouse"))
+        return RULES_DEV_MOUSE;
+    if (strstr(kind, "KEYBOARD") || strstr(kind, "keyboard"))
+        return RULES_DEV_KEYBOARD;
+    return RULES_DEV_UNKNOWN;
+}
 
 /* Big enough for the longest hot-plug line a full source can produce:
  *   "added " + node + " (" + name + ")" + ", grabbed"
@@ -53,7 +70,8 @@ typedef struct {
 typedef struct {
     source src[MAX_SOURCES];
     int n_src;
-    struct pollfd pfd[MAX_SOURCES + 1]; /* +1 for the udev monitor */
+    struct pollfd pfd[MAX_SOURCES + 2]; /* +1 udev monitor, +1 timerfd */
+    int timer_fd;
     struct libevdev_uinput *uidev;
     struct libevdev *out_template;
     bool grab;
@@ -82,6 +100,7 @@ static int add_source(evdev_priv *p, const char *node, const char *kind, bool gr
     for (int i = 0; i < p->n_src; i++) {
         if (strcmp(p->src[i].node, node) == 0) {
             kind_append(p->src[i].kind, sizeof(p->src[i].kind), kind);
+            p->src[i].dev_class = class_for_kind(p->src[i].kind);
             return 0;
         }
     }
@@ -92,7 +111,12 @@ static int add_source(evdev_priv *p, const char *node, const char *kind, bool gr
 
     s = &p->src[p->n_src];
     memset(s, 0, sizeof(*s));
-    s->fd = open(node, O_RDONLY | O_NONBLOCK | O_CLOEXEC);
+    /* Read-write, because EV_LED is written back to this same fd to drive the
+     * keyboard's lamps (see ev_write). A node that will only open read-only
+     * still works; it just cannot light anything up. */
+    s->fd = open(node, O_RDWR | O_NONBLOCK | O_CLOEXEC);
+    if (s->fd < 0)
+        s->fd = open(node, O_RDONLY | O_NONBLOCK | O_CLOEXEC);
     if (s->fd < 0) {
         snprintf(err, err_cap, "open %s: %s", node, strerror(errno));
         return -errno;
@@ -106,6 +130,7 @@ static int add_source(evdev_priv *p, const char *node, const char *kind, bool gr
     snprintf(s->node, sizeof(s->node), "%s", node);
     snprintf(s->name, sizeof(s->name), "%s", libevdev_get_name(s->dev) ?: "?");
     snprintf(s->kind, sizeof(s->kind), "%s", kind);
+    s->dev_class = class_for_kind(s->kind);
 
     if (grab) {
         rc = libevdev_grab(s->dev, LIBEVDEV_GRAB);
@@ -369,6 +394,17 @@ static int ev_open(input_backend *self, bool grab, char *err, size_t err_cap)
         return -EBUSY;
     }
 
+    /* The timer source, created before anything is claimed so a failure here
+     * costs nothing to unwind. CLOCK_MONOTONIC, because every deadline in the
+     * rules engine is a monotonic nanosecond count. */
+    if (p->timer_fd < 0) {
+        p->timer_fd = timerfd_create(CLOCK_MONOTONIC, TFD_NONBLOCK | TFD_CLOEXEC);
+        if (p->timer_fd < 0) {
+            snprintf(err, err_cap, "timerfd_create: %s", strerror(errno));
+            return -errno;
+        }
+    }
+
     /* grab == false is listen-only (--tap): the relay reads devices to show the
      * user what they pressed and emits nothing, so it needs neither the grab
      * nor an output device. Requiring uinput here would make shortcut
@@ -447,6 +483,8 @@ static int ev_read(input_backend *self, rules_event *ev, uint64_t *ts_ns, uint64
                 ev->type = ie.type;
                 ev->code = ie.code;
                 ev->value = ie.value;
+                ev->dev_id = (uint16_t)i;
+                ev->dev_class = p->src[i].dev_class;
                 *ts_ns = now_monotonic_ns();
                 return DEV_READ_EVENT;
             }
@@ -454,11 +492,27 @@ static int ev_read(input_backend *self, rules_event *ev, uint64_t *ts_ns, uint64
                 return DEV_READ_ERROR;
         }
 
+        /* The relay's timer source. poll()'s timeout is a millisecond count
+         * rounded up, which is coarse enough to visibly stutter a 60 Hz
+         * smooth-scroll glide and to make each quit-protection hold finish
+         * up to a millisecond late; a timerfd armed at the absolute deadline
+         * has nanosecond resolution, needs no arithmetic against a clock
+         * read that is already stale by the time poll() runs, and costs one
+         * fd. The fake backend's deadline handling is the same source with a
+         * synthetic clock, which is what lets the timed rules be tested
+         * without one. */
         if (deadline_ns != 0) {
-            uint64_t now = now_monotonic_ns();
-            if (now >= deadline_ns)
-                return DEV_READ_TIMEOUT;
-            timeout_ms = (int)((deadline_ns - now + 999999ULL) / 1000000ULL);
+            struct itimerspec its;
+            memset(&its, 0, sizeof(its));
+            its.it_value.tv_sec = (time_t)(deadline_ns / 1000000000ULL);
+            its.it_value.tv_nsec = (long)(deadline_ns % 1000000000ULL);
+            if (timerfd_settime(p->timer_fd, TFD_TIMER_ABSTIME, &its, NULL) < 0)
+                return DEV_READ_ERROR;
+        } else {
+            struct itimerspec off;
+            memset(&off, 0, sizeof(off));
+            if (timerfd_settime(p->timer_fd, 0, &off, NULL) < 0)
+                return DEV_READ_ERROR;
         }
 
         for (int i = 0; i < p->n_src; i++) {
@@ -467,6 +521,10 @@ static int ev_read(input_backend *self, rules_event *ev, uint64_t *ts_ns, uint64
             p->pfd[i].revents = 0;
         }
         nfds = p->n_src;
+        p->pfd[nfds].fd = p->timer_fd;
+        p->pfd[nfds].events = POLLIN;
+        p->pfd[nfds].revents = 0;
+        nfds++;
         if (p->mon) {
             p->pfd[nfds].fd = p->mon_fd;
             p->pfd[nfds].events = POLLIN;
@@ -480,6 +538,12 @@ static int ev_read(input_backend *self, rules_event *ev, uint64_t *ts_ns, uint64
             if (errno == EINTR)
                 continue;
             return DEV_READ_ERROR;
+        }
+        if (p->pfd[p->n_src].revents & POLLIN) {
+            uint64_t ticks;
+            ssize_t got = read(p->timer_fd, &ticks, sizeof(ticks));
+            (void)got; /* the deadline is the caller's, not the count's */
+            return DEV_READ_TIMEOUT;
         }
         if (p->mon && (p->pfd[nfds - 1].revents & POLLIN)) {
             /* Report the change to the caller so it can log and re-describe.
@@ -511,6 +575,43 @@ static int ev_read(input_backend *self, rules_event *ev, uint64_t *ts_ns, uint64
 static int ev_write(input_backend *self, const rules_event *ev)
 {
     evdev_priv *p = self->priv;
+
+    /* An LED belongs to the keyboard the user is looking at, not to the
+     * relay's synthetic output device, and a grabbed device still accepts
+     * EV_LED writes. Written to every keyboard source, because the relay
+     * cannot know which one the hand is on.
+     *
+     * The SYN_REPORT is written too, in the same write(2). evdev_write()
+     * hands each record to input_inject_event() and most LED handlers act on
+     * the EV_LED alone, so the terminator is redundant on those -- but it is
+     * what every other writer of an input device sends, a driver is entitled
+     * to batch until it sees one, and this is the one path in this file with
+     * no model in the test suite (PRIVILEGES.md § 8). Being conventional is
+     * cheaper than finding out which driver is not.
+     *
+     * One write(2) rather than two, so a driver that does batch cannot see a
+     * half-finished report if the second call were to fail. */
+    if (ev->type == EV_LED) {
+        struct input_event ie[2];
+        int wrote = 0;
+
+        memset(ie, 0, sizeof(ie));
+        ie[0].type = EV_LED;
+        ie[0].code = ev->code;
+        ie[0].value = ev->value;
+        ie[1].type = EV_SYN;
+        ie[1].code = SYN_REPORT;
+        for (int i = 0; i < p->n_src; i++) {
+            if (p->src[i].dev_class != RULES_DEV_KEYBOARD)
+                continue;
+            if (!libevdev_has_event_code(p->src[i].dev, EV_LED, ev->code))
+                continue;
+            if (write(p->src[i].fd, ie, sizeof(ie)) == (ssize_t)sizeof(ie))
+                wrote++;
+        }
+        return wrote > 0 ? 0 : -ENODEV;
+    }
+
     if (!p->uidev)
         return -ENODEV; /* listen-only: there is no output device by design */
     return libevdev_uinput_write_event(p->uidev, ev->type, ev->code, ev->value);
@@ -562,6 +663,10 @@ static void ev_close(input_backend *self)
     }
     release_sources(p);
     monitor_stop(p);
+    if (p->timer_fd >= 0) {
+        close(p->timer_fd);
+        p->timer_fd = -1;
+    }
     free(p);
     free(self);
 }
@@ -582,6 +687,7 @@ input_backend *device_evdev_new(void)
         return NULL;
     }
     ((evdev_priv *)b->priv)->mon_fd = -1;
+    ((evdev_priv *)b->priv)->timer_fd = -1;
     b->name = "evdev";
     b->open = ev_open;
     b->read = ev_read;

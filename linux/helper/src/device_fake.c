@@ -226,7 +226,8 @@ static bool is_fake(input_backend *b)
     return b && b->open == fake_open;
 }
 
-void device_fake_push(input_backend *b, uint16_t type, uint16_t code, int32_t value, uint64_t ts_ns)
+void device_fake_push_dev(input_backend *b, uint8_t dev_class, uint16_t dev_id, uint16_t type,
+                          uint16_t code, int32_t value, uint64_t ts_ns)
 {
     fake_priv *p;
     if (!is_fake(b))
@@ -237,8 +238,17 @@ void device_fake_push(input_backend *b, uint16_t type, uint16_t code, int32_t va
     p->src[p->src_tail].type = type;
     p->src[p->src_tail].code = code;
     p->src[p->src_tail].value = value;
+    p->src[p->src_tail].dev_id = dev_id;
+    p->src[p->src_tail].dev_class = dev_class;
     p->src_ts[p->src_tail] = ts_ns;
     p->src_tail++;
+}
+
+/* The plain push keeps the shape the WP-S1 tests use: a keyboard event from
+ * source 0. Anything that needs another device class says so. */
+void device_fake_push(input_backend *b, uint16_t type, uint16_t code, int32_t value, uint64_t ts_ns)
+{
+    device_fake_push_dev(b, RULES_DEV_KEYBOARD, 0, type, code, value, ts_ns);
 }
 
 size_t device_fake_sink_count(input_backend *b)

@@ -23,15 +23,34 @@ if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
   message(STATUS "No CMAKE_BUILD_TYPE given, defaulting to RelWithDebInfo")
 endif()
 
-# _FORTIFY_SOURCE needs an optimising build to do anything; saying so beats
-# silently shipping a hardening flag that is a no-op. Debug is still a
-# supported configuration -- the warning set must be clean there too -- it just
-# is not one to install.
-if(CMAKE_BUILD_TYPE STREQUAL "Debug")
-  message(WARNING "_FORTIFY_SOURCE has no effect in a Debug build; "
-                  "use RelWithDebInfo for a build that hardens")
+# The sanitizers are a *fifth* configuration, not an option on one of the four:
+# a leak and a use-after-free are a class of defect -Werror cannot see, because
+# they are missing statements rather than wrong ones. scripts/build-matrix.sh
+# runs this leg, which is how the WP-D1/D2 review found vorssaint-relay leaking
+# its whole device backend on every --replay and --bench run.
+#
+# It is never installed, and it deliberately drops _FORTIFY_SOURCE: fortify and
+# ASan instrument the same libc calls, and defining both is a compile error
+# here (-Werror on the redefinition), not a hardening decision. The four
+# shipping configurations keep it.
+option(WITH_SANITIZERS "Build with ASan/UBSan/LSan in place of _FORTIFY_SOURCE" OFF)
+
+if(WITH_SANITIZERS)
+  message(STATUS "Sanitizer build: ASan + UBSan + LSan, _FORTIFY_SOURCE off, not installable")
+  add_compile_options(-fsanitize=address,undefined -fno-sanitize-recover=all
+                      -fno-omit-frame-pointer -fstack-protector-strong)
+  add_link_options(-fsanitize=address,undefined)
+else()
+  # _FORTIFY_SOURCE needs an optimising build to do anything; saying so beats
+  # silently shipping a hardening flag that is a no-op. Debug is still a
+  # supported configuration -- the warning set must be clean there too -- it
+  # just is not one to install.
+  if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+    message(WARNING "_FORTIFY_SOURCE has no effect in a Debug build; "
+                    "use RelWithDebInfo for a build that hardens")
+  endif()
+  add_compile_options(-D_FORTIFY_SOURCE=2 -fstack-protector-strong)
 endif()
-add_compile_options(-D_FORTIFY_SOURCE=2 -fstack-protector-strong)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 add_compile_options(-fPIE)
 add_link_options(-pie -Wl,-z,relro -Wl,-z,now -Wl,-z,noexecstack)
@@ -55,6 +74,11 @@ endif()
 
 add_library(helpercore STATIC
   src/rules.c
+  src/rules_debounce.c
+  src/rules_scroll.c
+  src/rules_super.c
+  src/rules_mouse.c
+  src/rules_quit.c
   src/device_fake.c
   src/device_evdev.c
   src/grabholder.c
@@ -65,7 +89,10 @@ add_library(helpercore STATIC
   src/caps.c
 )
 target_include_directories(helpercore PUBLIC src)
-target_link_libraries(helpercore PUBLIC PkgConfig::EVDEV PkgConfig::UDEV PkgConfig::SDBUS)
+# libm: the smooth-scroll easing is exp(), ported verbatim from
+# SmoothScrollSupport, and exp() is the whole reason the glide composes across
+# frame intervals.
+target_link_libraries(helpercore PUBLIC PkgConfig::EVDEV PkgConfig::UDEV PkgConfig::SDBUS m)
 
 add_library(authz STATIC src/polkit_check.c)
 target_include_directories(authz PUBLIC src)
@@ -128,6 +155,7 @@ add_test(NAME replay
          COMMAND ${CMAKE_COMMAND}
                  -DGEN=$<TARGET_FILE:gen-stream>
                  -DRELAY=$<TARGET_FILE:vorssaint-relay>
+                 -DRULES=${CMAKE_CURRENT_SOURCE_DIR}/tests/replay_rules.json
                  -DEXPECTED=${CMAKE_CURRENT_SOURCE_DIR}/tests/replay_expected.txt
                  -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/run_replay.cmake)
 

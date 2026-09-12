@@ -163,6 +163,11 @@ int vh_enable(vh_client *c, bool enable, vh_error *err)
     return call_void(c, "Enable", err, "b", (int)enable);
 }
 
+int vh_set_context(vh_client *c, const char *context_json, vh_error *err)
+{
+    return call_void(c, "SetContext", err, "s", context_json);
+}
+
 int vh_set_rules(vh_client *c, const char *rules_json, vh_error *err)
 {
     return call_void(c, "SetRules", err, "s", rules_json);
@@ -231,16 +236,19 @@ static int on_event_message(sd_bus_message *m, void *userdata, sd_bus_error *ret
 {
     vh_client *c = userdata;
     uint64_t ts;
+    const char *kind = NULL, *detail = NULL;
+    uint32_t device;
     uint16_t type, code;
     int32_t value;
     int r;
 
     (void)ret_error;
-    r = sd_bus_message_read(m, "tqqi", &ts, &type, &code, &value);
+    r = sd_bus_message_read(m, "tsuqqis", &ts, &kind, &device, &type, &code, &value, &detail);
     if (r < 0)
         return r;
     if (c->on_event)
-        c->on_event(ts, type, code, value, c->on_event_user);
+        c->on_event(ts, kind ? kind : "", device, type, code, value, detail ? detail : "",
+                    c->on_event_user);
     return 0;
 }
 

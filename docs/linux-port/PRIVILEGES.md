@@ -144,6 +144,7 @@ own pid or uid.
 |---|---|---|---|
 | `Enable(b)` | `org.vorssaint.helper.enable` | `auth_admin_keep` | turns the capability on; this is the moment the user should see a prompt |
 | `SetRules(s)` | `org.vorssaint.helper.set-rules` | `auth_admin_keep` | a rule is a program that rewrites keystrokes; changing it is as strong as enabling |
+| `SetContext(s)` | `org.vorssaint.helper.set-context` | `auth_admin_keep` | one string, no rule change, but called on every focus change; separated so it can be allowed on its own and so it does not bury the audit line for a rule change |
 | `SetFanPwm`, `SetFanAuto`, `FanHeartbeat` | `org.vorssaint.helper.fan-control` | `auth_admin_keep` | a fan set too slow damages hardware silently, hours later |
 | `DdcWrite`, `DdcRead` | `org.vorssaint.helper.ddc` | `auth_admin_keep` | `/dev/i2c-*` is a general bus, not a monitor API; see § 4.3 |
 | `GetDevices()` | `org.vorssaint.helper.get-devices` | `yes` | only names, already readable in `/proc/bus/input/devices` |
@@ -153,17 +154,17 @@ The two promptless actions are split out deliberately: the capabilities page
 must be able to show what *would* be grabbed, and which fans and buses exist,
 without handing out the power to use any of them. Everything that acts is
 `auth_admin_keep`, not `auth_admin`: one administrator prompt per session, not
-one per rule edit or brightness step. `allow_inactive` is `no` on all six, so
-a user on a switched-away session cannot enable the relay, drive the fans or
+one per rule edit or brightness step. `allow_inactive` is `no` on all seven,
+so a user on a switched-away session cannot enable the relay, drive the fans or
 change the brightness on the active one.
 
-Six actions rather than one, because a user who wants a quieter fan should not
-have to grant a keylogger to get it, and the hub can say precisely which
+Seven actions rather than one, because a user who wants a quieter fan should
+not have to grant a keylogger to get it, and the hub can say precisely which
 capability a feature needs.
 
 ### 4.1 The API
 
-Nine methods, one signal and five properties. The narrowness is the point: the
+Ten methods, one signal and five properties. The narrowness is the point: the
 app never receives a file descriptor for an input device, an i2c bus or a
 sysfs attribute, and the helper exposes no raw transfer or raw write method
 for any of them.
@@ -173,6 +174,7 @@ interface org.vorssaint.Helper1 {          # at /org/vorssaint/Helper1
   methods:
     Enable(in  b enable)          # claim/release devices, start/stop the relay
     SetRules(in  s json)          # the rule document; schema below
+    SetContext(in  s json)        # {"focused_app_id": "…"}; see below
     GetDevices(out s json)        # [{node,name,kind,grabbed}, …]
     GetCapabilities(out s json)   # uinput, hwmon pwm, i2c buses; see below
 
@@ -183,9 +185,10 @@ interface org.vorssaint.Helper1 {          # at /org/vorssaint/Helper1
     DdcWrite(in s bus, in y vcp, in q value)
     DdcRead(in s bus, in y vcp, out q current, out q max)
   signals:
-    Event(t timestamp_ns, q type, q code, i value)
+    Event(t timestamp_ns, s kind, u device,
+          q type, q code, i value, s detail)
   properties (read-only, no prompt):
-    Rules          s   active configuration + counters
+    Rules          s   active configuration + context + counters
     Backend        s   "evdev" or "fake"
     Authorization  s   which authorisation backend is compiled in
     Fan            s   channels under manual control, watchdog time remaining
@@ -199,39 +202,166 @@ errors:
     org.freedesktop.DBus.Error.IOError        the device did not cooperate
 ```
 
-`Event` is emitted **only in tap mode**, which is the shortcut recorder: the
-relay listens without grabbing and without an output device, the app shows the
-user what they pressed, and the mode ends when recording ends. Outside tap mode
-the helper emits nothing, so the ordinary state of an enabled relay is that no
-keystroke ever crosses the bus. That is deliberate: a helper that streamed
-every event to a session process would have moved the keylogger into the
-unprivileged half and gained nothing.
+#### The `Event` signal
 
-The rule document is a fixed seven-key schema, parsed by a hand-written reader
-in `rules.c` rather than a JSON library, because it is the one untrusted input
-a root process accepts:
-
-```json
-{"tap_hold": true, "tap_threshold_ms": 200,
- "chatter": true, "chatter_ms": 40,
- "tap_source": 58, "tap_output": 1, "hold_output": 29}
+```
+t  timestamp_ns   CLOCK_MONOTONIC, the same clock the rules run on
+s  kind           "input" | "rule" | "hotplug"
+u  device         source device index; 0 for "rule" and "hotplug"
+q  type, q code, i value    the evdev triple; 0/0/0 when kind is not "input"
+s  detail         JSON object for "rule", plain text for "hotplug",
+                  empty for "input"
 ```
 
-Every value is range-checked (`tap_threshold_ms` ≤ 5000, keycodes ≤ `KEY_MAX`);
-anything unparseable is rejected with `org.freedesktop.DBus.Error.InvalidArgs`
-and the previous rules stay in force.
+- **`kind: "input"`** is emitted **only in tap mode**, which is the shortcut
+  recorder and the snippet trigger: the relay listens without grabbing and
+  without an output device, the app shows the user what they pressed, and the
+  mode ends when recording ends. Outside tap mode the helper emits no input at
+  all, so the ordinary state of an enabled relay is that no keystroke ever
+  crosses the bus. That is deliberate: a helper that streamed every event to a
+  session process would have moved the keylogger into the unprivileged half
+  and gained nothing.
 
-**The document is capped at 64 KiB** (`RULES_JSON_MAX`), checked on length
-before a byte of it is parsed, and rejected with `InvalidArgs` above that. A
-valid document is seven short keys and well under 200 bytes, so the cap is
-three orders of magnitude of slack — but it has to exist, because the reader
-is not a streaming parser: `json_find()` restarts from the beginning of the
-string for each key, so the work is O(keys × length) and an unbounded string
-would be an unbounded amount of a root process's time for one unprivileged
-D-Bus call. D-Bus's own 128 MiB message limit is not a useful bound here. The
-check is in `rules_config_from_json` so it holds for every caller, and
-repeated in `method_set_rules` so the refusal can name the size that was
-sent.
+  Only `EV_KEY` transitions are sent — a key or a button going down, up or
+  repeating, with the source device index so a recorder can tell two keyboards
+  apart. Pointer motion and the wheel are never sent: they are a continuous
+  stream with nothing to record.
+
+  **It is rate-limited**, to 400 signals per second, because this is the one
+  place the helper hands raw keystrokes to a session process and a stuck key
+  or a 1 kHz gaming mouse would otherwise turn the recorder into an unbounded
+  D-Bus sender. No human produces 400 key transitions a second. Events dropped
+  by the limiter, and events dropped because the ring filled, are both counted
+  and reported, so a client that hits either learns that it did.
+
+- **`kind: "rule"`** is what a rule decided that the app must act on, because
+  the helper must not. `detail` is a JSON object naming the rule:
+
+  ```json
+  {"rule":"mouse_button_shortcut","action":"workspace_left","button":276}
+  {"rule":"quit_protection","shortcut":"quit","outcome":"blocked",
+   "app_id":"firefox","native_quit":true}
+  {"rule":"super_key","action":"tap_key","key":88}
+  ```
+
+  `outcome` is one of `holding`, `armed`, `blocked`, `confirmed`. `action` for
+  the gesture is one of `workspace_left`, `workspace_right`, `overview`,
+  `app_overview`. These are emitted whether or not the relay is in tap mode —
+  they carry no keystroke, and the app cannot do its half of the feature
+  without them. They are drained *before* the input queue, so a flood of tap
+  events cannot crowd one out, and they are never rate-limited.
+
+- **`kind: "hotplug"`** carries the line the log carries: `added
+  /dev/input/event7 (Keychron K2), grabbed`.
+
+#### The rule document
+
+`SetRules` takes one JSON object with a section per rule, parsed by a
+hand-written reader in `rules.c` rather than a JSON library, because it is the
+one untrusted input a root process accepts. Unknown keys are ignored; a
+missing key keeps the default; **a present key whose value is out of range or
+of the wrong type rejects the whole document** with
+`org.freedesktop.DBus.Error.InvalidArgs`, and the previous rules stay in
+force. Every rule ships off: a relay that starts rewriting input the moment it
+is enabled is not something a capabilities page can honestly describe.
+
+```json
+{
+  "keyboard_debounce":     {"enabled": false, "window_ms": 5,
+                            "key_windows": "30:20,18:0"},
+  "mouse_click_debounce":  {"enabled": false, "window_ms": 25},
+  "scroll_invert":         {"enabled": false, "vertical": true,
+                            "horizontal": false, "mouse": true,
+                            "touchpad": false,
+                            "shift_redirects_vertical": false},
+  "smooth_scroll":         {"enabled": false, "step": 40, "response": 65,
+                            "mouse": true, "touchpad": false},
+  "super_key":             {"enabled": false, "source": 58,
+                            "modifiers": [29, 56, 125],
+                            "tap_action": "escape", "tap_key": 0,
+                            "hold_threshold_ms": 500, "led": true},
+  "mouse_button_shortcut": {"enabled": false,
+                            "bindings": [{"input": 275, "modifiers": [29],
+                                          "key": 15}],
+                            "gesture_button": 0,
+                            "gesture_follows_drag": false},
+  "quit_protection":       {"enabled": false,
+                            "quit":  {"enabled": false, "mode": "hold",
+                                      "hold_ms": 800, "double_ms": 600,
+                                      "extra_modifier": "shift",
+                                      "scope": "all", "exceptions": []},
+                            "close": {"…as quit…": null}}
+}
+```
+
+Ranges, all enforced: `window_ms` 0..500 for the key filter and 5..100 for the
+click filter (out of range falls back to the documented default rather than
+clamping, which is what the macOS sanitisers do); `step` 20..100 and
+`response` 0..100, both clamped; `hold_threshold_ms` ≤ 5000; `hold_ms`
+250..2000 and `double_ms` 200..1500, both clamped; every keycode ≤ `KEY_MAX`;
+at most 4 modifiers per chord, 16 bindings, 32 per-key windows and 16
+exceptions per shortcut. `mode` is `hold`, `double_press` or `extra_modifier`;
+`scope` is `all`, `selected_only` or `all_except_selected`; `tap_action` is
+`none`, `escape`, `caps_lock` or `key`; `extra_modifier` is `shift` or `alt`.
+An unknown enumeration value is an error, never a silent default. A
+`mouse_button_shortcut` binding may only name an extra button
+(`BTN_SIDE`…`BTN_TASK`) or one of the two tilt pseudo-inputs (−1, −2); left,
+right and middle are refused, because they belong to the click filter.
+
+One cross-rule check runs after the whole document is read: a `super_key`
+source that another enabled rule already answers is refused
+(`"bad value for \"super_key.source (already claimed by another rule)\""`).
+That is `SuperKeyMappingGuard.hasMappingConflict` in the terms this engine
+has — see `RELAY_RULES.md` § 5 for what else of that guard survives the move
+to Linux, and what has no hazard left to guard against.
+
+Every string the document carries is echoed back inside the `Rules` property,
+which the helper builds by hand. So an identifier is restricted to letters,
+digits and `. - _ + : ,` and **refused** if it contains anything else, rather
+than escaped: a quote arriving from an unprivileged caller and coming back out
+inside a JSON object the helper generates would be the helper producing
+malformed JSON for every client that reads it.
+
+#### `SetContext`
+
+```json
+{"focused_app_id": "org.gnome.TextEditor"}
+```
+
+The app pushes which application has focus, because the relay cannot see it: a
+grabbed input device says nothing about which window is on top. Only
+`quit_protection`'s per-app scope uses it today.
+
+**Why it is a separate method rather than a field of the rules document.** The
+focused application changes every time the user moves between windows — many
+times a minute, sometimes several times a second. The rules change when a
+person opens a settings page. Riding the rules document would mean
+re-validating the whole schema and calling `rules_reconfigure()` on every focus
+change, and `rules_reconfigure()` deliberately releases everything the engine
+is holding down on the user's behalf: a super key held across an alt-tab would
+drop its modifiers mid-chord, every single time.
+
+It carries the **same authorisation as `SetRules`**: a polkit action and the
+same session-ownership check, because it is the same privilege — telling the
+relay how to treat keys it has already claimed. It has its own action id,
+`org.vorssaint.helper.set-context`, so an administrator may allow the
+frequent, low-consequence one without allowing the other, and so the audit
+line for a rule change is not buried under focus changes. It is
+`auth_admin_keep` by default like the rest: the app has no business telling a
+root daemon anything until the user has said the relay may run.
+
+**Both documents are capped at 64 KiB** (`RULES_JSON_MAX`), checked on length
+before a byte is parsed, and rejected with `InvalidArgs` above that. A full
+rules document with every section populated is under 1 KiB, so the cap is
+nearly two orders of magnitude of slack — but it has to exist, because the
+reader is not a streaming parser: `json_find()` restarts from the beginning of
+the string for each key, so the work is O(keys × length) and an unbounded
+string would be an unbounded amount of a root process's time for one
+unprivileged D-Bus call. D-Bus's own 128 MiB message limit is not a useful
+bound here. The check is in `rules_config_from_json` and
+`rules_context_from_json` so it holds for every caller, and repeated in
+`method_set_rules` and `method_set_context` so the refusal can name the size
+that was sent.
 
 `GetCapabilities` answers by *trying*, never by inferring from a name, because
 a device node can exist with no driver behind it — which is exactly what
@@ -277,6 +407,10 @@ Three deliberate edges:
   relay. Fast user switching therefore needs no special case: the relay is
   released when its owner releases it or when the daemon stops, and the
   incoming session enables its own.
+
+`SetContext` is ownership-checked on the same terms as `SetRules`: a second
+session must not be able to tell the relay which application has focus for a
+session it does not hold.
 
 `GetDevices` and `GetCapabilities` are *not* ownership-checked. They report and
 change nothing, and a second session being unable to see what is going on is
@@ -560,21 +694,27 @@ claim above falls into one of three buckets.
 | An unprivileged process cannot own `org.vorssaint.Helper1` | the same harness, § 3: `helper: cannot own org.vorssaint.Helper1: Permission denied` |
 | The client library drives every method end to end as a user with no device access | § 6, 8–10, all through `vorssaint-helperctl`, which is nothing but calls on `client/vorssaint_helper_client.h` |
 | The session binding refuses a second seat with `…Error.NotOwner`, and the refusal names both sessions | § 7, two unprivileged uids standing in for two seats |
-| Every method is gated, including the four new ones | § 13, the same binary with the stub denying: eight methods, eight `AccessDenied` |
+| Every method is gated, including `SetContext` | § 13, the same binary with the stub denying: nine methods, nine `AccessDenied`, each naming its own action id |
 | The real `polkit_authority_check_authorization_sync` is on the path in the default build | § 14: the failure comes from *inside* libpolkit, looking for `org.freedesktop.PolicyKit1` |
 | The fan watchdog restores automatic control with no client involvement | § 9: ten seconds without `FanHeartbeat` and `pwm1_enable` goes `1` → `2`, with the journal line to match |
 | A hwmon or i2c name that is not `hwmonN` / `i2c-N` is refused before the filesystem is touched | § 9, § 10, and `tests/test_fan.c`, `tests/test_ddc.c` |
 | A `hwmonN` that is a symlink out of the root is refused, and nothing is written through it | `tests/test_fan.c` plants one; mutation-tested — disabling the boundary check reproduces the review's finding exactly (`"value":200` written into the outside directory). Also over D-Bus, `private-bus.sh` § 9 |
 | A `pwmN` attribute that is a symlink is refused, and a device node where an i2c node belongs is refused | `tests/test_fan.c` and `tests/test_ddc.c`; mutation-tested — removing `O_NOFOLLOW` fails both |
 | A `SetRules` document over 64 KiB is refused on length alone, and one at exactly the limit still parses | `tests/test_rules.c`, and over D-Bus in `private-bus.sh` § 6 |
+| Every rule reaches the same decisions as the macOS Support type it is a port of | `tests/test_rules.c`: 147 assertions carried over from `Tests/MetricsTests.swift`, 137 of them with the Swift's own message text so the two suites can be diffed, 10 with a named platform rename. The split is produced by `Tools/linux-port/count_ported_vectors.py`, not asserted. See `docs/linux-port/RELAY_RULES.md` for the per-rule counts and for every vector that was *not* ported, with the reason |
+| A malformed rule document, an unknown enumeration value, a binding on a button that belongs to another rule, and a `super_key` source another rule already owns are each refused, and the previous rules stay in force | `tests/test_rules.c` and `private-bus.sh` § 6 |
+| An identifier containing a quote is refused rather than escaped, so the helper cannot be made to emit malformed JSON in its own `Rules` property | `tests/test_rules.c`, and over D-Bus in `private-bus.sh` § 6 |
+| `SetContext` is ownership-checked like `SetRules`: a second seat is refused with `…Error.NotOwner` | `private-bus.sh` § 7 |
+| The `Event` signal carries the documented payload, including the source device index | `private-bus.sh` § 6, `listen`: `kind=input device=0 type=1 code=58 value=1 detail=` |
 | Naming the process that holds a device open | `tests/test_grabholder.c`, against the real `/proc`, with a forked child holding a file |
-| The rules engine and the replay, unchanged from WP-03 | `ctest`: `rules` (28 assertions, up from 21) and `replay`, byte for byte against `tests/replay_expected.txt` |
-| The relay's own latency, unchanged from WP-03 | p50 34 ns, ~0.26 µs including the `write(2)` that `libevdev_uinput_write_event` makes |
+| The rules engine and the replay | `ctest`: `rules` (198 assertions, up from 28) and `replay`, byte for byte against `tests/replay_expected.txt` — 114 lines of relay output over a recorded evdev stream with all seven rules on |
+| The relay's own latency with every rule enabled | p50 48 ns, p99 72–75 ns over three runs; 277 ns / 379 ns including the `write(2)` that `libevdev_uinput_write_event` makes. Pass-through with every rule off is 37 ns / 53 ns, so the whole rule set costs about 11 ns at p50. `RELAY_RULES.md` § latency |
 | The install and uninstall scripts are idempotent, repair tampering, and remove all seven files | `tests/test_install.sh` in a `DESTDIR` fake root |
 | The unit file is accepted by systemd's own parser | `systemd-analyze verify` with a real `ExecStart`: no diagnostics |
 | Both udev rule files parse | `udevadm verify`: `Success: 1, Fail: 0` each |
 | The polkit policy is valid against its DTD | `xmllint --noout --valid`: clean |
 | The build is warning-clean under `-Werror` at every optimisation level | `scripts/build-matrix.sh`: no build type, Debug, Release and RelWithDebInfo each configure, build without a warning, and pass all 8 ctest entries. The levels are not interchangeable -- `-Wformat-truncation`, `-Wmaybe-uninitialized` and `-Wrestrict` reason differently as GCC inlines more, and checking only one is how a truncation reached the lead's re-check |
+| There is no leak and no undefined behaviour in the suites or in the relay CLI | `scripts/build-matrix.sh`'s fifth leg: ASan + UBSan + LSan (`-DWITH_SANITIZERS=ON`, `-fno-sanitize-recover=all`), all 8 ctest entries plus `vorssaint-relay --bench` and `--tap` run directly. `-Werror` cannot see this class of defect -- a leak is a missing statement, not a wrong one -- which is how `vorssaint-relay` leaking its whole device backend on every `--replay` and `--bench` run survived four warning-clean build types until the WP-D1/D2 review |
 | The binaries carry the hardening the build claims | `readelf`: PIE, `BIND_NOW`, `GNU_RELRO`, non-executable stack, `_FORTIFY_SOURCE` `_chk` symbols present |
 
 **Proven only against a fake, because the real thing does not exist here**
@@ -582,6 +722,8 @@ claim above falls into one of three buckets.
 | Claim | The fake | What that leaves open |
 |---|---|---|
 | evdev grab and uinput re-emit | `device_fake.c` | the whole kernel path. `CONFIG_INPUT_UINPUT` is unset in this kernel and `CONFIG_MODULES` is unset too, so no module can supply it; `/dev/input` does not exist and `/sys/class/input` is empty. The evdev backend has never executed. |
+| The timer source: a quit-protection hold resolving and a smooth-scroll frame going out while the user does nothing | the fake backend's deadline handling, driven by a synthetic clock (`tests/test_rules.c`, and every `TIM>` line in `tests/replay_expected.txt`) | that the `timerfd` armed with `TFD_TIMER_ABSTIME` inside `ev_read`'s `poll()` set wakes when it should on a loaded machine. The `timerfd` code has never executed: it lives in `device_evdev.c`, which needs `/dev/input` |
+| `EV_LED` driving the lamp on a grabbed keyboard | the fake records the write; `device_evdev.c` routes `EV_LED` to every keyboard source that advertises the code, over an `O_RDWR` fd | that a grabbed evdev device accepts an `EV_LED` write from the process holding the grab, and that the compositor's own LED state does not immediately overwrite it. This is the one `super_key` claim with no model here at all |
 | Hot-plug claims a keyboard plugged in after `Enable(true)` | an injected add/remove event through the same `DEV_READ_HOTPLUG` path the `udev_monitor` feeds | that `udev_monitor_receive_device` returns what is expected on real hardware, and that a real device's `ID_INPUT_*` properties are set when the add event arrives |
 | A refused `EVIOCGRAB` names the holder | a forked process holding an ordinary file | that `libevdev_grab` returns `-EBUSY` rather than something else when `keyd` holds the device |
 | hwmon `pwm` writes, read-back and restore | a temporary tree of plain files, plus a read-only tmpfs for a driver that refuses the store | drivers that clamp or round; chips with no `pwmN_enable`; laptop ECs that take the write and ignore it at the firmware level. `/sys/class/hwmon` **does not exist on this machine** — checked: `ls: cannot access '/sys/class/hwmon': No such file or directory` — so `fan_enumerate_json` on the real root returns `[]`, and that empty list is in the test output. |
@@ -608,6 +750,19 @@ claim above falls into one of three buckets.
   virtual device appearing to libinput with the right capabilities, `evtest`
   succeeding on a device immediately after `Enable(false)`, and end-to-end
   latency measured with a second uinput device as a known-time stimulus.
+- **That the rules feel right**, which is not the same as reaching the same
+  decisions. The vectors prove the C agrees with the Swift about every
+  threshold and every edge; they cannot prove that 220 px per workspace or a
+  65 response is the right number on a machine whose pointer acceleration,
+  wheel detent and screen width are all different from a Mac's. Those four
+  gesture constants and the two smooth-scroll ones are the part of this that
+  needs a real hand, and they are named together in `rules.h` so tuning them
+  is one edit, not a hunt.
+- **The `Event` rate limiter under load.** It is exercised only through the
+  daemon, where the fake source produces four events per burst — nowhere near
+  the 400/s cap. That the cap holds, and that the dropped count is what a
+  client sees when it is hit, needs a source that can flood: a real 1 kHz
+  mouse, or a kernel that has uinput.
 
 The first three of those need a machine with systemd and polkit running; the
 last needs hardware. None of them can be closed in this container, and the

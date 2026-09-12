@@ -1,0 +1,22 @@
+{
+  "keyboard_debounce": {"enabled": true, "window_ms": 5},
+  "mouse_click_debounce": {"enabled": true, "window_ms": 25},
+  "scroll_invert": {"enabled": true, "vertical": true, "horizontal": true,
+                    "mouse": true, "touchpad": true},
+  "smooth_scroll": {"enabled": true, "step": 40, "response": 65,
+                    "mouse": true, "touchpad": true},
+  "super_key": {"enabled": true, "source": 58, "modifiers": [29, 56, 125],
+                "tap_action": "escape", "hold_threshold_ms": 500, "led": true},
+  "mouse_button_shortcut": {"enabled": true,
+                            "bindings": [{"input": 275, "modifiers": [29], "key": 15},
+                                         {"input": 276, "modifiers": [29, 42], "key": 15},
+                                         {"input": -1, "modifiers": [56], "key": 105},
+                                         {"input": -2, "modifiers": [56], "key": 106}],
+                            "gesture_button": 277, "gesture_follows_drag": true},
+  "quit_protection": {"enabled": true,
+                      "quit": {"enabled": true, "mode": "hold", "hold_ms": 800,
+                               "scope": "all_except_selected",
+                               "exceptions": ["org.gnome.Terminal", "firefox"]},
+                      "close": {"enabled": true, "mode": "double_press", "double_ms": 600,
+                                "scope": "all"}}
+}

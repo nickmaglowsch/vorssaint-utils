@@ -19,10 +19,12 @@ static int fail(const vh_error *err, const char *what)
     return 2;
 }
 
-static void on_event(uint64_t ts, uint16_t type, uint16_t code, int32_t value, void *user)
+static void on_event(uint64_t ts, const char *kind, uint32_t device, uint16_t type, uint16_t code,
+                     int32_t value, const char *detail, void *user)
 {
     (void)user;
-    printf("Event ts=%llu type=%u code=%u value=%d\n", (unsigned long long)ts, type, code, value);
+    printf("Event ts=%llu kind=%s device=%u type=%u code=%u value=%d detail=%s\n",
+           (unsigned long long)ts, kind, device, type, code, value, detail);
     fflush(stdout);
 }
 
@@ -35,6 +37,7 @@ static void usage(void)
             "  get-capabilities        GetCapabilities()\n"
             "  enable | disable        Enable(b)\n"
             "  set-rules <json>        SetRules(s)\n"
+            "  set-context <json>      SetContext(s), e.g. {\"focused_app_id\":\"firefox\"}\n"
             "  get <property>          Rules | Backend | Authorization | Fan | Owner\n"
             "  fan-pwm <hwmon> <ch> <v>  SetFanPwm(s,u,y)\n"
             "  fan-auto <hwmon> <ch>     SetFanAuto(s,u)\n"
@@ -107,6 +110,12 @@ int main(int argc, char **argv)
             rc = fail(&err, "SetRules");
         else
             printf("SetRules -> ok\n");
+    } else if (!strcmp(cmd, "set-context")) {
+        NEED(1);
+        if (vh_set_context(c, argv[argi], &err) < 0)
+            rc = fail(&err, "SetContext");
+        else
+            printf("SetContext -> ok\n");
     } else if (!strcmp(cmd, "get")) {
         char val[4096];
         NEED(1);
