@@ -60,9 +60,15 @@ public protocol ShortcutRegistrar: PlatformService {
     /// Takes the binding. The handle is what `unregister` takes back; a
     /// registrar that binds lazily (the portal) still returns one immediately
     /// and calls `onActivate` only once the session honours it.
+    ///
+    /// Throws a `ShortcutRegistrationFailure` rather than returning a
+    /// `Result`, to match every other protocol here — and because four files
+    /// in this repository declare their own nested `enum Result`, which makes
+    /// the bare name ambiguous to the declaration-graph tool WP-11 sequences
+    /// moves with.
     func register(_ binding: ShortcutBinding,
                   identifier: String,
-                  onActivate: @escaping () -> Void) -> Result<ShortcutHandle, ShortcutRegistrationFailure>
+                  onActivate: @escaping () -> Void) throws -> ShortcutHandle
 
     func unregister(_ handle: ShortcutHandle)
 

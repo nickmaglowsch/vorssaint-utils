@@ -14,6 +14,7 @@ enum MacPlatformSeams {
         ImageDataValidation.current = AppKitImageDataValidator()
         Transliteration.current = CoreFoundationTransliterator()
         MeasurementFormatters.current = FoundationMeasurementFormatter()
+        DurationFormatters.current = FoundationDurationFormatter()
     }
 }
 #endif

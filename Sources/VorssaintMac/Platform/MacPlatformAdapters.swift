@@ -42,9 +42,9 @@ final class MacShortcutRegistrar: ShortcutRegistrar {
 
     func register(_ binding: ShortcutBinding,
                   identifier: String,
-                  onActivate: @escaping () -> Void)
-        -> Result<ShortcutHandle, ShortcutRegistrationFailure> {
-        .failure(.backendFailure("HotkeyManager owns registration until WP-21 migrates it"))
+                  onActivate: @escaping () -> Void) throws -> ShortcutHandle {
+        throw ShortcutRegistrationFailure.backendFailure(
+            "HotkeyManager owns registration until WP-21 migrates it")
     }
 
     func unregister(_ handle: ShortcutHandle) {

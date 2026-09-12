@@ -38,20 +38,19 @@ public final class FakeShortcutRegistrar: ShortcutRegistrar {
 
     public func register(_ binding: ShortcutBinding,
                          identifier: String,
-                         onActivate: @escaping () -> Void)
-        -> Result<ShortcutHandle, ShortcutRegistrationFailure> {
+                         onActivate: @escaping () -> Void) throws -> ShortcutHandle {
         guard platformCapabilities.has(.shortcutDirectBinding)
                 || platformCapabilities.has(.shortcutPortalBinding) else {
-            return .failure(.unsupported(.shortcutDirectBinding))
+            throw ShortcutRegistrationFailure.unsupported(.shortcutDirectBinding)
         }
-        if takenBindings.contains(binding) { return .failure(.alreadyTaken) }
-        if activeBindings.values.contains(binding) { return .failure(.alreadyTaken) }
+        if takenBindings.contains(binding) { throw ShortcutRegistrationFailure.alreadyTaken }
+        if activeBindings.values.contains(binding) { throw ShortcutRegistrationFailure.alreadyTaken }
         let handle = ShortcutHandle(rawValue: nextHandle)
         nextHandle += 1
         activeBindings[handle] = binding
         handlers[handle] = onActivate
         identifiers[handle] = identifier
-        return .success(handle)
+        return handle
     }
 
     public func unregister(_ handle: ShortcutHandle) {

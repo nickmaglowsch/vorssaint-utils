@@ -169,15 +169,13 @@ enum CommandBarDates {
         let startOfTarget = calendar.startOfDay(for: target)
         guard let days = calendar.dateComponents([.day], from: startOfToday, to: startOfTarget).day
         else { return nil }
-        let formatter = DateComponentsFormatter()
-        formatter.calendar = {
-            var calendar = calendar
-            calendar.locale = locale
-            return calendar
-        }()
-        formatter.allowedUnits = [.day]
-        formatter.unitsStyle = .full
-        guard let counted = formatter.string(from: DateComponents(day: abs(days)))
+        // Was a DateComponentsFormatter built inline; WP-12 put it behind
+        // `DurationFormatting` because swift-corelibs-foundation marks that
+        // class unavailable. The macOS implementation is the same formatter
+        // with the same calendar, `allowedUnits` and `unitsStyle`.
+        guard let counted = DurationFormatters.current.string(days: abs(days),
+                                                             locale: locale,
+                                                             calendar: calendar)
         else { return nil }
         return Result(formatted: counted, detail: longDate(target, locale: locale))
     }
