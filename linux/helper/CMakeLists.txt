@@ -13,11 +13,23 @@ add_compile_definitions(_GNU_SOURCE)
 # caller, so the warning set is a gate, not advice.
 add_compile_options(-Wall -Wextra -Wshadow -Wformat=2 -Werror)
 
+# A bare `cmake -S . -B build` must produce what ships, not an unoptimised
+# build that differs from it -- _FORTIFY_SOURCE is inert without optimisation,
+# and -Wformat-truncation reasons differently at each level, so "no build type"
+# was its own configuration that nothing was checked against.
+if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
+  set(CMAKE_BUILD_TYPE RelWithDebInfo CACHE STRING
+      "Build type; RelWithDebInfo is what is installed" FORCE)
+  message(STATUS "No CMAKE_BUILD_TYPE given, defaulting to RelWithDebInfo")
+endif()
+
 # _FORTIFY_SOURCE needs an optimising build to do anything; saying so beats
-# silently shipping a hardening flag that is a no-op.
-if(CMAKE_C_FLAGS MATCHES "-O0" OR CMAKE_BUILD_TYPE STREQUAL "Debug")
-  message(WARNING "_FORTIFY_SOURCE has no effect without optimisation; "
-                  "use -DCMAKE_BUILD_TYPE=RelWithDebInfo for a build that hardens")
+# silently shipping a hardening flag that is a no-op. Debug is still a
+# supported configuration -- the warning set must be clean there too -- it just
+# is not one to install.
+if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+  message(WARNING "_FORTIFY_SOURCE has no effect in a Debug build; "
+                  "use RelWithDebInfo for a build that hardens")
 endif()
 add_compile_options(-D_FORTIFY_SOURCE=2 -fstack-protector-strong)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)

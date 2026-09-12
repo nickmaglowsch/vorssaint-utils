@@ -43,9 +43,24 @@ cmake --build build -j4
 (cd build && ctest --output-on-failure)
 ```
 
-`RelWithDebInfo` is not optional advice: `_FORTIFY_SOURCE` does nothing
-without optimisation, and the CMake file warns if you configure a build where
-the hardening flags would be silently inert.
+A bare configure defaults to `RelWithDebInfo`, which is what gets installed:
+`_FORTIFY_SOURCE` does nothing without optimisation, so a build with no type
+set would silently differ from the shipped one. Debug is supported and must
+stay warning-clean; it just is not what to install, and CMake says so.
+
+**The build must be clean under every type, not just one.**
+`-Wformat-truncation`, `-Wmaybe-uninitialized` and `-Wrestrict` reason
+differently at each optimisation level -- GCC inlines more at `-O3`, so it
+knows more about what a buffer can hold and sees overlaps it cannot see at
+`-O0`. With `-Werror` a warning in any of them is a build failure for whoever
+hits it first, so check all four:
+
+```sh
+bash linux/helper/scripts/build-matrix.sh
+```
+
+That configures, builds and runs `ctest` under no build type, Debug, Release
+and RelWithDebInfo, and fails if any of them warns.
 
 ## The end-to-end scenario
 
