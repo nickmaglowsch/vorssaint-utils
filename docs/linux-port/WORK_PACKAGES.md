@@ -108,8 +108,8 @@ app is behaviourally unchanged.
 | WP-13 | Combine abstraction (OpenCombine on Linux) | S | WP-10 | Core porter | merged (per-file guard convention in COMBINE.md; lead accepted deleting the VorssaintCombine target, done after WP-11 lands) |
 | WP-14 | Settings store abstraction (UserDefaults ↔ JSON/GSettings) | M | WP-12 | Core porter | todo |
 | WP-15 | Feature catalog: platform support flags and Linux presets | S | WP-12 | Core porter | todo |
-| WP-16 | Test harness: `swift test` on both platforms, port `Tests/*` pure checks | M | WP-11 | QA/reviewer | todo |
-| WP-17 | macOS CI job proves `main` unchanged (selftest + ui-smoke on the new layout) | S | WP-11 | Packaging/CI | todo |
+| WP-16 | Test harness: `swift test` on both platforms, port `Tests/*` pure checks | M | WP-11 | QA/reviewer | review (VorssaintCoreTests target + Tools/linux-port/port-tests.py; counts in TESTS.md) |
+| WP-17 | macOS CI job proves `main` unchanged (selftest + ui-smoke on the new layout) | S | WP-11 | Packaging/CI | merged (by WP-10) — the `macos` job of linux-port-ci.yml runs `./build.sh`, `--selftest` and `./build.sh --test` on every push; `Tools/ui-smoke.sh` is not run and cannot be (TESTS.md § 7) |
 | WP-18 | `CoreBridge`: `@_cdecl` subscribe/command/snapshot surface, `Codable` snapshots and commands per service, diffing, fake-service tests | M | WP-12, WP-13 | Core porter | todo |
 
 **WP-10.** `Package.swift` gains three targets. `Vorssaint` (macOS app)
@@ -307,7 +307,7 @@ the triage matrix update for its feature(s).
 
 | ID | Feature(s) | Size | after | Status |
 |---|---|---|---|---|
-| WP-C1 | `WindowSystem` backends in C under `linux/platform/window`: X11 EWMH, `ext-foreign-toplevel-list` + `wlr-foreign-toplevel-management`, KWin scripting D-Bus, Hyprland/Sway IPC; capability flags per backend; the C API in `vorssaint_platform.h` is the contract WP-12's Swift protocol mirrors | L | WP-10 (C side); WP-12, WP-20 (Swift wiring) | in progress |
+| WP-C1 | `WindowSystem` backends in C under `linux/platform/window`: X11 EWMH, `ext-foreign-toplevel-list` + `wlr-foreign-toplevel-management`, KWin scripting D-Bus, Hyprland/Sway IPC; capability flags per backend; the C API in `vorssaint_platform.h` is the contract WP-12's Swift protocol mirrors | L | WP-10 (C side); WP-12, WP-20 (Swift wiring) | review |
 | WP-C2 | GNOME Shell extension (`vorssaint-bridge`) exposing window list/activate/move-resize/workspace and clipboard change/read/write over D-Bus, installed and updated from the Capabilities page, CI against the two latest Shell versions | L | WP-C1 | todo |
 | WP-C3 | switcher: list, MRU order, search, simple mode, per-app rules, display filtering; previews from portal window streams where available | L | WP-C1, WP-B1, WP-24 | todo |
 | WP-C4 | windowLayout keyboard snapping + display move on backends that can move/resize; edge-drag on X11 | L | WP-C1, WP-24 | todo |

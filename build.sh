@@ -288,27 +288,34 @@ if (( TEST )); then
         Sources/VorssaintCore/Core/FanControlStrings.swift \
         Sources/Vorssaint/Services/FanControl/FanControlSupport.swift \
         Sources/VorssaintCore/Services/Snippets/TextSnippetSupport.swift \
+        Sources/VorssaintCore/Platform/PlatformIdentifiers.swift \
+        Sources/VorssaintCore/Platform/Transliterator.swift \
+        Sources/VorssaintMac/Platform/CoreFoundationTransliterator.swift \
+        Sources/VorssaintMac/Platform/MacPlatformSeams.swift \
+        Sources/VorssaintCore/Platform/ImageDataValidator.swift \
+        Sources/VorssaintMac/Platform/AppKitImageDataValidator.swift \
         Sources/Vorssaint/Services/RadialMenu/RadialMenuSupport.swift \
         Sources/VorssaintCore/Services/QuickTools/ScratchpadSupport.swift \
         Sources/Vorssaint/Services/QuickTools/ScratchpadSupport+Mac.swift \
         Sources/Vorssaint/Services/QuickTools/ScratchpadStore.swift \
         Sources/VorssaintCore/Services/KillProcess/KillProcessSupport.swift \
-        Sources/Vorssaint/Services/Recorder/RecorderSupport.swift \
+        Sources/VorssaintCore/Services/Recorder/RecorderSupport.swift \
+        Sources/Vorssaint/Services/Recorder/RecorderSupport+Mac.swift \
         Sources/Vorssaint/Services/Recorder/RecorderSampleTiming.swift \
         Sources/Vorssaint/Services/Recorder/RecorderWriter.swift \
         Sources/Vorssaint/Services/Recorder/RecorderCaptureEngine.swift \
         Sources/Vorssaint/Services/Recorder/RecorderComposition.swift \
-        Sources/Vorssaint/Services/Recorder/RecordingSharingSupport.swift \
+        Sources/VorssaintCore/Services/Recorder/RecordingSharingSupport.swift \
         Sources/Vorssaint/Services/PrivateFileStore.swift \
         Sources/Vorssaint/Services/Recorder/RecorderTakeStore.swift \
         Sources/Vorssaint/Services/Recorder/RecorderPresetImageStore.swift \
         Sources/VorssaintCore/Services/Recorder/RecorderMotion.swift \
         Sources/Vorssaint/Services/Recorder/RecorderPointerTrack.swift \
         Sources/Vorssaint/Services/Recorder/RecorderTypingTrack.swift \
-        Sources/Vorssaint/Services/Recorder/RecorderTimeline.swift \
-        Sources/Vorssaint/Services/Recorder/RecorderTextOverlay.swift \
-        Sources/Vorssaint/Services/Recorder/RecorderImageOverlay.swift \
-        Sources/Vorssaint/Services/Recorder/RecorderBlurRegion.swift \
+        Sources/VorssaintCore/Services/Recorder/RecorderTimeline.swift \
+        Sources/VorssaintCore/Services/Recorder/RecorderTextOverlay.swift \
+        Sources/VorssaintCore/Services/Recorder/RecorderImageOverlay.swift \
+        Sources/VorssaintCore/Services/Recorder/RecorderBlurRegion.swift \
         Sources/Vorssaint/Services/Recorder/RecorderEditDocument.swift \
         Sources/Vorssaint/Core/AppInfo.swift \
         Sources/Vorssaint/Core/GlobalShortcut.swift \
@@ -370,17 +377,18 @@ if (( TEST )); then
         Sources/VorssaintCore/Core/DiskExclusionStrings.swift \
         Sources/VorssaintCore/Core/SwitcherAppRulesStrings.swift \
         Sources/Vorssaint/Services/QuickTools/QuickToolsSupport.swift \
-        Sources/Vorssaint/Services/CommandBar/CommandBarSupport.swift \
-        Sources/Vorssaint/Services/CommandBar/CommandBarPreferences.swift \
+        Sources/VorssaintCore/Services/CommandBar/CommandBarSupport.swift \
+        Sources/Vorssaint/Services/CommandBar/CommandBarSupport+Mac.swift \
+        Sources/VorssaintCore/Services/CommandBar/CommandBarPreferences.swift \
         Sources/VorssaintCore/Services/CommandBar/CommandBarMath.swift \
-        Sources/Vorssaint/Services/CommandBar/CommandBarUnits.swift \
+        Sources/VorssaintCore/Services/CommandBar/CommandBarUnits.swift \
         Sources/VorssaintCore/Services/CommandBar/CommandBarEmoji.swift \
         Sources/Vorssaint/Services/CommandBar/CommandBarLinks.swift \
-        Sources/Vorssaint/Services/CommandBar/CommandBarDates.swift \
+        Sources/VorssaintCore/Services/CommandBar/CommandBarDates.swift \
         Sources/Vorssaint/Services/CommandBar/CommandBarRowShortcuts.swift \
         Sources/VorssaintCore/Services/CommandBar/CommandBarSystemSettingsSupport.swift \
         Sources/VorssaintCore/Services/CommandBar/CommandBarFileSearchSupport.swift \
-        Sources/Vorssaint/Services/CommandBar/CommandBarQueryMemory.swift \
+        Sources/VorssaintCore/Services/CommandBar/CommandBarQueryMemory.swift \
         Sources/VorssaintCore/Services/SpotlightNamesSupport.swift \
         Sources/VorssaintCore/Services/QuickTools/MicMuteSupport.swift \
         Sources/VorssaintCore/Services/QuickTools/QuickTogglesSupport.swift \
@@ -414,7 +422,7 @@ if (( TEST )); then
         Sources/Vorssaint/Services/ShellSupport.swift \
         Sources/Vorssaint/Services/Metrics/NetworkProcessSupport.swift \
         Sources/Vorssaint/Services/Metrics/NetworkSampler.swift \
-        Sources/Vorssaint/Services/Metrics/SpeedTest.swift \
+        Sources/VorssaintCore/Services/Metrics/SpeedTest.swift \
         Sources/VorssaintCore/Services/Metrics/PeripheralBatterySupport.swift \
         Sources/VorssaintCore/Services/Metrics/DiskSupport.swift \
         Sources/VorssaintCore/Services/Metrics/MonitorSamplingPolicy.swift \
