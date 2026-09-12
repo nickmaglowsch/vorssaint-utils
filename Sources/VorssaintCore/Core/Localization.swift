@@ -1,7 +1,15 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Vorssaint
 
+// `L10n` is an `ObservableObject` with an `@Published` language. Combine does
+// not exist on Linux, and build.sh compiles this directory straight into the
+// single macOS app module where no `VorssaintCombine` module exists, so the
+// import is spelled out here rather than behind a shim (PLAN.md § 5).
+#if canImport(Darwin)
 import Combine
+#else
+import OpenCombine
+#endif
 import Foundation
 
 /// Languages the interface can use. The first launch defaults to the system

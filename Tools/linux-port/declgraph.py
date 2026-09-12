@@ -150,7 +150,11 @@ _EXTENSION = re.compile(r"\bextension\s+([A-Z][A-Za-z0-9_]*)")
 # `cannot find 'X' in scope` for a couple of these, so they count.
 _TOPLEVEL_FUNC = re.compile(r"^func\s+([a-zA-Z_][A-Za-z0-9_]*)", re.MULTILINE)
 _IDENT = re.compile(r"\b([A-Z][A-Za-z0-9_]*)\b")
-_LOWER_IDENT = re.compile(r"\b([a-z][A-Za-z0-9_]*)\b")
+# A top-level function is only referenced by being *called*, and never through
+# a dot. Matching the bare name instead made every `sectionTitle:` argument
+# label in a Strings literal look like a use of `func sectionTitle` in
+# UI/Theme.swift, which pinned four files to the UI layer that do not touch it.
+_LOWER_CALL = re.compile(r"(?<![.\w])([a-z][A-Za-z0-9_]*)\s*\(")
 _IMPORT = re.compile(
     r"^\s*(?:@[A-Za-z_]+\s+)?import\s+([A-Za-z_][A-Za-z0-9_.]*)", re.MULTILINE)
 
@@ -195,7 +199,7 @@ class Graph:
         declares.update(_TYPEALIAS.findall(text))
         declares.update(_TOPLEVEL_FUNC.findall(text))
         extends = set(_EXTENSION.findall(text))
-        refs = set(_IDENT.findall(text)) | set(_LOWER_IDENT.findall(text))
+        refs = set(_IDENT.findall(text)) | set(_LOWER_CALL.findall(text))
         self.files.append(path)
         self.declares[path] = declares
         self.extends[path] = extends
