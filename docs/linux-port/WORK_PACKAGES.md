@@ -103,7 +103,7 @@ app is behaviourally unchanged.
 | ID | Title | Size | after | Owner role | Status |
 |---|---|---|---|---|---|
 | WP-10 | Package layout: VorssaintCore / VorssaintMac / VorssaintLinux targets | M | WP-00 | Core porter | merged (both gates green) |
-| WP-11 | Move Foundation-only files into VorssaintCore | L | WP-10 | Core porter | todo |
+| WP-11 | Move Foundation-only files into VorssaintCore | L | WP-10 | Core porter | review |
 | WP-12 | Platform protocol layer | L | WP-11 | Core porter | todo |
 | WP-13 | Combine abstraction (OpenCombine on Linux) | S | WP-10 | Core porter | merged (per-file guard convention in COMBINE.md; lead accepted deleting the VorssaintCombine target, done after WP-11 lands) |
 | WP-14 | Settings store abstraction (UserDefaults ↔ JSON/GSettings) | M | WP-12 | Core porter | todo |

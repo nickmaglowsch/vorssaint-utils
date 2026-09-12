@@ -51,7 +51,7 @@ downloads. Consequences for Phase 0:
 | WP | Status | Branch | Notes |
 |---|---|---|---|
 | WP-10 | merged | plan branch | package split + `linux-port-ci.yml` gate (Linux core build, macOS build.sh + selftest + 31565 checks), QA approved |
-| WP-11 | in progress | worktree → plan branch (CI) | file moves in declaration-graph order |
+| WP-11 | review | plan branch | 97 files / 44 389 lines in VorssaintCore; `Tools/linux-port/declgraph.py`; `CORE_MOVES.md` has every move, split and reason |
 | WP-S1 | in progress (daemon side) | worktree | production helper from the WP-03 spike: session binding, hot-plug, hwmon, DDC, systemd/polkit/udev files |
 | WP-C1 | in progress | worktree | C window backends: X11 EWMH, wlr foreign-toplevel + Sway IPC, Hyprland IPC, KWin script bridge; `vorssaint_platform.h` contract |
 | WP-13 | merged | plan branch | COMBINE.md + audit script (83 Combine-touching files, 35 only via AppKit/SwiftUI re-export); VorssaintCombine target to be deleted after WP-11 |

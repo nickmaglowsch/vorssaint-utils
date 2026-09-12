@@ -315,7 +315,7 @@ if (( TEST )); then
         Sources/Vorssaint/Core/SymbolicHotKeys.swift \
         Sources/VorssaintCore/Services/SystemShortcutTakeoverSupport.swift \
         Sources/VorssaintCore/Core/Localization.swift \
-        Sources/Vorssaint/Core/Localizations/Strings+*.swift \
+        Sources/VorssaintCore/Core/Localizations/Strings+*.swift \
         Sources/VorssaintCore/Core/FeatureStrings.swift \
         Sources/VorssaintCore/Core/KillProcessStrings.swift \
         Sources/VorssaintCore/Core/WhatsAppDownloadStrings.swift \
