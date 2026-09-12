@@ -267,11 +267,11 @@ the triage matrix update for its feature(s).
 
 | ID | Feature(s) | Size | after | Status |
 |---|---|---|---|---|
-| WP-A1 | monitorCPU, monitorMemory, monitorNetwork (+ speed test), monitorDisk from `/proc`, `/sys`, `statvfs` | M | WP-22 (UI); none (backend) | review (backend) |
-| WP-A2 | monitorPower via UPower, peripheral batteries, alerts | M | WP-22 (UI); none (backend) | review (backend) |
-| WP-A3 | monitorGPU: amdgpu/i915 sysfs + NVML when present, vendor matrix | M | WP-A1 | review (backend) |
-| WP-A4 | Temperatures via hwmon, sensor selection rules reused; `--sensors` dump | S | WP-A1 | review (backend) |
-| WP-A5 | mixer, soundOutputSwitcher, micMute over PipeWire (libpipewire) with libpulse fallback; backend half in C under linux/platform/audio can start before the shell | L | WP-22 (UI); none (backend) | review (backend) |
+| WP-A1 | monitorCPU, monitorMemory, monitorNetwork (+ speed test), monitorDisk from `/proc`, `/sys`, `statvfs` | M | WP-22 (UI); none (backend) | merged (backend; UI half waits for WP-22) |
+| WP-A2 | monitorPower via UPower, peripheral batteries, alerts | M | WP-22 (UI); none (backend) | merged (backend; UI half waits for WP-22) |
+| WP-A3 | monitorGPU: amdgpu/i915 sysfs + NVML when present, vendor matrix | M | WP-A1 | merged (backend; UI half waits for WP-22) |
+| WP-A4 | Temperatures via hwmon, sensor selection rules reused; `--sensors` dump | S | WP-A1 | merged (backend; UI half waits for WP-22) |
+| WP-A5 | mixer, soundOutputSwitcher, micMute over PipeWire (libpipewire) with libpulse fallback; backend half in C under linux/platform/audio can start before the shell | L | WP-22 (UI); none (backend) | merged (backend; UI half waits for WP-22) |
 | WP-A6 | keepAwake via logind inhibitors, automations, menu bar icon states | M | WP-21, WP-26 | todo |
 | WP-A7 | bluetoothSleep via BlueZ + logind | S | WP-26 | todo |
 | WP-A8 | clipboardHistory, pastePlain, urlCleaner: data-control backend (KDE/wlroots/Hyprland), XFixes backend (X11), GNOME backend via the extension (WP-C2, may land later) or the portal Clipboard session, quick panel | L | WP-24, WP-29 | todo |
@@ -307,8 +307,8 @@ the triage matrix update for its feature(s).
 
 | ID | Feature(s) | Size | after | Status |
 |---|---|---|---|---|
-| WP-C1 | `WindowSystem` backends in C under `linux/platform/window`: X11 EWMH, `ext-foreign-toplevel-list` + `wlr-foreign-toplevel-management`, KWin scripting D-Bus, Hyprland/Sway IPC; capability flags per backend; the C API in `vorssaint_platform.h` is the contract WP-12's Swift protocol mirrors | L | WP-10 (C side); WP-12, WP-20 (Swift wiring) | review |
-| WP-C2 | GNOME Shell extension (`vorssaint-bridge`) exposing window list/activate/move-resize/workspace and clipboard change/read/write over D-Bus, installed and updated from the Capabilities page, CI against the two latest Shell versions | L | WP-C1 | review |
+| WP-C1 | `WindowSystem` backends in C under `linux/platform/window`: X11 EWMH, `ext-foreign-toplevel-list` + `wlr-foreign-toplevel-management`, KWin scripting D-Bus, Hyprland/Sway IPC; capability flags per backend; the C API in `vorssaint_platform.h` is the contract WP-12's Swift protocol mirrors | L | WP-10 (C side); WP-12, WP-20 (Swift wiring) | merged |
+| WP-C2 | GNOME Shell extension (`vorssaint-bridge`) exposing window list/activate/move-resize/workspace and clipboard change/read/write over D-Bus, installed and updated from the Capabilities page, CI against the two latest Shell versions | L | WP-C1 | merged |
 | WP-C3 | switcher: list, MRU order, search, simple mode, per-app rules, display filtering; previews from portal window streams where available | L | WP-C1, WP-B1, WP-24 | todo |
 | WP-C4 | windowLayout keyboard snapping + display move on backends that can move/resize; edge-drag on X11 | L | WP-C1, WP-24 | todo |
 | WP-C5 | autoQuit + workspace gestures for mouseButtonShortcuts | M | WP-C1 | todo |
