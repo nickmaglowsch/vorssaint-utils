@@ -14,6 +14,68 @@ public enum CaptureTarget: Equatable {
     case area(display: PlatformDisplayID, pixelRect: CGRect)
 }
 
+/// How to read the four bytes of a captured pixel.
+///
+/// Open — a `String` raw value rather than a closed enum — for the reason
+/// `PlatformCapability` is (`PLATFORM.md` § 0): the name is read back from a C
+/// capture backend that negotiates its format with the compositor at run time,
+/// and a format nobody anticipated must arrive as data rather than as a trap.
+///
+/// The distinction that makes this type exist is `bgrx` versus
+/// `bgraPremultiplied`. WP-B1 found it and wrote it down as open item 1 of
+/// `linux/platform/capture/README.md`: the xdg-desktop-portal ScreenCast path
+/// commonly negotiates `SPA_VIDEO_FORMAT_BGRx`, whose fourth byte is
+/// **undefined padding, not opacity**. A wrapper that relabels those bytes as
+/// BGRA hands a consumer an alpha channel of whatever the compositor's scratch
+/// memory held — frequently zero, which is a screenshot that saves and
+/// previews as fully transparent. The engine reports the format it actually
+/// negotiated in `vs_capture_frame.format`, so the wrapper carries it through
+/// and every consumer reads `hasAlpha` before it trusts byte 3.
+///
+/// The raw values are `vs_capture_pixel_format_name()`'s strings, exactly:
+/// the C side owns the names (`linux/platform/README.md`, rule 1 of "How
+/// WP-12 mirrors it"), so a name renamed there is renamed here in the same PR
+/// and a `rawValue` round-trips through the C boundary unchanged.
+public struct CapturedPixelFormat: RawRepresentable, Hashable, Codable, Sendable {
+    public let rawValue: String
+    public init(rawValue: String) { self.rawValue = rawValue }
+
+    /// `VS_CAPTURE_PIXEL_UNKNOWN`. A backend that could not name its format.
+    /// Treated as opaque and 4 bytes per pixel by everything below, because
+    /// that is what every format the engine can actually produce is.
+    public static let unknown = CapturedPixelFormat(rawValue: "unknown")
+    /// `VS_CAPTURE_PIXEL_BGRX`: four bytes B, G, R, **padding**. What
+    /// `xdg-desktop-portal-wlr` negotiates on the SHM path. The image is
+    /// opaque; byte 3 means nothing and must be overwritten or ignored, never
+    /// read as alpha.
+    public static let bgrx = CapturedPixelFormat(rawValue: "BGRx")
+    /// `VS_CAPTURE_PIXEL_BGRA`: four bytes B, G, R, A with the colour already
+    /// multiplied by the alpha. ScreenCaptureKit's output.
+    public static let bgraPremultiplied = CapturedPixelFormat(rawValue: "BGRA")
+    /// `VS_CAPTURE_PIXEL_RGBX`: R, G, B, padding.
+    public static let rgbx = CapturedPixelFormat(rawValue: "RGBx")
+    /// `VS_CAPTURE_PIXEL_RGBA`: R, G, B, A premultiplied.
+    public static let rgbaPremultiplied = CapturedPixelFormat(rawValue: "RGBA")
+
+    /// Whether the fourth byte carries opacity. `false` for the padded
+    /// formats, and `false` for a format this build does not know — an unknown
+    /// format is read as opaque, because an image that is wrong in its alpha
+    /// is recoverable and a fully transparent one is not.
+    public var hasAlpha: Bool {
+        self == .bgraPremultiplied || self == .rgbaPremultiplied
+    }
+
+    /// Whether byte order is B, G, R rather than R, G, B.
+    public var isBGROrdered: Bool {
+        self == .bgraPremultiplied || self == .bgrx
+    }
+
+    /// `vs_capture_pixel_bytes()`. Four for every format the engine produces;
+    /// four for an unknown one too, since `bytesPerRow` is what actually walks
+    /// the buffer and a zero here would divide by nothing.
+    public var bytesPerPixel: Int { 4 }
+}
+
 /// One still frame, as bytes plus the shape to read them with.
 ///
 /// Not an image object: the core must not name `CGImage` or a GdkPixbuf. The
@@ -23,21 +85,24 @@ public struct CapturedFrame: Equatable {
     public let width: Int
     public let height: Int
     public let bytesPerRow: Int
-    /// Always premultiplied BGRA on both platforms — what ScreenCaptureKit
-    /// hands back and what PipeWire's `SPA_VIDEO_FORMAT_BGRA` buffers carry,
-    /// so no consumer has to branch.
     public let pixels: Data
+    /// What `pixels` actually is. There is no default: the whole point of the
+    /// field is that a backend must say, and a default would be the
+    /// assumption it exists to remove.
+    public let pixelFormat: CapturedPixelFormat
     /// Pixels per point of the source display, for a Retina/HiDPI-correct save.
     public let scale: CGFloat
     /// Seconds since the reference date, for the recorder's timeline.
     public let capturedAt: TimeInterval
 
     public init(width: Int, height: Int, bytesPerRow: Int, pixels: Data,
+                pixelFormat: CapturedPixelFormat,
                 scale: CGFloat, capturedAt: TimeInterval) {
         self.width = width
         self.height = height
         self.bytesPerRow = bytesPerRow
         self.pixels = pixels
+        self.pixelFormat = pixelFormat
         self.scale = scale
         self.capturedAt = capturedAt
     }

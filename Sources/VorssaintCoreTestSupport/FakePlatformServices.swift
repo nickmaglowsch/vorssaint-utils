@@ -229,9 +229,16 @@ public extension PlatformDisplay {
 }
 
 public extension CapturedFrame {
-    static func fake(width: Int = 8, height: Int = 8, scale: CGFloat = 1) -> CapturedFrame {
+    /// The default is `.bgrx`, not `.bgraPremultiplied`: the padded format is
+    /// what the portal actually negotiates, and a fake whose default is the
+    /// convenient case is a fake that hides the bug it exists to catch
+    /// (WP-B1 — a relabelled BGRx frame saves fully transparent).
+    static func fake(width: Int = 8, height: Int = 8,
+                     pixelFormat: CapturedPixelFormat = .bgrx,
+                     scale: CGFloat = 1) -> CapturedFrame {
         CapturedFrame(width: width, height: height, bytesPerRow: width * 4,
-                      pixels: Data(count: width * height * 4), scale: scale,
+                      pixels: Data(count: width * height * 4),
+                      pixelFormat: pixelFormat, scale: scale,
                       capturedAt: 0)
     }
 }

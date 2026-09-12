@@ -143,6 +143,11 @@ each is a real difference between ScreenCaptureKit and a portal.
    transparent screenshot. The engine reports the real format in
    `frame.format`; the wrapper must either fill alpha (which is what
    `vs_capture_image_write_png` does) or carry the format through.
+   **Closed by WP-18**, the second way: `CapturedFrame` now carries a
+   `CapturedPixelFormat` whose raw values are exactly
+   `vs_capture_pixel_format_name()`'s strings, and consumers ask `hasAlpha`
+   before reading byte 3. There is no default on the initialiser, so a
+   backend has to say.
 2. **`CapturedFrame` owns its bytes; `vs_capture_frame` borrows them.** The
    copy into `Data` is the same copy the dispatch mode already makes, so the
    wrapper should use `direct_callbacks` and copy once into `Data` rather than
