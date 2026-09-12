@@ -393,7 +393,7 @@ if (( TEST )); then
         Sources/Vorssaint/Services/SuperKey/SuperKeyMappingGuard.swift \
         Sources/Vorssaint/Core/SuperKeyStrings.swift \
         Sources/Vorssaint/Services/SessionActivity.swift \
-        Sources/VorssaintCore/Services/SessionActivitySupport.swift \
+        Sources/Vorssaint/Services/SessionActivitySupport.swift \
         Sources/VorssaintCore/Services/ScrollWheelSupport.swift \
         Sources/VorssaintCore/Services/SmoothScrollSupport.swift \
         Sources/VorssaintCore/Services/MouseAcceleration/MouseAccelerationSupport.swift \
