@@ -372,6 +372,19 @@ The count is the number it was before WP-16: the harness, its inputs and its
 assertions are untouched, and the two widened walks read 52 and 40 files
 instead of 2 and 2 without finding a violation.
 
+The same job on the branch head — [run 34693694037, job
+103553381043](https://github.com/nickmaglowsch/vorssaint-utils/actions/runs/34693694037/job/103553381043),
+which is the run whose Linux job is quoted in § 6.2 — is success on every
+step and ends the same way:
+
+```
+2026-09-12T12:44:41Z TESTS OK (31565 checks)
+2026-09-12T12:44:41Z PREFERENCE CLEANUP TESTS OK
+```
+
+so both legs of that one run are green together: 31 565 checks on macOS,
+90 tests / 0 failures on Linux.
+
 ### 6.2 Linux: `swift test`
 
 The Linux half was proven on `claude/wp16-verify`, a branch carrying exactly
