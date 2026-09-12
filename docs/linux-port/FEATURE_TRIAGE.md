@@ -278,8 +278,12 @@ Two rows deserve their reasoning spelled out:
   event from the focused app is the whole mechanism (`InputRelay` in
   `vorssaint-helper`), and it is exactly what a Flatpak sandbox without
   `/dev/uinput` cannot do. A session where the helper is absent therefore
-  loses eleven features at once and says so once per row, which is the
-  behaviour `PRIVILEGES.md` § 6 describes.
+  loses ten features at once (`scrollInverter`, `smoothScroll`,
+  `mouseNavigation`, `mouseButtonShortcuts`, `mouseClickDebounce`,
+  `keyboardDebounce`, `textSnippets`, `superKey`, `quitWindowProtection`,
+  `cleaningMode`), and an eleventh, `pastePlain`, loses its paste half to
+  `input.synthesize` on the same absence. Each says so on its own row, which
+  is the behaviour `PRIVILEGES.md` § 6 describes.
 
 ### The three Linux presets
 

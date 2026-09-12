@@ -221,7 +221,7 @@ defaults inventory OK (587 fixed keys)
 ```
 
 587 fixed keys, plus one `featureAvailable.<id>` per feature from
-`FeatureSupportCatalog.allFeatureIDs` (57), is **644**. `PLAN.md` § 4 says
+`FeatureSupportCatalog.allFeatureIDs` (57), is **644**. `PLAN.md` § 3 says
 "616 keys" and `WORK_PACKAGES.md` repeats it; that figure is from the survey
 at 3.3.5 and the table has grown since. 644 is the counted number, and the
 round-trip test walks all of them with a different value shape per key
