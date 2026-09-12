@@ -294,9 +294,31 @@ these are new findings:
 | `Services/Metrics/SpeedTest.swift` | `URLSession` (Linux needs `FoundationNetworking`) and `CFAbsoluteTimeGetCurrent` |
 | `Services/FanControl/FanControlSupport.swift` | `ProcessInfo.ThermalState` — one of the four gaps WP-00 § 8 condition 3 hands to WP-12 |
 | `Services/Metrics/TemperatureSensorSelector.swift`, `Services/DetachedProcess.swift` | `import Darwin` + `sysctlbyname` / `posix_spawn` |
-| `Services/AppUpdates/AppUpdateFeedSupport.swift` | `XMLParser` → `FoundationXML`, the other named WP-12 gap |
+| `Services/AppUpdates/AppUpdateFeedSupport.swift` | `XMLParser` (line 97) and `XMLParserDelegate` (line 150) → `FoundationXML` |
+| `Core/SettingsBackupSupport.swift` | `CFGetTypeID(value) == CFBooleanGetTypeID()` (lines 313-324) |
 
-Per the brief these are WP-12's to close, not WP-11's to shim.
+Per the brief these are WP-12's to close, not WP-11's to shim. Three of the
+four gaps WP-00 § 8 condition 3 named are confirmed present and located:
+`FoundationXML` in `AppUpdateFeedSupport.swift`, `ProcessInfo.ThermalState` in
+`FanControlSupport.swift`, `CFGetTypeID`/`CFBooleanGetTypeID` in
+`SettingsBackupSupport.swift`. The fourth, `FileManager.trashItem`, WP-00 § 1
+recorded as unused — but that was true only of its 120-file candidate set. It
+is used in **seven** files outside it, none of them in the moved set:
+
+```
+$ grep -rn 'trashItem' Sources/ | wc -l
+7
+```
+
+`Services/Cleaner/JunkCleaner.swift:199`,
+`Services/DiskImageInstaller/DiskImageInstallerService.swift:299`,
+`Services/ManagedDownloads/WhatsAppDownloadOrganizer.swift:584`,
+`Services/ManagedDownloads/WhatsAppDownloadManager.swift:218`,
+`Services/QuickTools/ScreenshotService.swift:429`,
+`Services/Uninstall/AppUninstaller.swift:302`,
+`Core/BundleMigration.swift:100`. WP-12 should budget the freedesktop trash
+spec (or `org.freedesktop.FileManager1.TrashFiles`) for all seven, not as a
+future nicety.
 
 ### 4.2 Census-clean, but not dependency-closed
 
@@ -306,7 +328,7 @@ These are the 18 census disagreements. Each is blocked by a file in § 4.1.
 |---|---:|---|
 | `Core/FeatureCatalog.swift` | 423 | `RadialMenuSupport`, `SuperKeySupport`, `WindowGestureSupport` |
 | `Core/FeaturePresets.swift` | 135 | `FeatureCatalog`, `RadialMenuSupport`, `WindowGestureSupport` |
-| `Core/SettingsBackupSupport.swift` | 329 | `Defaults`, `FeatureCatalog`, `MediaSupport` |
+| `Core/SettingsBackupSupport.swift` | 329 | `Defaults`, `FeatureCatalog`, `MediaSupport` — and it carries a named WP-12 gap of its own, `CFGetTypeID(value) == CFBooleanGetTypeID()` at lines 313-324, the Bool-versus-number test on a stored plist value |
 | `Core/MouseExceptionStrings.swift` | 234 | `MouseAppExceptionSupport` |
 | `Core/SuperKeyStrings.swift` | 362 | `SuperKeySupport` |
 | `Services/MouseExceptions/MouseAppExceptionSupport.swift` | 218 | `FeatureCatalog` |
@@ -376,34 +398,94 @@ satisfy the tests.
 ## 6. CI
 
 `.github/workflows/linux-port-ci.yml`, both jobs hard gates, on every push to
-the branch.
+the branch. Four pushes; both gates green on the last.
 
-| push | run | `linux-core` | `macos` |
-|---|---|---|---|
-| 1 | [34661455499](https://github.com/nickmaglowsch/vorssaint-utils/actions/runs/34661455499) | **red** — one file, see below | *(see § 6.2)* |
-| 2 | [34661825794](https://github.com/nickmaglowsch/vorssaint-utils/actions/runs/34661825794) | *(filled in below)* | *(filled in below)* |
+| push | head | run | `linux-core` | `macos` |
+|---|---|---|---|---|
+| 1 | `6a9ee2e` | [34661455499](https://github.com/nickmaglowsch/vorssaint-utils/actions/runs/34661455499) | red — `SessionActivitySupport.swift` | build ✓, selftest ✓, `--test` red |
+| 2 | `54b1d82` | [34661825794](https://github.com/nickmaglowsch/vorssaint-utils/actions/runs/34661825794) | red — `ScratchpadSupport.swift` | — |
+| 3 | `e8fbe89` | [34662068864](https://github.com/nickmaglowsch/vorssaint-utils/actions/runs/34662068864) | **green** | `--test` still red (the glob) |
+| 4 | `1ef8c25` | [34662609044](https://github.com/nickmaglowsch/vorssaint-utils/actions/runs/34662609044) | **green** | **green** |
 
-### 6.1 What the first run proved
+### 6.1 `linux-core` green
 
-The whole 226-file core target compiled with exactly **one** distinct error,
-and it was the one file the lexical scan had mis-classified:
+[Run 34662068864, job 103466454136](https://github.com/nickmaglowsch/vorssaint-utils/actions/runs/34662068864/job/103466454136),
+`swift:6.1-noble`, all six steps success:
+
+```
+[225/225] Compiling VorssaintCore VorssaintCoreVersion.swift
+Build of target: 'VorssaintCore' complete! (22.13s)
+Build of target: 'VorssaintCombine' complete! (1.07s)
+Build of target: 'VorssaintLinux' complete! (1.06s)
+Build of product 'VorssaintLinux' complete! (0.94s)
+VorssaintCore 0.1.0-dev (linux)
+```
+
+225 compile units, zero diagnostics. The per-error classifier the WP-00 spike
+needed (`spikes/wp00-swift-core/classify.py`, 4173 raw / 126 distinct) has
+nothing left to classify: the target builds clean.
+
+### 6.2 `macos` green
+
+[Run 34662609044, job 103468044311](https://github.com/nickmaglowsch/vorssaint-utils/actions/runs/34662609044/job/103468044311),
+`macos-15`, Xcode 16.2 / Apple Swift 6.0.3 / SDK 15.2, all six steps success:
+
+```
+✓ Bundle ready: build/stage/Vorssaint.app
+SELFTEST OK
+▸ Building & running unit tests against MacOSX.sdk…
+TESTS OK (31565 checks)
+PREFERENCE CLEANUP TESTS OK
+```
+
+**31565 checks** is the same number `WORK_PACKAGES.md` records for the WP-10
+baseline, so the move added and lost no assertion. The `Build` step took
+12m20s against 12m01s for the last run before WP-11 (job 103464350900 on
+`5a0c496`), which is what one expects when the same files are compiled into
+the same module from three directories instead of one.
+
+The `linux-core` job of that same run
+([103468044248](https://github.com/nickmaglowsch/vorssaint-utils/actions/runs/34662609044/job/103468044248))
+is green too, so one commit carries both gates.
+
+### 6.3 What the two red Linux runs proved
+
+Both were single-file, and both were census blind spots rather than anything
+structural. Run 1, the whole 226-unit target with exactly one distinct error:
 
 ```
 [226/226] Compiling VorssaintCore VorssaintCoreVersion.swift
-/__w/vorssaint-utils/vorssaint-utils/Sources/VorssaintCore/Services/SessionActivitySupport.swift:4:8: error: no such module 'CoreGraphics'
+/__w/…/Sources/VorssaintCore/Services/SessionActivitySupport.swift:4:8: error: no such module 'CoreGraphics'
  4 | import CoreGraphics
    |        `- error: no such module 'CoreGraphics'
 ```
 
-Nothing else in 44 000 lines failed. In particular `AttributedString` markdown
-parsing and `PresentationIntent` (`ScratchpadSupport.swift`),
-`String.applyingTransform(StringTransform("Any-Name"))`
-(`CommandBarEmoji.swift`), `ISO8601DateFormatter`,
-`PropertyListSerialization`, `JSONSerialization`, `NSNumber`/`NSDictionary`
-bridging and the POSIX `EACCES`/`ENOENT`/`EPERM` constants
-(`CutPastePrivilegeSupport.swift`) all compile on swift-corelibs-foundation
-6.1.3 — which is new information the WP-00 spike could not get, because its
-build aborted on unresolved in-repo names.
+Run 2, after that file went back, again exactly one file:
+
+```
+…/ScratchpadSupport.swift:209:75: error: extra argument 'options' in call
+…/ScratchpadSupport.swift:256:24: error: cannot find type 'PresentationIntent' in scope
+```
+
+Nothing else in 44 000 lines failed, which is new information the WP-00 spike
+could not get because its build aborted on unresolved in-repo names. In
+particular these all compile on swift-corelibs-foundation 6.1.3:
+`String.applyingTransform(StringTransform("Any-Name"))` in
+`CommandBarEmoji.swift`, `ISO8601DateFormatter` and `URLQueryItem` in
+`ScreenshotSharingSupport.swift`, `PropertyListSerialization` in
+`DiskImageInstallerSupport.swift`, `JSONSerialization` and `NSDictionary`
+bridging in `PeripheralBatterySupport.swift`, the POSIX `EACCES`/`ENOENT`/
+`EPERM` constants and `NSCocoaErrorDomain`/`NSFileReadNoSuchFileError` in
+`CutPastePrivilegeSupport.swift`, and OpenCombine's `ObservableObject` and
+`@Published` in `Localization.swift`.
+
+The one `macos` failure was also mine and also one line: the path rewrite for
+the moved files matched literal `.swift` paths and missed the single glob in
+`build.sh --test` (`Sources/Vorssaint/Core/Localizations/Strings+*.swift`),
+which zsh then refused with `no matches found`. The app build and `--selftest`
+were green in that same run, which is the part that proves the move did not
+disturb the product.
+
 
 ## Appendix: every file now in `Sources/VorssaintCore`
 
