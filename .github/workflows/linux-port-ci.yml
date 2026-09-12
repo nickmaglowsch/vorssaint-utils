@@ -72,8 +72,12 @@ jobs:
           # The pure checks of the macOS `build.sh --test` harness, selected by
           # Tools/linux-port/port-tests.py and committed under
           # Tests/VorssaintCoreTests (WP-16, docs/linux-port/TESTS.md).
+          # pipefail, or `| tee` would swallow a failing exit status and the
+          # grep below would happily match one green suite line out of many.
+          set -o pipefail
           swift test --filter VorssaintCoreTests 2>&1 | tee /tmp/swift-test.out
           grep -E "^Executed [0-9]+ tests?, with 0 failures" /tmp/swift-test.out
+          ! grep -qE "with [1-9][0-9]* failures?" /tmp/swift-test.out
 
       - name: The generated tests are what the generator produces
         shell: bash

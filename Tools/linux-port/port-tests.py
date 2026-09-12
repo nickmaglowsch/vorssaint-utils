@@ -114,6 +114,16 @@ COMBINE_TYPES = {
     "Subscribers",
 }
 
+# Statements the selection rules accept but the Linux run cannot keep, keyed
+# by source file and by the line the statement starts on. Each entry needs a
+# reason and the CI run that showed it; this is the escape hatch for a
+# behavioural difference between Darwin Foundation and corelibs that no
+# name-based rule can see. Keep it short — a growing list means the rules are
+# wrong, not the checks.
+EXCLUDED = {
+    # "Tests/MetricsTests.swift": {1234: "reason (run …)"},
+}
+
 IDENT = re.compile(r"\b([A-Za-z_][A-Za-z0-9_]*)\b")
 BARE = re.compile(r"(?<![.\w$])([a-z_][A-Za-z0-9_]*)\b(?!\s*:)")
 MARK = re.compile(r"^\s*// MARK:\s*(.+?)\s*$")
@@ -448,7 +458,7 @@ def harness_body(path):
 
 # ------------------------------------------------------------- portability
 
-def classify(units, kind, boundaries=()):
+def classify(units, kind, boundaries=(), excluded=()):
     """Walk the units in order, deciding which can run on Linux.
 
     `available` holds the local names introduced by units that were kept. A
@@ -464,7 +474,9 @@ def classify(units, kind, boundaries=()):
             # the generated code would name variables it never declares.
             available = set(HARNESS_NAMES)
         reason = None
-        for name in sorted(unit.refs):
+        if unit.start in excluded:
+            reason = "excluded:" + excluded[unit.start]
+        for name in sorted(unit.refs) if reason is None else []:
             if name in KEYWORDS or name in unit.declared or name in available:
                 continue
             if name in FREE_FUNCTIONS or name in ALLOWED_TYPES or name in COMBINE_TYPES:
@@ -579,7 +591,8 @@ def generate(sources, verbose=False):
         if last <= first:
             continue
         units, marks = split_units(lines, first, last, indent)
-        decisions = classify(units, kind, boundaries=set(marks))
+        decisions = classify(units, kind, boundaries=set(marks),
+                             excluded=EXCLUDED.get(source, {}))
         # Group into sections.
         sections = []
         current = {"title": "Prelude", "decisions": []}
