@@ -76,6 +76,7 @@ target_include_directories(vs_window
     PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${GENERATED_DIR})
 
 target_link_libraries(vs_window
+    PUBLIC vs_platform_common
     PRIVATE PkgConfig::XCB PkgConfig::WAYLAND PkgConfig::JSONC PkgConfig::SDBUS)
 
 add_dependencies(vs_window vs_window_protocols)

@@ -78,9 +78,9 @@ design is WP-S1. The listen-only features use the same relay in tap mode.
 
 | Feature | Size / reusable | macOS mechanism | Linux mechanism | G | K | W | X | Verdict | Wave |
 |---|---|---|---|---|---|---|---|---|---|
-| mixer | 4.1k / 30% | CoreAudio process taps + private aggregate device | PipeWire: per-stream `Props.volume` on `Stream/Output/Audio` nodes via `libpipewire` (or libpulse sink-input API, which PipeWire serves too). Volume above 100 % is native. Hide apps: same logic. Much simpler than macOS. | ✓ | ✓ | ✓ | ✓ | Port | A |
-| soundOutputSwitcher | (in Audio) | Default device property + headphone detection | WirePlumber default sink metadata (`default.audio.sink`), per-stream `target.object` for per-app output routing, `pw-link`/node listener for headphone disconnect. | ✓ | ✓ | ✓ | ✓ | Port | A |
-| micMute | 0.5k | CoreAudio input mute | Mute every `Audio/Source` node via PipeWire. | ✓ | ✓ | ✓ | ✓ | Port | A |
+| mixer | 4.1k / 30% | CoreAudio process taps + private aggregate device | PipeWire: per-stream `Props.volume` on `Stream/Output/Audio` nodes via `libpipewire` (or libpulse sink-input API, which PipeWire serves too). Volume above 100 % is native (measured: `channelVolumes: [1.5, 1.5]` accepted unclamped). Hide apps: same logic. Much simpler than macOS. Backend built and measured, WP-A5: `linux/platform/audio`, `docs/linux-port/AUDIO_BACKEND.md`. | ✓ | ✓ | ✓ | ✓ | Port | A |
+| soundOutputSwitcher | (in Audio) | Default device property + headphone detection | WirePlumber default sink metadata (`default.audio.sink`), per-stream `target.object` for per-app output routing, `pw-link`/node listener for headphone disconnect. Backend built and measured, WP-A5: the disconnect arrives as `default-sink-disconnected` naming the sink that left, before WirePlumber's fallback. | ✓ | ✓ | ✓ | ✓ | Port | A |
+| micMute | 0.5k | CoreAudio input mute | Mute every `Audio/Source` node via PipeWire; monitors excluded, and the prior mute state is remembered under `$XDG_RUNTIME_DIR` so restoring leaves alone what the user muted. Backend built and measured, WP-A5. | ✓ | ✓ | ✓ | ✓ | Port | A |
 | musicBlock | 0.2k | Music.app launch suppression | No DE auto-launches a player on headphone connect. | – | – | – | – | Drop | – |
 
 ## Energy and display
