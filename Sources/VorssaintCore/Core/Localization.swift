@@ -82,7 +82,9 @@ final class L10n: ObservableObject {
     static let shared = L10n()
 
     @Published var language: AppLanguage {
-        didSet { UserDefaults.standard.set(language.rawValue, forKey: DefaultsKey.language) }
+        didSet {
+            SettingsStoreAccess.shared.set(language.rawValue, forKey: DefaultsKey.language)
+        }
     }
 
     var s: Strings {
@@ -104,7 +106,7 @@ final class L10n: ObservableObject {
     }
 
     private init() {
-        if let raw = UserDefaults.standard.string(forKey: DefaultsKey.language),
+        if let raw = SettingsStoreAccess.shared.string(forKey: DefaultsKey.language),
            let saved = AppLanguage(rawValue: raw) {
             language = saved
         } else {
