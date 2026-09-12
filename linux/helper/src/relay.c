@@ -38,6 +38,55 @@ static void print_event(const char *dir, uint64_t ts_ns, const rules_event *e)
            libevdev_event_type_get_name(e->type) ?: "?", code_name(e->type, e->code), e->value);
 }
 
+/* --tap prints exactly what the app's shortcut recorder and snippet trigger
+ * detection receive over the Event signal: the source device as well as the
+ * code, so a recorder can tell two keyboards apart. */
+static void print_tap_event(uint64_t ts_ns, const rules_event *e)
+{
+    static const char *const CLASS[] = {"unknown", "keyboard", "mouse", "touchpad"};
+
+    printf("tap  %10llu.%09llu dev=%u(%s) %-6s %-20s %d\n",
+           (unsigned long long)(ts_ns / 1000000000ULL),
+           (unsigned long long)(ts_ns % 1000000000ULL), e->dev_id,
+           CLASS[e->dev_class < 4 ? e->dev_class : 0],
+           libevdev_event_type_get_name(e->type) ?: "?", code_name(e->type, e->code), e->value);
+}
+
+/* Drain whatever the rules decided the app has to act on (a workspace
+ * gesture, a blocked quit), which over D-Bus is the Event signal with kind
+ * "rule". */
+static void print_notices(rules_state *st, uint64_t base)
+{
+    rules_notice nt;
+
+    while (rules_notice_pop(st, &nt))
+        printf("NOTE %10llu.%09llu %s\n", (unsigned long long)((nt.ts - base) / 1000000000ULL),
+               (unsigned long long)((nt.ts - base) % 1000000000ULL), nt.detail);
+}
+
+/* Load a SetRules document from a file, so --replay and --bench run the same
+ * rule set the daemon would be handed over D-Bus. */
+static int load_rules(const char *path, rules_config *cfg)
+{
+    static char buf[RULES_JSON_MAX + 1];
+    char err[256] = {0};
+    FILE *f = fopen(path, "rb");
+    size_t n;
+
+    if (!f) {
+        fprintf(stderr, "relay: open %s: %s\n", path, strerror(errno));
+        return -1;
+    }
+    n = fread(buf, 1, sizeof(buf) - 1, f);
+    fclose(f);
+    buf[n] = '\0';
+    if (rules_config_from_json(buf, cfg, err, sizeof(err)) < 0) {
+        fprintf(stderr, "relay: %s: bad rules: %s\n", path, err);
+        return -1;
+    }
+    return 0;
+}
+
 /* ---- latency ------------------------------------------------------------ */
 
 static int cmp_u64(const void *a, const void *b)
@@ -56,7 +105,8 @@ static uint64_t pct(uint64_t *s, size_t n, double p)
  * returning an event to the matching write()+SYN having been handed to the
  * kernel. Kernel-side evdev and uinput delivery are outside it and are the
  * same for any relay of this design. */
-static int run_bench(input_backend *b, size_t n_events, const char *write_to)
+static int run_bench(input_backend *b, size_t n_events, const char *write_to,
+                     const rules_config *cfg)
 {
     rules_state st;
     uint64_t *samples = calloc(n_events, sizeof(uint64_t));
@@ -80,7 +130,7 @@ static int run_bench(input_backend *b, size_t n_events, const char *write_to)
             return 1;
         }
     }
-    rules_init(&st, NULL);
+    rules_init(&st, cfg);
     if (b->open(b, true, err, sizeof(err)) < 0) {
         fprintf(stderr, "relay: backend %s open failed: %s\n", b->name, err);
         free(samples);
@@ -156,7 +206,8 @@ static int run_bench(input_backend *b, size_t n_events, const char *write_to)
  * a packed sequence of struct input_event. That makes a capture taken on a
  * real machine (`cat /dev/input/eventN > stream.bin`) replayable here without
  * conversion. */
-static int run_replay(input_backend *b, const char *path, bool verbose)
+static int run_replay(input_backend *b, const char *path, bool verbose,
+                      const rules_config *cfg)
 {
     rules_state st;
     struct input_event ie;
@@ -169,7 +220,7 @@ static int run_replay(input_backend *b, const char *path, bool verbose)
         fprintf(stderr, "relay: open %s: %s\n", path, strerror(errno));
         return 1;
     }
-    rules_init(&st, NULL);
+    rules_init(&st, cfg);
     if (b->open(b, true, err, sizeof(err)) < 0) {
         fprintf(stderr, "relay: backend %s open failed: %s\n", b->name, err);
         fclose(f);
@@ -227,7 +278,8 @@ static int run_replay(input_backend *b, const char *path, bool verbose)
 
 /* ---- live loop ---------------------------------------------------------- */
 
-static int run_live(input_backend *b, bool tap_mode, const char *record_path)
+static int run_live(input_backend *b, bool tap_mode, const char *record_path,
+                    const rules_config *cfg)
 {
     rules_state st;
     char err[512] = {0};
@@ -235,7 +287,7 @@ static int run_live(input_backend *b, bool tap_mode, const char *record_path)
     FILE *rec = NULL;
     uint64_t base = 0;
 
-    rules_init(&st, NULL);
+    rules_init(&st, cfg);
 
     if (b->open(b, !tap_mode, err, sizeof(err)) < 0) {
         fprintf(stderr, "relay: cannot start on backend '%s': %s\n", b->name, err);
@@ -300,7 +352,7 @@ static int run_live(input_backend *b, bool tap_mode, const char *record_path)
         }
 
         if (tap_mode) {
-            print_event("tap ", ts - base, &in);
+            print_tap_event(ts - base, &in);
             fflush(stdout);
             continue;
         }
@@ -325,7 +377,7 @@ static void usage(void)
 {
     fprintf(stderr,
             "usage: vorssaint-relay [--backend evdev|fake] [--tap] [--replay FILE]\n"
-            "                       [--record FILE] [--bench N] [-v]\n"
+            "                       [--record FILE] [--bench N] [--rules-file FILE] [-v]\n"
             "\n"
             "  --backend evdev   libudev discovery, EVIOCGRAB, uinput output (default)\n"
             "  --backend fake    in-process queues; used where uinput is unavailable\n"
@@ -335,13 +387,16 @@ static void usage(void)
             "  --bench N         measure added latency over N synthetic events\n"
             "  --write-to PATH   during --bench, also write(2) each output event to PATH,\n"
             "                    which is what libevdev_uinput_write_event does to\n"
-            "                    /dev/uinput; use /dev/null to price the syscall\n");
+            "                    /dev/uinput; use /dev/null to price the syscall\n"
+            "  --rules-file F    apply a SetRules document (the same JSON the D-Bus\n"
+            "                    method takes) instead of the all-off defaults\n");
 }
 
 int main(int argc, char **argv)
 {
     const char *backend = "evdev";
-    const char *replay = NULL, *record = NULL, *write_to = NULL;
+    const char *replay = NULL, *record = NULL, *write_to = NULL, *rules_file = NULL;
+    rules_config cfg;
     bool tap = false, verbose = false;
     size_t bench = 0;
     input_backend *b;
@@ -360,6 +415,8 @@ int main(int argc, char **argv)
             bench = strtoul(argv[++i], NULL, 10);
         else if (!strcmp(argv[i], "--write-to") && i + 1 < argc)
             write_to = argv[++i];
+        else if (!strcmp(argv[i], "--rules-file") && i + 1 < argc)
+            rules_file = argv[++i];
         else if (!strcmp(argv[i], "-v"))
             verbose = true;
         else {
@@ -379,11 +436,17 @@ int main(int argc, char **argv)
     if (!b)
         return 1;
 
+    rules_config_defaults(&cfg);
+    if (rules_file && load_rules(rules_file, &cfg) < 0) {
+        b->close(b);
+        return 1;
+    }
+
     if (bench)
-        rc = run_bench(b, bench, write_to);
+        rc = run_bench(b, bench, write_to, &cfg);
     else if (replay)
-        rc = run_replay(b, replay, verbose);
+        rc = run_replay(b, replay, verbose, &cfg);
     else
-        rc = run_live(b, tap, record);
+        rc = run_live(b, tap, record, &cfg);
     return rc;
 }

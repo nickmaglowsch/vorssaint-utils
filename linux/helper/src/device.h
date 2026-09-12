@@ -38,6 +38,9 @@ struct input_backend {
      * deadline_ns of 0 means "block indefinitely". */
     int (*read)(input_backend *self, rules_event *ev, uint64_t *ts_ns, uint64_t deadline_ns);
 
+    /* EV_KEY/EV_REL/EV_ABS go to the output device. EV_LED is different: the
+     * lamp the user looks at is on the keyboard the relay grabbed, not on the
+     * uinput device, so an EV_LED write is routed back to the sources. */
     int (*write)(input_backend *self, const rules_event *ev);
     int (*sync)(input_backend *self);
 
@@ -64,6 +67,10 @@ input_backend *device_fake_new(void);
 
 /* Fake-backend driver API (no-ops on any other backend). */
 void device_fake_push(input_backend *b, uint16_t type, uint16_t code, int32_t value, uint64_t ts_ns);
+/* As above, but from a source of the given class and id, which is what a
+ * per-device-class rule (scroll_invert) needs to be tested against. */
+void device_fake_push_dev(input_backend *b, uint8_t dev_class, uint16_t dev_id, uint16_t type,
+                          uint16_t code, int32_t value, uint64_t ts_ns);
 size_t device_fake_sink_count(input_backend *b);
 const rules_event *device_fake_sink(input_backend *b, size_t idx);
 void device_fake_sink_clear(input_backend *b);

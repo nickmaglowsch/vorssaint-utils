@@ -55,6 +55,11 @@ endif()
 
 add_library(helpercore STATIC
   src/rules.c
+  src/rules_debounce.c
+  src/rules_scroll.c
+  src/rules_super.c
+  src/rules_mouse.c
+  src/rules_quit.c
   src/device_fake.c
   src/device_evdev.c
   src/grabholder.c
@@ -65,7 +70,10 @@ add_library(helpercore STATIC
   src/caps.c
 )
 target_include_directories(helpercore PUBLIC src)
-target_link_libraries(helpercore PUBLIC PkgConfig::EVDEV PkgConfig::UDEV PkgConfig::SDBUS)
+# libm: the smooth-scroll easing is exp(), ported verbatim from
+# SmoothScrollSupport, and exp() is the whole reason the glide composes across
+# frame intervals.
+target_link_libraries(helpercore PUBLIC PkgConfig::EVDEV PkgConfig::UDEV PkgConfig::SDBUS m)
 
 add_library(authz STATIC src/polkit_check.c)
 target_include_directories(authz PUBLIC src)
