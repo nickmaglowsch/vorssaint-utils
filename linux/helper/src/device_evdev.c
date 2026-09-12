@@ -41,6 +41,15 @@ typedef struct {
     bool grabbed;
 } source;
 
+/* Big enough for the longest hot-plug line a full source can produce:
+ *   "added " + node + " (" + name + ")" + ", grabbed"
+ * which is 6 + 63 + 2 + 127 + 1 + 9 = 208 characters plus the NUL. Sizing it
+ * from the fields rather than from a guess is what keeps -Wformat-truncation
+ * quiet at every optimisation level, and the compiler is right to ask: a
+ * truncated line here would be a device name silently cut in half in the
+ * journal, in the one message that says which device the relay just took. */
+#define HOT_DESC_MAX (sizeof(((source *)0)->node) + sizeof(((source *)0)->name) + 32)
+
 typedef struct {
     source src[MAX_SOURCES];
     int n_src;
@@ -55,7 +64,7 @@ typedef struct {
     struct udev *udev;
     struct udev_monitor *mon;
     int mon_fd;
-    char hot_desc[192];
+    char hot_desc[HOT_DESC_MAX];
 } evdev_priv;
 
 static void kind_append(char *kind, size_t cap, const char *what)

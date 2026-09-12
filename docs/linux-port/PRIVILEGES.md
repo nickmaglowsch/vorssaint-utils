@@ -574,6 +574,7 @@ claim above falls into one of three buckets.
 | The unit file is accepted by systemd's own parser | `systemd-analyze verify` with a real `ExecStart`: no diagnostics |
 | Both udev rule files parse | `udevadm verify`: `Success: 1, Fail: 0` each |
 | The polkit policy is valid against its DTD | `xmllint --noout --valid`: clean |
+| The build is warning-clean under `-Werror` at every optimisation level | `scripts/build-matrix.sh`: no build type, Debug, Release and RelWithDebInfo each configure, build without a warning, and pass all 8 ctest entries. The levels are not interchangeable -- `-Wformat-truncation`, `-Wmaybe-uninitialized` and `-Wrestrict` reason differently as GCC inlines more, and checking only one is how a truncation reached the lead's re-check |
 | The binaries carry the hardening the build claims | `readelf`: PIE, `BIND_NOW`, `GNU_RELRO`, non-executable stack, `_FORTIFY_SOURCE` `_chk` symbols present |
 
 **Proven only against a fake, because the real thing does not exist here**

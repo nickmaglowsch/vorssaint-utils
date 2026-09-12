@@ -266,7 +266,7 @@ static int json_uint(const char *json, const char *key, unsigned long *out, unsi
 
 int rules_config_from_json(const char *json, rules_config *cfg, char *err, size_t err_cap)
 {
-    unsigned long n;
+    unsigned long n = 0;
     const char *bad = NULL;
 
     if (!json) {
@@ -285,18 +285,25 @@ int rules_config_from_json(const char *json, rules_config *cfg, char *err, size_
     }
     rules_config_defaults(cfg);
 
+    /* One lookup per key, and the *result* says whether n was set.
+     *
+     * This was two lookups -- json_uint() to validate, then json_find() again
+     * to decide whether the key was present at all -- which left n only
+     * conditionally initialised along a path the compiler could not follow
+     * (-Wmaybe-uninitialized at -O3, where GCC inlines enough to try). The
+     * two calls also had to agree about presence, which is a correctness
+     * argument no one should have to make twice, and it doubled the scanning
+     * this parser does over a document that may be 64 KiB. */
+#define TAKE_UINT(key, max, assign)                                                                    do {                                                                                                   if (bad)                                                                                               break;                                                                                         int have_ = json_uint(json, (key), &n, (max));                                                     if (have_ < 0)                                                                                         bad = (key);                                                                                   else if (have_ > 0)                                                                                    assign;                                                                                    } while (0)
+
     if (json_bool(json, "tap_hold", &cfg->tap_hold_enabled) < 0) bad = "tap_hold";
     if (!bad && json_bool(json, "chatter", &cfg->chatter_enabled) < 0) bad = "chatter";
-    if (!bad && json_uint(json, "tap_threshold_ms", &n, 5000) < 0) bad = "tap_threshold_ms";
-    else if (!bad && json_find(json, "tap_threshold_ms")) cfg->tap_threshold_ns = MS_NS(n);
-    if (!bad && json_uint(json, "chatter_ms", &n, 1000) < 0) bad = "chatter_ms";
-    else if (!bad && json_find(json, "chatter_ms")) cfg->chatter_window_ns = MS_NS(n);
-    if (!bad && json_uint(json, "tap_source", &n, RULES_KEY_MAX) < 0) bad = "tap_source";
-    else if (!bad && json_find(json, "tap_source")) cfg->tap_source = (uint16_t)n;
-    if (!bad && json_uint(json, "tap_output", &n, RULES_KEY_MAX) < 0) bad = "tap_output";
-    else if (!bad && json_find(json, "tap_output")) cfg->tap_output = (uint16_t)n;
-    if (!bad && json_uint(json, "hold_output", &n, RULES_KEY_MAX) < 0) bad = "hold_output";
-    else if (!bad && json_find(json, "hold_output")) cfg->hold_output = (uint16_t)n;
+    TAKE_UINT("tap_threshold_ms", 5000, cfg->tap_threshold_ns = MS_NS(n));
+    TAKE_UINT("chatter_ms", 1000, cfg->chatter_window_ns = MS_NS(n));
+    TAKE_UINT("tap_source", RULES_KEY_MAX, cfg->tap_source = (uint16_t)n);
+    TAKE_UINT("tap_output", RULES_KEY_MAX, cfg->tap_output = (uint16_t)n);
+    TAKE_UINT("hold_output", RULES_KEY_MAX, cfg->hold_output = (uint16_t)n);
+#undef TAKE_UINT
 
     if (bad) {
         snprintf(err, err_cap, "bad value for \"%s\"", bad);

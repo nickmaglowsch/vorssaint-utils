@@ -40,7 +40,9 @@ typedef struct {
         fake_source d;
     } hot[FAKE_MAX_DEV];
     size_t hot_head, hot_tail;
-    char hot_desc[192];
+    /* Same arithmetic as HOT_DESC_MAX in device_evdev.c, over this backend's
+     * own (smaller) field sizes: "added " + node + " (" + name + "), grabbed". */
+    char hot_desc[sizeof(((fake_source *)0)->node) + sizeof(((fake_source *)0)->name) + 32];
 
     uint64_t clock_ns;
     bool grabbed;
@@ -83,21 +85,26 @@ static bool fake_drain_hotplug(fake_priv *p)
     if (p->hot_head == p->hot_tail)
         return false;
 
+    /* By value, not by pointer into p: the formatting below writes into
+     * p->hot_desc while reading from another field of the same object, which
+     * is the overlap snprintf's `restrict` parameters forbid (-Wrestrict at
+     * -O3). Taking a copy makes the two provably distinct. */
     if (p->hot[p->hot_head].add) {
-        fake_source *d = &p->hot[p->hot_head].d;
+        fake_source d = p->hot[p->hot_head].d;
         /* A device that appears while the relay holds a grab must be grabbed
          * too, or it is the one keyboard in the session the rules do not
          * apply to -- and on a machine where the relay swallows Caps Lock,
          * a keyboard that suddenly behaves differently is the bug report. */
-        fake_add_dev(p, d->node, d->name, d->kind, p->grabbed);
-        snprintf(p->hot_desc, sizeof(p->hot_desc), "added %s (%s)%s", d->node, d->name,
+        fake_add_dev(p, d.node, d.name, d.kind, p->grabbed);
+        snprintf(p->hot_desc, sizeof(p->hot_desc), "added %s (%s)%s", d.node, d.name,
                  p->grabbed ? ", grabbed" : "");
     } else {
-        const char *node = p->hot[p->hot_head].d.node;
+        fake_source want = p->hot[p->hot_head].d;
         for (size_t i = 0; i < p->n_dev; i++) {
-            if (strcmp(p->dev[i].node, node) == 0) {
-                snprintf(p->hot_desc, sizeof(p->hot_desc), "removed %s (%s)", p->dev[i].node,
-                         p->dev[i].name);
+            if (strcmp(p->dev[i].node, want.node) == 0) {
+                fake_source gone = p->dev[i];
+                snprintf(p->hot_desc, sizeof(p->hot_desc), "removed %s (%s)", gone.node,
+                         gone.name);
                 p->dev[i] = p->dev[p->n_dev - 1];
                 p->n_dev--;
                 break;
