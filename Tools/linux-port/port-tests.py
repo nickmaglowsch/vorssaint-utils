@@ -121,16 +121,18 @@ COMBINE_TYPES = {
 # name-based rule can see. Keep it short — a growing list means the rules are
 # wrong, not the checks.
 EXCLUDED = {
-    "Tests/MetricsTests.swift": {
-        14150: "asserts /bin/launchctl, /usr/bin/hdiutil, /usr/sbin/spctl … "
-               "exist on the machine running the tests; they are macOS system "
-               "tools and the check is about the Mac product, not the code "
-               "(run 34693146465)",
-        15139: "`/tmp/Installer Mount` resolves to `/private/tmp/Installer "
-               "Mount` on macOS and to itself on Linux, so the hdiutil plist "
-               "round-trip compares two different paths. Takes the two other "
-               "checks in the same `if let` block with it (run 34693146465)",
-    },
+    "Tests/MetricsTests.swift": [
+        ("every system tool the app runs is where it expects",
+         "asserts /bin/launchctl, /usr/bin/hdiutil, /usr/sbin/spctl … exist on "
+         "the machine running the tests. They are macOS system tools: the "
+         "check is about the Mac the product runs on, not about the code "
+         "(run 34693339999)"),
+        ("hdiutil plist maps the canonical mount path back to its disk image",
+         "`/tmp/Installer Mount` resolves to `/private/tmp/Installer Mount` on "
+         "macOS and to itself on Linux, so the round-trip compares two "
+         "different paths. Takes the two other checks inside the same `if let` "
+         "statement with it (run 34693339999)"),
+    ],
 }
 
 IDENT = re.compile(r"\b([A-Za-z_][A-Za-z0-9_]*)\b")
@@ -561,8 +563,10 @@ def classify(units, kind, boundaries=(), excluded=(), mac_members=None):
             available = set(HARNESS_NAMES)
             effects = {}
         reason = None
-        if unit.start in excluded:
-            reason = "excluded:" + excluded[unit.start]
+        hit = next((why for needle, why in excluded if needle in unit.stripped
+                    or needle in unit.text), None)
+        if hit:
+            reason = "excluded:" + hit
         elif any(member in mac_members.get(owner, ())
                  for owner, member in unit.member_uses):
             reason = "mac-member:" + sorted(
@@ -701,7 +705,7 @@ def generate(sources, verbose=False):
             continue
         units, marks = split_units(lines, first, last, indent)
         decisions = classify(units, kind, boundaries=set(marks),
-                             excluded=EXCLUDED.get(source, {}),
+                             excluded=EXCLUDED.get(source, ()),
                              mac_members=mac_members)
         # Group into sections.
         sections = []

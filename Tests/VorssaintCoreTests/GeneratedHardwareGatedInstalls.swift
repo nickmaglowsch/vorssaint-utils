@@ -110,21 +110,6 @@ final class GeneratedHardwareGatedInstallsTests: XCTestCase {
             ]],
         ]
 
-        if let installerData = try? PropertyListSerialization.data(fromPropertyList: installerInfo,
-                                                                    format: .xml,
-                                                                    options: 0) {
-            expect(DiskImageInstallerSupport.imageURL(
-                mountedAt: URL(fileURLWithPath: "/tmp/Installer Mount"),
-                hdiutilInfo: installerData)?.path == "/Users/test/Downloads/App.dmg",
-                "hdiutil plist maps the canonical mount path back to its disk image")
-            expect(DiskImageInstallerSupport.imageURL(
-                mountedAt: URL(fileURLWithPath: "/tmp/Other Mount"),
-                hdiutilInfo: installerData) == nil,
-                "an unrelated mounted volume is never treated as the disk image")
-        } else {
-            expect(false, "disk image installer plist fixture can be encoded")
-        }
-
         expect(DiskImageInstallerSupport.destinationURL(
             for: URL(fileURLWithPath: "/Volumes/Installer/Example.app"),
             applicationsURL: URL(fileURLWithPath: "/Applications", isDirectory: true))?.path
