@@ -376,9 +376,9 @@ WP-00 § 8 condition 3 named four. All four now have a home:
 
 | Gap | Where it was | Home |
 |---|---|---|
-| `FoundationXML` (`XMLParser`) | `AppUpdateFeedSupport.swift:97,150` | **open** — the file is still blocked by `JunkCleaner`, `InstalledApps`, `ShelfService` and a UI file, so the guard lands with the move, not before it |
+| `FoundationXML` (`XMLParser`) | `AppUpdateFeedSupport.swift:97,150` | **guard added, move still blocked.** `#if canImport(FoundationXML)` is in the file now; it costs nothing on Darwin, where that module does not exist. The file itself stays in `Sources/Vorssaint` until `JunkCleaner`, `InstalledApps`, `ShelfService` and a UI file release it (`CORE_MOVES.md` § 4.2) |
 | `ProcessInfo.ThermalState` | `FanControlSupport.swift` | `SystemSensors.thermalPressure`, `MacSystemSensors.pressure(from:)` |
-| `CFGetTypeID`/`CFBooleanGetTypeID` | `SettingsBackupSupport.swift:313-324` | **open** — the file is still blocked by `Defaults`, `FeatureCatalog` and `MediaSupport` |
+| `CFGetTypeID`/`CFBooleanGetTypeID` | `SettingsBackupSupport.swift:313-324` | **open.** The brief allows a portable `as? Bool` / `NSNumber.objCType` check *only if the macOS tests prove the same results*, and that cannot be proven from a branch where the file does not compile on Linux anyway: it is blocked by `Defaults`, `FeatureCatalog` and `MediaSupport`. Changing a Bool-versus-number test on stored plist values without that proof risks silently reclassifying a user's backed-up settings, so it waits for the move that can test it |
 | `FileManager.trashItem` | seven files, `CORE_MOVES.md` § 4.1 | `TrashAndFiles`, `MacTrashAndFiles` |
 
 Two more were found by the Linux compiler rather than by any census, because
@@ -415,6 +415,22 @@ step list is the checklist for this work package, and every step passed on
 | Build VorssaintLinux | the core's public surface links into an executable |
 | Run VorssaintLinux | the transliterator probe of § 7.1 runs |
 | Unit tests | `Executed 17 tests, with 0 failures` (PlatformProtocolTests) and `Executed 90 tests, with 0 failures` (the ported suite) |
+
+The macOS job of the same run
+([103553192027](https://github.com/nickmaglowsch/vorssaint-utils/actions/runs/34693623124/job/103553192027))
+is green too, so one commit carries both gates:
+
+```
+▸ Building & running unit tests against MacOSX.sdk…
+TESTS OK (31565 checks)
+PREFERENCE CLEANUP TESTS OK
+```
+
+**31565** is the same number `WORK_PACKAGES.md` records for the WP-10 baseline
+and `CORE_MOVES.md` § 6.2 records for WP-11. Fourteen macOS adapters, six
+seams, thirteen moved files and a deleted target later, the macOS product
+asserts exactly what it asserted before — which is the whole claim this work
+package makes about the Mac side.
 
 Three Linux-only compile errors were found along the way, each a Foundation
 *API* rather than a missing module, and each closed with a seam:
