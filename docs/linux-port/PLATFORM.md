@@ -9,7 +9,18 @@ concern. Nothing in it imports AppKit, CoreGraphics beyond the geometry family,
 IOKit or a D-Bus library: these are the questions the core asks, never the
 answers.
 
-## 0. The three rules
+## 0. Where this sits
+
+`VorssaintCombine` is gone as of this work package — the target, its product
+and its sources — on WP-13's recommendation in `COMBINE.md` § 7, which the
+lead accepted. Nothing could import it: `build.sh` compiles
+`Sources/Vorssaint`, `Sources/VorssaintCore` and `Sources/VorssaintMac` in one
+`swiftc` invocation where that module does not exist. The OpenCombine products
+stay on `VorssaintCore`, Linux-conditional, because they are what make the
+per-file `#if canImport(Darwin)` guard of `COMBINE.md` § 1 resolve. The Linux
+CI step that used to build it now builds `VorssaintCoreTestSupport` instead.
+
+## 1. The three rules
 
 **1. Capability first, call second.** Every protocol carries a capability
 value, and a feature reads it before it acts. This is `PLAN.md` § 4.5 —
@@ -39,7 +50,7 @@ wrapper in `Sources/VorssaintLinux` marshals and nothing else. That is why
 `WindowSystem.moveResize` takes a `tolerance` instead of the core comparing
 frames itself.
 
-## 1. What mirrors what
+## 2. What mirrors what
 
 Two protocols are mirrors of contracts that already landed, not designs of
 their own. Their names and semantics are owned by the other side, and a field
@@ -107,7 +118,7 @@ honours the same contract over a `CGEventTap`.
 (no node) and `ENODEV` (a node whose driver is missing) are different problems
 and only the first is a packaging mistake.
 
-## 2. The fourteen protocols
+## 3. The fourteen protocols
 
 `Linux backend` names the directory under `linux/platform/` that will hold the
 C implementation. Only `window/` exists today.
@@ -148,7 +159,7 @@ $ find Sources/Vorssaint Sources/VorssaintCore Sources/VorssaintMac \
 (empty)
 ```
 
-## 3. The capability flags
+## 4. The capability flags
 
 Grouped by protocol; the string is the `PlatformCapability` raw value, which is
 what crosses the C boundary and a `CoreBridge` snapshot.
@@ -189,7 +200,7 @@ what crosses the C boundary and a `CoreBridge` snapshot.
 | `packages.upgrade` | can upgrade without privileges the app lacks | every system backend; per-user Flatpak and Homebrew only |
 | `session.idleTime` | how long since the user touched anything | most Wayland sessions |
 
-## 4. What the macOS adapters actually do, and what they declare absent
+## 5. What the macOS adapters actually do, and what they declare absent
 
 The brief for WP-12 is explicit that services are **not** rewritten to call
 through the protocols — that migration is per-feature work. So each adapter is
@@ -231,7 +242,7 @@ A second reader of the same hardware or the same event tap would either
 duplicate that state or race it, which is why an honest `false` is better than
 a plausible-looking second implementation.
 
-## 5. The fakes
+## 6. The fakes
 
 `Sources/VorssaintCoreTestSupport/` holds one `Fake*` per protocol.
 
@@ -256,13 +267,60 @@ backends differ:
   (`open /dev/uinput: No such file or directory (errno 2)`), so a test that
   wants the happy path has to ask for it.
 
-`Tests/VorssaintCoreTests/PlatformProtocolTests.swift` drives them. It is
-hand-written and survives regeneration: `Tools/linux-port/port-tests.py` only
-writes `Generated*.swift`.
+### 6.1 What the fakes actually cover, and what nothing covers
 
-## 6. The five seams
+Stated plainly, because "there is a fake for every protocol" and "every
+protocol is tested" are not the same claim and only the first is true today.
 
-Separate from the fourteen protocols: five single platform calls that sat
+| Fake | Coverage |
+|---|---|
+| `FakeWindowSystem` | **driven**: list, activate, close, moveResize (applied and not-applied), geometry, dispatch, backendLost, capability refusal |
+| `FakeInputInterceptor` | **driven**: setRules (accepted and rejected), tap mode open/emit/close, the missing-helper capability reason |
+| `FakeCapabilities` | **driven**: has, supportsAll, missing, set + onChange |
+| `FakeSystemSensors` | **driven**: thermal pressure observation across all four levels |
+| `FakeClipboardAccess`, `FakeScreenCapturer`, `FakeAudioGraph`, `FakePowerControl`, `FakeAppLauncher`, `FakeNotifier`, `FakeTrashAndFiles`, `FakePackageManager`, `FakeSessionEvents`, `FakeShortcutRegistrar` | **constructed only** — `testEveryFakeAnswersItsOwnCapabilityQuestion` builds each and reads `platformCapabilities`. Their recorded-call surfaces exist and compile, but nothing asserts on them yet |
+
+**No macOS adapter is executed by any test.** All fourteen
+(`MacWindowSystem` … `MacCapabilities`) are compiled by `build.sh`'s app glob
+and referenced by nothing:
+
+```
+$ grep -rl "MacWindowSystem\|MacClipboardAccess\|MacScreenCapturer\|MacAudioGraph\|\
+MacSystemSensors\|MacPowerControl\|MacInputInterceptor\|MacAppLauncher\|MacNotifier\|\
+MacTrashAndFiles\|MacPackageManager\|MacSessionEvents\|MacShortcutRegistrar\|MacCapabilities" \
+      Sources/Vorssaint Tests/ | wc -l
+0
+```
+
+That is the compiler gate and nothing more. The exception is the *seams*: the
+macOS suite does execute `AppKitImageDataValidator`,
+`CoreFoundationTransliterator`, `FoundationMeasurementFormatter` and
+`FoundationDurationFormatter`, because `MacPlatformSeams.install()` runs on the
+harness's first line and the radial-icon, pinyin, unit-conversion and
+days-until assertions then go through them. Those four are behaviour-pinned;
+the fourteen adapters are not.
+
+The cheapest way to close this is three pure-read assertions in the macOS
+harness — `MacWindowSystem.list()` is non-empty, `MacSystemSensors.pressure(from:)`
+maps all four cases, `MacTrashAndFiles.directory(for:)` answers every
+`StandardDirectory` — but each one moves the `TESTS OK (N checks)` number that
+this work package uses as its "macOS unchanged" proof, so they belong in the
+push *after* the baseline is re-established, not in this one.
+
+`Tests/VorssaintCoreTests/PlatformProtocolTests.swift` drives them —
+seventeen checks, hand-written, and safe from regeneration because
+`Tools/linux-port/port-tests.py` only writes `Generated*.swift`. They are the
+`Executed 17 tests, with 0 failures` line of the Linux gate:
+
+```
+=== totals =======================================
+	 Executed 17 tests, with 0 failures (0 unexpected) in 0.505 (0.505) seconds
+	 Executed 90 tests, with 0 failures (0 unexpected) in 8.081 (8.081) seconds
+```
+
+## 7. The six seams
+
+Separate from the fourteen protocols: six single platform calls that sat
 inside otherwise pure files and kept them out of the core. Each is a protocol
 with a macOS implementation installed by `MacPlatformSeams.install()`, called
 on the first line of `Sources/Vorssaint/main.swift` and of the
@@ -271,12 +329,48 @@ on the first line of `Sources/Vorssaint/main.swift` and of the
 | Seam | Was | macOS implementation | Portable default |
 |---|---|---|---|
 | `ImageDataValidator` | `NSImage(data:) == nil` in `RadialMenuSupport.sanitized` | `AppKitImageDataValidator` | `PermissiveImageDataValidator` — keeps the icon, because a platform with no decoder must not silently delete a person's stored icons |
-| `Transliterator` | `CFStringTransform` ×2 in `CommandBarSearch.pinyinKeywords` | `CoreFoundationTransliterator` (the original spelling) | `FoundationTransliterator` over `String.applyingTransform`, with `TransliteratorCapabilities` |
+| `Transliterator` | `CFStringTransform` ×2 in `CommandBarSearch.pinyinKeywords` | `CoreFoundationTransliterator` (the original spelling) | `FoundationTransliterator` over `String.applyingTransform` — **measured working on Linux**, see § 7.1 |
 | `MeasurementFormatting` | `MeasurementFormatter` in `CommandBarUnits.format` | `FoundationMeasurementFormatter` (identical settings) | `SymbolMeasurementFormatter` — localized number, unit as its own symbol |
+| `DurationFormatting` | `DateComponentsFormatter` in `CommandBarDates.daysUntil` | `FoundationDurationFormatter` (identical settings) | `PlainDurationFormatter` — localized number, untranslated unit word |
 | `PlatformWindowID` / `PlatformDisplayID` | `CGWindowID` / `CGDirectDisplayID` in `RecorderSupport` | identity (both are already `UInt32`) | `UInt32` |
 | `FoundationNetworking` + `Date()` timing | `URLSession` + `CFAbsoluteTimeGetCurrent` in `SpeedTest` | unchanged | an import guard, and `Date().timeIntervalSinceReferenceDate`, which is the same clock and the same epoch |
 
-## 7. The Foundation gaps from `PLAN.md` § 4.1
+### 7.1 Does Linux ICU carry the Mandarin-Latin transliterator?
+
+The brief for WP-12 asked this to be measured rather than assumed, and it is
+measured twice on every Linux CI run.
+
+**The assertion.** `Tests/VorssaintCoreTests/GeneratedCommandBarSearchAndRanking.swift:136`
+pins the exact answer:
+
+```swift
+expect(CommandBarSearch.pinyinKeywords("云笔记") == "yunbiji ybj",
+       "pinyin keywords run the syllables together and add the initials")
+```
+
+That test runs on Linux through `swift test --filter VorssaintCoreTests`,
+against `FoundationTransliterator` — the Linux default, since
+`MacPlatformSeams.install()` is macOS-only. It passes, so
+`String.applyingTransform(.mandarinToLatin)` and `.stripDiacritics` give
+swift-corelibs-foundation 6.1.3 the same answer CoreFoundation gives macOS,
+for the one string the product actually depends on.
+
+**The probe.** `Sources/VorssaintLinux/main.swift` additionally prints, on
+every run, `FoundationTransliterator().capabilities`, the result of
+`mandarinLatin("中文")`, and what the raw `StringTransform("Any-Latin")` and
+`StringTransform("Mandarin-Latin")` identifiers do, so the answer is in the CI
+log of every build rather than only in this document. It is printed, never
+asserted: the point is to notice the day a toolchain or a container image
+changes it.
+
+So the Linux default is `FoundationTransliterator`, not the `NoTransliterator`
+fallback. `NoTransliterator` stays for the case the capability flag exists
+for — a build whose ICU data was stripped, which `AppImage` and `Flatpak`
+packaging (WP-P1, WP-P2) can produce by accident and which `capabilities`
+will then report as `canRomanizeMandarin: false` instead of silently indexing
+titles unchanged.
+
+## 8. The Foundation gaps from `PLAN.md` § 4.1
 
 WP-00 § 8 condition 3 named four. All four now have a home:
 
@@ -287,11 +381,48 @@ WP-00 § 8 condition 3 named four. All four now have a home:
 | `CFGetTypeID`/`CFBooleanGetTypeID` | `SettingsBackupSupport.swift:313-324` | **open** — the file is still blocked by `Defaults`, `FeatureCatalog` and `MediaSupport` |
 | `FileManager.trashItem` | seven files, `CORE_MOVES.md` § 4.1 | `TrashAndFiles`, `MacTrashAndFiles` |
 
-A fifth, found by the Linux compiler rather than by the census:
-`MeasurementFormatter` is marked unavailable in swift-corelibs-foundation
-(run 34665056778). It is seam 3 above.
+Two more were found by the Linux compiler rather than by any census, because
+both are Foundation *classes marked unavailable* on Linux rather than missing
+modules, and an import-counting census cannot see those:
 
-## 8. Open edges for other work packages
+| Gap | Where | Found by | Home |
+|---|---|---|---|
+| `MeasurementFormatter` | `CommandBarUnits.format` | run 34665056778 | `MeasurementFormatting`, seam 3 |
+| `DateComponentsFormatter` | `CommandBarDates.daysUntil` | run 34693363900 | `DurationFormatting`, seam 4 |
+
+A sweep of the rest of that family over the whole core now finds only the
+comments that explain the seams, and one call on a seam itself:
+
+```
+$ grep -rn "DateIntervalFormatter\|MeasurementFormatter\|DateComponentsFormatter\|\
+RelativeDateTimeFormatter\|ListFormatter\|PersonNameComponentsFormatter" \
+      Sources/VorssaintCore/ | grep -v "Platform/"
+Services/CommandBar/CommandBarDates.swift:172:  // Was a DateComponentsFormatter built inline; WP-12 put it behind
+Services/CommandBar/CommandBarUnits.swift:200:  /// Was a `MeasurementFormatter` built inline; WP-12 put it behind
+Services/CommandBar/CommandBarUnits.swift:207:      MeasurementFormatters.current.string(
+```
+
+## 9. What CI proved
+
+`.github/workflows/linux-port-ci.yml`, both jobs hard gates. The Linux job's
+step list is the checklist for this work package, and every step passed on
+[run 34693623124, job 103553191935](https://github.com/nickmaglowsch/vorssaint-utils/actions/runs/34693623124/job/103553191935):
+
+| step | what it proves for WP-12 |
+|---|---|
+| Build VorssaintCore | the fourteen protocols, the six seams and the newly moved files compile on swift-corelibs-foundation |
+| Build VorssaintCoreTestSupport | every protocol is reachable across a real module boundary — the check the single-module macOS build cannot make |
+| Build VorssaintLinux | the core's public surface links into an executable |
+| Run VorssaintLinux | the transliterator probe of § 7.1 runs |
+| Unit tests | `Executed 17 tests, with 0 failures` (PlatformProtocolTests) and `Executed 90 tests, with 0 failures` (the ported suite) |
+
+Three Linux-only compile errors were found along the way, each a Foundation
+*API* rather than a missing module, and each closed with a seam:
+`MeasurementFormatter` (run 34665056778), `DateComponentsFormatter`
+(run 34693363900), and — on the macOS side — the single-module rule that two
+files may not share a basename (run 34693363900).
+
+## 10. Open edges for other work packages
 
 - **Displays have no C section.** `vorssaint_platform.h` carries only an
   output *name* on `vs_window_info`, so `PlatformDisplay` is returned by
@@ -307,5 +438,5 @@ A fifth, found by the Linux compiler rather than by the census:
   translation layer, not a wrap — WP-21's work, and the same place the
   `UCKeyTranslate` → xkbcommon question is answered.
 - **`FeatureCatalog.requiredCapabilities`** (WP-15) should be spelled in the
-  `PlatformCapability` values of § 3, so the hub renders from what the session
+  `PlatformCapability` values of § 4, so the hub renders from what the session
   probed rather than from a per-OS table.

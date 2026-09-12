@@ -104,7 +104,7 @@ app is behaviourally unchanged.
 |---|---|---|---|---|---|
 | WP-10 | Package layout: VorssaintCore / VorssaintMac / VorssaintLinux targets | M | WP-00 | Core porter | merged (both gates green) |
 | WP-11 | Move Foundation-only files into VorssaintCore | L | WP-10 | Core porter | merged (97 files, zero Linux diagnostics, macOS unchanged) |
-| WP-12 | Platform protocol layer | L | WP-11 | Core porter | review (14 protocols + fakes + macOS adapters; 6 seams; core 129 files / 50 070 lines; VorssaintCombine deleted; PLATFORM.md) |
+| WP-12 | Platform protocol layer | L | WP-11 | Core porter | review (14 protocols + fakes + macOS adapters; 6 seams; core 130 files / 50 136 lines; VorssaintCombine deleted; PLATFORM.md) |
 | WP-13 | Combine abstraction (OpenCombine on Linux) | S | WP-10 | Core porter | merged (per-file guard convention in COMBINE.md; the VorssaintCombine target was deleted by WP-12) |
 | WP-14 | Settings store abstraction (UserDefaults ↔ JSON/GSettings) | M | WP-12 | Core porter | todo |
 | WP-15 | Feature catalog: platform support flags and Linux presets | S | WP-12 | Core porter | todo |

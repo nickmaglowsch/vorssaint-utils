@@ -604,19 +604,19 @@ this work package with an estimate of what each would unlock. Two estimates
 held; one did not, and the reason is worth recording because it is a fact about
 the codebase, not about the estimate.
 
-**Result.** `Sources/VorssaintCore` now holds **129 files / 50 070 lines**
+**Result.** `Sources/VorssaintCore` now holds **130 files / 50 136 lines**
 (was 97 / 44 272), and the closure is still tight:
 
 ```
 $ find Sources/VorssaintCore -name '*.swift' | wc -l
-129
+130
 $ find Sources/VorssaintCore -name '*.swift' | xargs wc -l | tail -1
-  50070 total
+  50136 total
 $ find Sources/VorssaintCore -name '*.swift' | sort > /tmp/core.txt
 $ python3 Tools/linux-port/declgraph.py --exclude spikes closure --from-file /tmp/core.txt --quiet
-seeds:    129 files, 50070 lines
-closure:  129 files, 50070 lines
---- unresolved names: 119 (102 outside the Apple prefixes) ---
+seeds:    130 files, 50136 lines
+closure:  130 files, 50136 lines
+--- unresolved names: 118 (101 outside the Apple prefixes) ---
 ```
 
 `--exclude spikes` is new and necessary: `spikes/wp00-swift-core/.../Vendored/`
@@ -747,13 +747,39 @@ runs on the first line of `Sources/Vorssaint/main.swift` and of the
 `Tests/MetricsTests.swift` harness.
 
 This is the third and fourth entry in the pattern § 4.1 opened: the WP-00
-census counted imports, and every gap it missed has been an API.
+census counted imports, and every gap it missed has been an API. A sweep of
+the whole core for the rest of that family now comes back empty:
+
+```
+$ grep -rn "DateIntervalFormatter\|MeasurementFormatter\|DateComponentsFormatter\|\
+RelativeDateTimeFormatter\|ListFormatter\|PersonNameComponentsFormatter" \
+      Sources/VorssaintCore/ | grep -v "Platform/"
+Services/CommandBar/CommandBarDates.swift:172:  // Was a DateComponentsFormatter built inline; WP-12 put it behind
+Services/CommandBar/CommandBarUnits.swift:200:  /// Was a `MeasurementFormatter` built inline; WP-12 put it behind
+Services/CommandBar/CommandBarUnits.swift:207:      MeasurementFormatters.current.string(
+```
+
+Three hits: two comments explaining the seam that replaced the call, and
+one call *on the seam itself*. No live use of an unavailable class remains.
+
+### The answer to the transliterator question the brief asked
+
+WP-12's brief asked whether `StringTransform("Any-Latin")` /
+`"Mandarin-Latin"` actually work on Linux, and to fall back to a no-op with an
+honest capability flag if not. They work.
+`Tests/VorssaintCoreTests/GeneratedCommandBarSearchAndRanking.swift:136` pins
+`CommandBarSearch.pinyinKeywords("云笔记") == "yunbiji ybj"`, that test runs on
+Linux against `FoundationTransliterator` (the macOS implementation is installed
+only by `MacPlatformSeams.install()`), and the Linux gate's unit-test step is
+green. So the Linux default is the real transliterator, and `NoTransliterator`
+stays only for the case the capability flag exists for — an ICU whose
+transliteration data a packaging step stripped.
 
 ## F. What is in the core that was not
 
 | path under `Sources/VorssaintCore/` | lines | why it could move |
 |---|---:|---|
-| `Platform/` (18 files) | 3 172 | new: the protocols, the seams and their value types |
+| `Platform/` (21 files) | 2 413 | new: the protocols, the seams and their value types |
 | `Services/Recorder/RecorderSupport.swift` | 739 | `PlatformWindowID`, and `videoGeometry` split out |
 | `Services/Recorder/RecorderTimeline.swift` | 322 | `RecorderSupport` |
 | `Services/Recorder/RecordingSharingSupport.swift` | 141 | `RecorderSupport` |
