@@ -46,7 +46,9 @@ static void test_scale(void)
     CHECK_NEAR(vs_audio_cubic_to_linear(1.0f), 1.0f);
 
     /* 150 % linear is what a wpctl slider shows as 1.14. */
-    CHECK_NEAR(vs_audio_linear_to_cubic(VS_AUDIO_MAX_VOLUME), 1.1447f);
+    CHECK_NEAR(vs_audio_linear_to_cubic(VS_AUDIO_CLIPPING_HAZARD_VOLUME), 1.1447f);
+    /* And the 200 % ceiling the macOS mixer sets. */
+    CHECK_NEAR(vs_audio_linear_to_cubic(VS_AUDIO_MAX_VOLUME), 1.2599f);
 
     /* Round trip across the range. */
     for (float v = 0.05f; v <= VS_AUDIO_MAX_VOLUME; v += 0.05f)
@@ -63,9 +65,11 @@ static void test_clamp(void)
 {
     CHECK_NEAR(vs_audio_clamp_volume(0.5f), 0.5f);
     CHECK_NEAR(vs_audio_clamp_volume(-0.1f), 0.0f);
-    /* The ceiling is 150 %, not the 200 % the macOS mixer allows; a request
-     * above it is clamped, not refused, so a slider dragged to the end works. */
-    CHECK_NEAR(vs_audio_clamp_volume(2.0f), VS_AUDIO_MAX_VOLUME);
+    /* The ceiling is 200 %, inherited from the macOS mixer so a settings
+     * backup carrying a boosted row imports unchanged. A request above it is
+     * clamped, not refused, so a slider dragged to the end works. */
+    CHECK_NEAR(vs_audio_clamp_volume(2.0f), 2.0f);
+    CHECK_NEAR(vs_audio_clamp_volume(2.5f), VS_AUDIO_MAX_VOLUME);
     CHECK_NEAR(vs_audio_clamp_volume(VS_AUDIO_MAX_VOLUME), VS_AUDIO_MAX_VOLUME);
     CHECK_NEAR(vs_audio_clamp_volume(nanf("")), 0.0f);
 

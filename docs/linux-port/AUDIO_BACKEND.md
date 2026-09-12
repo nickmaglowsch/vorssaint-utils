@@ -35,7 +35,7 @@ Audio
 | # | Requirement | Status | Evidence |
 |---|---|---|---|
 | 1 | Registry enumeration, props, defaults, debounced change events | met | [§1](#1-registry-and-events) |
-| 2 | Per-stream volume and mute, cubic/linear explicit, 150 %, read-back | met | [§2](#2-per-stream-volume-and-mute) |
+| 2 | Per-stream volume and mute, cubic/linear explicit, 200 % ceiling, read-back | met | [§2](#2-per-stream-volume-and-mute) |
 | 3 | Routing via `target.object`, verified by the links, and cleared | met | [§3](#3-routing) |
 | 4 | Default sink switching and headphone-disconnect detection | met | [§4](#4-default-output-and-headphone-disconnect) |
 | 5 | Mute all inputs and restore, remembering previous states | met | [§5](#5-mute-every-input) |
@@ -163,10 +163,16 @@ boost without the aggregate-device machinery the macOS version needs.
 **The mapping to the macOS mixer.** `MixerApp.volume` on macOS runs 0…2 with
 1.0 as untouched passthrough, applied as a linear gain. That is the same
 quantity as `vs_audio_node.volume`, so a saved `MixerApp.volume` transfers
-without conversion. The only difference is the ceiling: this backend stops at
-150 % (`VS_AUDIO_MAX_VOLUME`) where macOS allows 200 %, and a request above it
-is clamped rather than refused. A settings file moved between the platforms
-therefore keeps its numbers, and a 200 % row shows as 150 % on Linux.
+without conversion. The ceiling matches too: `VS_AUDIO_MAX_VOLUME` is 200 %,
+inherited from the macOS mixer's `AppVolumeMixer.maxVolume` rather than chosen
+here, precisely so a settings file moved between the platforms keeps its
+numbers. A lower Linux ceiling would have silently turned a saved 200 % row
+into 150 % on import, losing the user's setting without saying so. PipeWire
+imposes no ceiling of its own. 150 %
+(`VS_AUDIO_CLIPPING_HAZARD_VOLUME`) is where WirePlumber's own tools stop and
+is the point above which the panel owns warning about clipping; a request
+above the ceiling is clamped rather than refused, so a slider dragged to the
+end works.
 
 Mute is independent of volume, so unmuting restores the level:
 

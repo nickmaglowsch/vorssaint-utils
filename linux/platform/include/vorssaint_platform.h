@@ -310,8 +310,17 @@ const char *const *vs_window_backend_names(void);
  * `vs_audio_cubic_to_linear` so it is done in one place.
  */
 
-/** Largest linear volume the mixer accepts: 150 %. */
-#define VS_AUDIO_MAX_VOLUME 1.5f
+/** Largest linear volume the mixer accepts: 200 %.
+ *
+ *  Inherited from the macOS mixer's `AppVolumeMixer.maxVolume`, not chosen
+ *  here. The scale is linear on both platforms, so a settings backup carries
+ *  a boosted row across unchanged — and a lower ceiling on Linux would
+ *  silently turn someone's 200 % into 150 % on import, which loses the
+ *  user's setting without telling them. WirePlumber's own tools stop at
+ *  150 %, so the panel owns warning about clipping above that. */
+#define VS_AUDIO_MAX_VOLUME 2.0f
+/** Where WirePlumber's tools stop; above this the panel warns about clipping. */
+#define VS_AUDIO_CLIPPING_HAZARD_VOLUME 1.5f
 /** What the panel shows as "100 %". */
 #define VS_AUDIO_UNITY_VOLUME 1.0f
 

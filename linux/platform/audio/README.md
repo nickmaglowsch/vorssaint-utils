@@ -59,10 +59,14 @@ with `PA_VOLUME_NORM` at unity, and `pa_sw_volume_from_linear` /
 through PipeWire, which is how the two backends were checked against each
 other.
 
-The ceiling here is **150 %** (`VS_AUDIO_MAX_VOLUME`), not the 200 % the macOS
-mixer allows, because 150 % is where WirePlumber's own tools stop and going
-further is a clipping hazard the panel would have to explain. A request above
-it is clamped rather than refused, so a slider dragged to the end works.
+The ceiling is **200 %** (`VS_AUDIO_MAX_VOLUME`), inherited from the macOS
+mixer's `AppVolumeMixer.maxVolume` rather than chosen here. Both platforms use
+a linear scale, so a settings backup carries a boosted row across unchanged; a
+lower ceiling on Linux would silently turn someone's 200 % into 150 % on
+import, which loses the user's setting without saying so. 150 %
+(`VS_AUDIO_CLIPPING_HAZARD_VOLUME`) is where WirePlumber's own tools stop, and
+above it the panel owns warning about clipping. A request above the ceiling is
+clamped rather than refused, so a slider dragged to the end works.
 
 ## How it works
 
