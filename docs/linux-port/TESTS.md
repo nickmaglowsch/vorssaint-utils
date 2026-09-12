@@ -13,10 +13,11 @@ they name AppKit/IOKit/CoreGraphics API or a symbol that is still in
 `Sources/Vorssaint`. `build.sh --test` is untouched and still reports
 `TESTS OK (31565 checks)`.
 
-On Linux the suite is **61 XCTest cases / ~2 600 executed checks**, green
-(§ 6.2); on macOS `build.sh --test` still ends in `TESTS OK (31565 checks)`
-(§ 6.1). Three checks were found not to port and are accounted for one by one
-in § 6.3.
+On Linux the suite is **73 XCTest cases / ~2 600 executed checks** and it is
+green on the port branch — `Executed 90 tests, with 0 failures` counting the
+17 `PlatformProtocolTests` WP-12 put in the same target (§ 6.2). On macOS
+`build.sh --test` still ends in `TESTS OK (31565 checks)` (§ 6.1). Three
+checks were found not to port; each is accounted for in § 6.3.
 
 ## 1. What the macOS harness is, and why it could not simply be reused
 
@@ -374,6 +375,25 @@ WP-16's first push). Four runs, each fixing what the previous one found:
 | [34693146465](https://github.com/nickmaglowsch/vorssaint-utils/actions/runs/34693146465) | red, 3 of 61 | `type 'ScratchpadSupport' has no member 'markdownPreview'`, then the suite compiled, ran, and failed three assertions |
 | [34693339999](https://github.com/nickmaglowsch/vorssaint-utils/actions/runs/34693339999) | red, 2 of 61 | `Executed 61 tests, with 2 failures (0 unexpected) in 8.105 (8.105) seconds` — the two exclusions were keyed by line number, and WP-12 had shifted the file by three lines |
 | [34693499195, job 103552863887](https://github.com/nickmaglowsch/vorssaint-utils/actions/runs/34693499195/job/103552863887) | **green** | every step success: three `swift build`s, `swift run VorssaintLinux`, `swift test --filter VorssaintCoreTests`, and the generator re-run |
+
+And then on the port branch itself, once WP-12's `MeasurementFormatting` seam
+had fixed the core build:
+[run 34693694037, job 103553381117](https://github.com/nickmaglowsch/vorssaint-utils/actions/runs/34693694037/job/103553381117),
+**every step success**, ending:
+
+```
+2026-09-12T12:28:56Z === totals =======================================
+2026-09-12T12:28:56Z 	 Executed 1 test, with 0 failures (0 unexpected) in 0.001 (0.001) seconds
+2026-09-12T12:28:56Z 	 Executed 1 test, with 0 failures (0 unexpected) in 0.001 (0.001) seconds
+2026-09-12T12:28:56Z 	 Executed 1 test, with 0 failures (0 unexpected) in 0.009 (0.009) seconds
+2026-09-12T12:28:56Z 	 Executed 17 tests, with 0 failures (0 unexpected) in 0.104 (0.104) seconds
+2026-09-12T12:28:56Z 	 Executed 90 tests, with 0 failures (0 unexpected) in 8.136 (8.136) seconds
+```
+
+90 = the 73 generated cases plus the 17 `PlatformProtocolTests` WP-12 added to
+the same target. The step order in the workflow puts the generator check
+*before* the tests so that these five lines are the last thing in the job log:
+the API serves only the tail of a 1 600-line log.
 
 The green job's gate is the quoted line itself: the step ends with
 
