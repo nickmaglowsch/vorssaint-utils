@@ -52,9 +52,13 @@ jobs:
         shell: bash
         run: swift build --target VorssaintCore
 
-      - name: Build VorssaintCombine (OpenCombine wiring)
+      - name: Build VorssaintCoreTestSupport (Platform fakes)
         shell: bash
-        run: swift build --target VorssaintCombine
+        # WP-12 deleted the VorssaintCombine re-export target (COMBINE.md § 7);
+        # this step replaces it. It is a real gate, not a formality: this target
+        # is the only thing that imports VorssaintCore across a module boundary,
+        # so it is what catches a Platform protocol that forgot to be `public`.
+        run: swift build --target VorssaintCoreTestSupport
 
       - name: Build VorssaintLinux
         shell: bash
