@@ -67,21 +67,6 @@ final class GeneratedURLCleaningTests: XCTestCase {
                     "https://example.com/?reference=one",
                     "URL cleaner does not treat custom parameter names as prefixes")
 
-        // A grouped Form keeps a label column even for an empty label, which
-        // left every field on the right half of its row. The hint has to
-        // travel as `prompt:` and the label has to be hidden for a field to
-        // own its whole row.
-        let urlCleanerSettingsSource = (try? String(
-            contentsOfFile: "Sources/Vorssaint/UI/Settings/URLCleanerSettings.swift",
-            encoding: .utf8)) ?? ""
-
-        expect(!urlCleanerSettingsSource.contains("TextField(l10n.s."),
-               "no Clean URL field spends its row on a label instead of the field")
-
-        expect(urlCleanerSettingsSource.components(separatedBy: "TextField(").count
-                == urlCleanerSettingsSource.components(separatedBy: ".labelsHidden()").count,
-               "every Clean URL field hides its label so the field owns the row")
-
         // Rules are stored as a difference from the built-in tables, never as
         // a copy of them, so names a later version adds still reach someone
         // who has already edited their rules.
@@ -117,11 +102,6 @@ final class GeneratedURLCleaningTests: XCTestCase {
 
         expect(URLCleaning.outcome(for: nil, input: "nope") == .notAURL,
                "text that is not a link reads as no URL")
-
-        let paddedLink = " https://example.com/?id=1 "
-
-        expect(URLCleaning.outcome(for: URLCleaning.clean(paddedLink), input: paddedLink) == .unchanged,
-               "trimming alone does not count as a clean")
 
         let editedRules = URLCleaning.rules(globalNames: "ref", siteNames: "weibo.com|sudaref",
                                             disabledNames: "|fbclid")

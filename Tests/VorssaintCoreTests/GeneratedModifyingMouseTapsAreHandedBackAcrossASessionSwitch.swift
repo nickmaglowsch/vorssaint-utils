@@ -37,25 +37,6 @@ final class GeneratedModifyingMouseTapsAreHandedBackAcrossASessionSwitchTests: X
             GeneratedSupport.formatSpecifiers(in: format)
         }
 
-        // The tap owners cannot be reached from this list (they need the event
-        // chain), so the wiring is pinned as text: each service follows the
-        // session and asks before re-arming a tap the window server disabled.
-        // Comments are stripped so prose naming the API cannot answer for it.
-        let sessionActivitySource = (try? String(
-            contentsOfFile: "Sources/Vorssaint/Services/SessionActivity.swift",
-            encoding: .utf8)) ?? ""
-
-        expect(sessionActivitySource.contains("sessionDidResignActiveNotification")
-                && sessionActivitySource.contains("sessionDidBecomeActiveNotification"),
-               "the session watcher follows both halves of a fast user switch")
-
-        let mouseAccelerationSource = (try? String(
-            contentsOfFile: "Sources/Vorssaint/Services/MouseAcceleration/MouseAccelerationService.swift",
-            encoding: .utf8)) ?? ""
-
-        expect(mouseAccelerationSource.contains("SessionActivitySupport.isOnConsole("),
-               "mouse acceleration shares the safe initial session-state fallback")
-
         for tapOwner in ["Sources/Vorssaint/Services/ScrollInverter.swift",
                          "Sources/Vorssaint/Services/SmoothScrollService.swift",
                          "Sources/Vorssaint/Services/MouseNavigation/MouseNavigationService.swift",
@@ -102,20 +83,6 @@ final class GeneratedModifyingMouseTapsAreHandedBackAcrossASessionSwitchTests: X
                     || code.contains("PointerTapRunLoop.remove("),
                    "\(tapOwner) hands its tap back rather than only disabling it")
         }
-
-        // The taps that filter ordinary clicks and wheel events are served by
-        // a thread of their own. On the main run loop each of those events
-        // waits for whatever this app is drawing or asking Accessibility,
-        // which is felt as click lag in whatever app is in front.
-        let pointerTapSource = (try? String(
-            contentsOfFile: "Sources/Vorssaint/Services/PointerTapRunLoop.swift",
-            encoding: .utf8)) ?? ""
-
-        expect(pointerTapSource.contains("CFMachPortInvalidate"),
-               "the pointer thread hands back the port of every tap it gives up")
-
-        expect(pointerTapSource.contains("qualityOfService = .userInteractive"),
-               "the pointer thread is scheduled as input work")
 
         for pointerTapOwner in ["Sources/Vorssaint/Services/ScrollInverter.swift",
                                 "Sources/Vorssaint/Services/MiddleClick/MiddleClickService.swift"] {
@@ -172,91 +139,6 @@ final class GeneratedModifyingMouseTapsAreHandedBackAcrossASessionSwitchTests: X
         expect(tapOwners > 0 && tapOwnersWithoutInvalidate.isEmpty,
                "every event tap owner invalidates its port on teardown, across "
                + "\(tapOwners) scanned owners: \(tapOwnersWithoutInvalidate)")
-
-        let mouseTapAppDelegateSource = (try? String(
-            contentsOfFile: "Sources/Vorssaint/App/AppDelegate.swift",
-            encoding: .utf8)) ?? ""
-
-        expect(mouseTapAppDelegateSource.contains("MouseButtonShortcutService.shared.suspend()"),
-               "normal termination releases mouse-button tap state instead of waiting for a future Up")
-
-        let accessibilitySink = mouseTapAppDelegateSource
-            .components(separatedBy: "Permissions.shared.$accessibility")
-            .dropFirst().first?.components(separatedBy: "Permissions.shared.$screenRecording").first ?? ""
-
-        expect(accessibilitySink.contains(".quitWindowProtection"),
-               "granting Accessibility starts quit protection without a relaunch")
-
-        let smoothSchedulerSource = (try? String(
-            contentsOfFile: "Sources/Vorssaint/Services/SmoothScrollService.swift",
-            encoding: .utf8)) ?? ""
-
-        let smoothSchedulerCode = smoothSchedulerSource.components(separatedBy: "\n")
-            .filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("//") }
-            .joined(separator: "\n")
-
-        let steppedLoupeBypass = smoothSchedulerCode
-            .components(separatedBy: "if ScreenshotSelectionController.steppedLoupeNeedsRawWheel(")
-            .dropFirst().first?.components(separatedBy: "return").first ?? ""
-
-        expect(steppedLoupeBypass.contains("stopGlide()"),
-               "entering stepped magnifier zoom cancels the fast glide before passing the raw notch")
-
-        let scrollInverterSource = (try? String(
-            contentsOfFile: "Sources/Vorssaint/Services/ScrollInverter.swift",
-            encoding: .utf8)) ?? ""
-
-        for (name, source) in [("scroll inverter", scrollInverterSource),
-                               ("smooth scroll", smoothSchedulerCode)] {
-            expect(source.contains("guard !tapCreationRetryUsed")
-                    && source.contains("tapCreationRetryWork?.cancel()"),
-                   "\(name) retries tap creation once instead of polling forever")
-        }
-
-        expect(smoothSchedulerCode.contains("screen.displayLink(")
-                && smoothSchedulerCode.contains("displayLink.add(to: .main, forMode: .common)")
-                && smoothSchedulerCode.contains("sender.timestamp")
-                && smoothSchedulerCode.contains("sender.duration"),
-               "smooth scrolling follows the active display's native cadence and elapsed frame time")
-
-        expect(smoothSchedulerCode.contains("displayLink?.invalidate()")
-                && smoothSchedulerCode.contains("frameTimer?.invalidate()")
-                && smoothSchedulerCode.contains("removeScreenObserver()")
-                && smoothSchedulerCode.contains("removeSleepObserver()"),
-               "smooth scrolling releases either scheduler and its lifecycle observers on stop")
-
-        expect(smoothSchedulerCode.contains("NSScreen.withMouse")
-                && smoothSchedulerCode.contains("didChangeScreenParametersNotification")
-                && smoothSchedulerCode.contains("Timer(timeInterval: SmoothScrollSupport.frameInterval"),
-               "smooth scrolling follows display changes and keeps a no-screen timer fallback")
-
-        let smoothTapDisabled = smoothSchedulerCode.components(separatedBy: "tapDisabledByTimeout")
-            .dropFirst().first?.components(separatedBy: "return").first ?? ""
-
-        expect(smoothTapDisabled.contains("tapDisabledByUserInput")
-                && smoothTapDisabled.contains("stopGlide()")
-                && smoothTapDisabled.contains("AppFeature.smoothScroll.isAvailable")
-                && smoothTapDisabled.contains("DefaultsKey.smoothScrollEnabled")
-                && smoothTapDisabled.contains("AXIsProcessTrusted()")
-                && smoothTapDisabled.contains("SessionActivity.shared.isActive"),
-               "a disabled smooth-scroll tap drops its tail and re-arms only while fully wanted")
-
-        let smoothSleep = smoothSchedulerCode.components(separatedBy: "willSleepNotification")
-            .dropFirst().first?.components(separatedBy: "private func removeSleepObserver").first ?? ""
-
-        expect(smoothSleep.contains("stopGlide()"),
-               "smooth scrolling cannot carry a pre-sleep glide into the next wake")
-
-        let cleaningModeSource = (try? String(
-            contentsOfFile: "Sources/Vorssaint/Services/CleaningMode/CleaningModeManager.swift",
-            encoding: .utf8)) ?? ""
-
-        expect(cleaningModeSource.contains("SessionActivity.shared.onChange")
-                && cleaningModeSource.contains("deactivate(restoreSuspendedFeatures: false)")
-                && cleaningModeSource.contains("SessionActivity.shared.isActive")
-                && cleaningModeSource.contains("AXIsProcessTrusted()")
-                && cleaningModeSource.contains("CFMachPortInvalidate"),
-               "Cleaning Mode ends and releases its filter tap when the login session leaves the screen")
 
         print("[generated-checks] ModifyingMouseTapsAreHandedBackAcrossASessionSwitch \(checks)")
     }

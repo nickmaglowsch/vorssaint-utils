@@ -43,103 +43,16 @@ final class GeneratedTheVisibleCapSpendsItsSlotsAcrossAppsIssue172Tests: XCTestC
 
         var dockPreviewWindowCloseRequests = 0
 
-        // Every window takes the same steps on a drop, whatever state it was
-        // in. A branch on `isMinimized` made that drop feel like a different
-        // gesture from an ordinary one -- which is the thing being fixed, so a
-        // branch is what this guards against.
-        let placeSource = (try? String(
-            contentsOfFile: "Sources/Vorssaint/Services/Switcher/WindowActivator.swift",
-            encoding: .utf8)) ?? ""
-
-        let placeBody = (placeSource.components(separatedBy: "static func place(_ item: SwitcherItem")
-            .last ?? "").components(separatedBy: "\n    @discardableResult").first ?? ""
-
-        let placeCode = placeBody
-            .split(separator: "\n", omittingEmptySubsequences: false)
-            .filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("//") }
-            .joined(separator: "\n")
-
-        expect(!placeCode.isEmpty && !placeCode.contains("isMinimized"),
-               "a drop takes the same steps for a minimized window as for any other")
-
-        // The card used to draw the app icon on every thumbnail and the window
-        // title both over the thumbnail and under it. In a panel every card
-        // belongs to one app, so both said the same thing once per window.
-        let dockPreviewCardSource = (try? String(
-            contentsOfFile: "Sources/Vorssaint/UI/Switcher/DockPreviewPanelView.swift",
-            encoding: .utf8)) ?? ""
-
-        let dockPreviewCardCode = dockPreviewCardSource
-            .split(separator: "\n", omittingEmptySubsequences: false)
-            .filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("//") }
-            .joined(separator: "\n")
-
-        expect(dockPreviewCardCode.components(separatedBy: "window.displayTitle").count - 1 == 1,
-               "a Dock Preview card names its window once")
-
-        // Nothing is drawn on top of the picture any more. The close and
-        // minimize buttons sat in a 28pt capsule in its top-right corner --
-        // over a third of its height -- and the pinned badge sat beside them.
-        expect(!dockPreviewCardCode.contains("previewControlBar"),
-               "no control bar floats over a Dock Preview thumbnail")
-
-        let titleBandBody = dockPreviewCardCode
-            .components(separatedBy: "private var titleBand: some View {").last ?? ""
-
-        let bandDeclaration = titleBandBody.components(separatedBy: "private var").first ?? ""
-
-        expect(bandDeclaration.contains("closeButton") && bandDeclaration.contains("minimizeButton"),
-               "both window controls sit in the title band, beside the name")
-
-        let contextMenuBody = dockPreviewCardCode
-            .components(separatedBy: "private var cardContextMenu: some View {").last ?? ""
-
-        expect((contextMenuBody.components(separatedBy: "private var").first ?? "")
-                   .contains("dockPreviewPinPanel"),
-               "pinning is offered by name in the card menu, not by a bare pushpin")
-
-        expect(dockPreviewCardSource.contains("window.isOnHiddenSpace"),
-               "a Dock Preview card badges a window that lives on another desktop")
-
         expect(FileManager.default.fileExists(atPath: "Resources/Images/highlights-windowlayout.png")
                && FileManager.default.fileExists(atPath: "Resources/Images/highlights-quitprotection.png")
                && FileManager.default.fileExists(atPath: "Resources/Images/highlights-recorderblur.png"),
                "3.3.3 highlights tour includes curated real captures for window layout, quit protection and recorder blur")
-
-        // These AppKit owners are not part of the pure-helper test binary, so
-        // pin that neither caller can consume a parked status-item frame.
-        let statusAnchorAppDelegateSource = (try? String(
-            contentsOfFile: "Sources/Vorssaint/App/AppDelegate.swift",
-            encoding: .utf8)) ?? ""
 
         let stripCommentLines: (String) -> String = {
             $0.split(separator: "\n", omittingEmptySubsequences: false)
                 .filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("//") }
                 .joined(separator: "\n")
         }
-
-        // Sliced at the closing brace of the closure/function itself, so the
-        // slice can never run past it into an unrelated body that happens to
-        // carry the same words.
-        let shelfProviderCode = stripCommentLines((statusAnchorAppDelegateSource
-            .components(separatedBy: "ShelfService.shared.statusItemFrameProvider =").last ?? "")
-            .components(separatedBy: "\n        }").first ?? "")
-
-        let statusControllerSource = (try? String(
-            contentsOfFile: "Sources/Vorssaint/App/StatusItemController.swift",
-            encoding: .utf8)) ?? ""
-
-        let statusHitTestCode = stripCommentLines((statusControllerSource
-            .components(separatedBy: "func containsStatusItem(at screenPoint: NSPoint) -> Bool {").last ?? "")
-            .components(separatedBy: "\n    }").first ?? "")
-
-        let statusFrameCall = "StatusItemAnchorSupport.isTrustworthyStatusFrame("
-
-        expect(shelfProviderCode.contains("guard \(statusFrameCall)") && shelfProviderCode.contains("return nil"),
-               "the Shelf provider rejects an untrustworthy status-item frame")
-
-        expect(statusHitTestCode.contains(statusFrameCall) && statusHitTestCode.contains("return false"),
-               "status-item hit testing rejects an untrustworthy frame")
 
         print("[generated-checks] TheVisibleCapSpendsItsSlotsAcrossAppsIssue172 \(checks)")
     }

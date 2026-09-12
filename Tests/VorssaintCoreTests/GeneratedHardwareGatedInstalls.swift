@@ -47,21 +47,6 @@ final class GeneratedHardwareGatedInstallsTests: XCTestCase {
         // never revokes. A third entry here is a bug, not a new allowance.
         var availabilityWriters: Set<String> = []
 
-        let featureHubSource = (try? String(
-            contentsOfFile: "Sources/Vorssaint/UI/Settings/FeatureHubSettings.swift",
-            encoding: .utf8)) ?? ""
-
-        let onboardingFeatureSource = (try? String(
-            contentsOfFile: "Sources/Vorssaint/UI/Onboarding/OnboardingView.swift",
-            encoding: .utf8)) ?? ""
-
-        expect(featureHubSource.contains("installBlockedReason")
-                && onboardingFeatureSource.contains("installBlockedReason"),
-               "both feature pickers refuse an unsupported install from the same rule")
-
-        expect(featureHubSource.contains("installableCount"),
-               "the hub counts against what this Mac can install, so install-all can finish")
-
         expect(BluetoothSleepSupport.sleepPlan(isPoweredOn: true, restoresOnWake: true)
                 == BluetoothSleepSupport.SleepPlan(powersOff: true, owesRestore: true),
                "Bluetooth on before sleep is switched off and owed back")

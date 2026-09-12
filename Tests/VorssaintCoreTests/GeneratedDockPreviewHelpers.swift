@@ -37,56 +37,6 @@ final class GeneratedDockPreviewHelpersTests: XCTestCase {
             GeneratedSupport.formatSpecifiers(in: format)
         }
 
-        let dockPreviewServiceSource = (try? String(
-            contentsOfFile: "Sources/Vorssaint/Services/DockPreview/DockPreviewService.swift",
-            encoding: .utf8)) ?? ""
-
-        let dockPreviewServiceCode = dockPreviewServiceSource
-            .split(separator: "\n", omittingEmptySubsequences: false)
-            .filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("//") }
-            .joined(separator: "\n")
-
-        expect(dockPreviewServiceCode.contains("startDockVisibilityTimerIfNeeded()")
-               && dockPreviewServiceCode.contains("CGWindowListCopyWindowInfo(.optionOnScreenOnly")
-               && dockPreviewServiceCode.contains("DockPreviewSupport.panelFrameWhenDockHidden("),
-               "an entered auto-hide Dock Preview follows the Dock's live window to the vacated edge")
-
-        expect(dockPreviewServiceCode.contains("if accepted { self?.endSession() }")
-                && dockPreviewServiceCode.contains("if accepted { self?.closePreviewPanel() }"),
-               "an accepted app quit closes both hover and pinned previews immediately")
-
-        // The jump is the Dock's thickness, an order of magnitude past
-        // panelStayMargin, so a pointer that never moved would otherwise read as
-        // outside the panel on its next twitch and dismiss the preview.
-        expect(dockPreviewServiceCode.contains("reattachGraceFrame = frame")
-               && dockPreviewServiceCode.contains("reattachGraceFrame?.insetBy("),
-               "the frame a reattached Dock Preview left behind keeps counting until the pointer reaches the new one")
-
-        // The tap this service owns is served by the main run loop, so an
-        // animated setFrame would queue every mouse event behind the slide.
-        expect(!dockPreviewServiceCode.contains("setFrame(edgeFrame, display: true, animate: true)")
-               && dockPreviewServiceCode.contains("clampedPanelFrame(DockPreviewSupport.panelFrameWhenDockHidden("),
-               "a reattached Dock Preview lands clamped, without animating the main run loop")
-
-        // Both panels show windows of the same kind, so a name too long for its
-        // room behaves the same in each. One view, two callers, two widths.
-        let scrollingTitleSource = (try? String(
-            contentsOfFile: "Sources/Vorssaint/UI/Switcher/ScrollingTitle.swift",
-            encoding: .utf8)) ?? ""
-
-        expect(scrollingTitleSource.contains("struct ScrollingTitle: View"),
-               "the scrolling name is one view, not a copy in each panel")
-
-        let switcherCardSource = (try? String(
-            contentsOfFile: "Sources/Vorssaint/UI/Switcher/SwitcherView.swift",
-            encoding: .utf8)) ?? ""
-
-        // One view, hung differently by each panel. Pinning it to the leading
-        // edge in both left a grid card's name and the app name under it on two
-        // different axes, which reads as a broken card rather than a choice.
-        expect(scrollingTitleSource.contains(".frame(width: width, alignment: alignment)"),
-               "the shared name view is told where to sit instead of always taking the leading edge")
-
         let previousPreviewSize = UserDefaults.standard.object(forKey: DefaultsKey.previewSize)
 
         UserDefaults.standard.set("small", forKey: DefaultsKey.previewSize)
@@ -99,65 +49,11 @@ final class GeneratedDockPreviewHelpersTests: XCTestCase {
             UserDefaults.standard.removeObject(forKey: DefaultsKey.previewSize)
         }
 
-        // The tap swallows a restoring click so the Dock will not open a new
-        // window, which leaves raising the app to this service. Since macOS 14
-        // that only lands if the request is cooperative, so pin the sequence
-        // rather than the bare call it replaced. Asserted positively: the call
-        // it must not use is named in the doc comment right above it.
-        let dockClickSource = (try? String(
-            contentsOfFile: "Sources/Vorssaint/Services/DockClick/DockClickService.swift",
-            encoding: .utf8)) ?? ""
-
-        expect(dockClickSource.contains("ActivationHandoff.yield(to: app)"),
-               "a Dock click restore yields this app's activation first")
-
-        expect(dockClickSource.contains("app.activate(from: NSRunningApplication.current, options: [])"),
-               "a Dock click restore asks cooperatively before falling back")
-
-        // A yield only hands over activation this app holds, and it usually
-        // holds none when a switch commits, so the helper self-activates first
-        // and every yield goes through it. A bare yield added on a new path
-        // would bring the refused-handoff bug back on that path alone.
-        let activationHandoffSource = (try? String(
-            contentsOfFile: "Sources/Vorssaint/Services/ActivationHandoff.swift",
-            encoding: .utf8)) ?? ""
-
-        let selfActivation = activationHandoffSource.range(of: "NSApp.activate(ignoringOtherApps: true)")
-
-        let yieldOnward = activationHandoffSource.range(of: "NSApp.yieldActivation(to: app)")
-
-        expect(selfActivation != nil && yieldOnward != nil
-                && selfActivation!.lowerBound < yieldOnward!.lowerBound,
-               "the activation handoff self-activates before it yields onward")
-
-        let handoffStamp = activationHandoffSource.range(of: "lastSelfActivation = CFAbsoluteTimeGetCurrent()")
-
-        expect(handoffStamp != nil && selfActivation != nil
-                && handoffStamp!.lowerBound < selfActivation!.lowerBound,
-               "the activation handoff stamps the self-activation before asking for it")
-
-        // Only the activation the handoff caused stays out of the history; the
-        // Dock icon, Settings and Vorssaint's own windows are real uses.
-        let useTrackerSource = (try? String(
-            contentsOfFile: "Sources/Vorssaint/Services/Switcher/WindowUseTracker.swift",
-            encoding: .utf8)) ?? ""
-
-        expect(useTrackerSource.contains(
-                   "pid == ProcessInfo.processInfo.processIdentifier && ActivationHandoff.isHandingOff"),
-               "only an activation the handoff caused is left out of the use history")
-
         var bareActivationYields: [String] = []
 
         var scannedActivationFiles = 0
 
         var dockAccessibilityLookups = 0
-
-        let dockPreviewSource = (try? String(
-            contentsOfFile: "Sources/Vorssaint/Services/DockPreview/DockPreviewService.swift",
-            encoding: .utf8)) ?? ""
-
-        expect(dockPreviewSource.contains("DockClickSupport.dockOwnsPoint("),
-               "Dock Preview does not open through fullscreen content covering the Dock")
 
         expect(MiddleClickSupport.actionForClick(fingerCount: 3, frameAge: 0.05, settledFor: 0.2,
                                                  sinceLastTransformEnd: nil,

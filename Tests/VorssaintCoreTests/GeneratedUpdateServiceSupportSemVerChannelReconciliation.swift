@@ -37,22 +37,6 @@ final class GeneratedUpdateServiceSupportSemVerChannelReconciliationTests: XCTes
             GeneratedSupport.formatSpecifiers(in: format)
         }
 
-        // Release candidate selection
-        let dummyDMG = URL(string: "https://github.com/vorssaint/vorssaint-utils/releases/download/v3.3.4/Vorssaint.dmg")!
-
-        let dummyBetaDMG = URL(string: "https://github.com/vorssaint/vorssaint-utils/releases/download/v3.3.4-beta.1/Vorssaint.dmg")!
-
-        let knownDigest = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
-
-        let testDefaults = UserDefaults(suiteName: "com.vorssaint.tests.betaActivation")!
-
-        testDefaults.removePersistentDomain(forName: "com.vorssaint.tests.betaActivation")
-
-        // Stable version does not activate beta channel
-        let stableDefaults = UserDefaults(suiteName: "com.vorssaint.tests.stableActivation")!
-
-        stableDefaults.removePersistentDomain(forName: "com.vorssaint.tests.stableActivation")
-
         // Localization completeness & formatting
         for language in AppLanguage.allCases {
             L10n.shared.language = language
