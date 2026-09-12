@@ -44,6 +44,12 @@ downloads. Consequences for Phase 0:
 | WP-03 | merged | plan branch | QA found a grab-release defect, fixed with a mutation-tested regression test; real uinput still needs hardware (WP-S1) |
 | WP-04 | merged | plan branch | AppImage green on 4 distros × 2 modes, Qt-free chroot proof; Flatpak cannot open /dev/uinput even with --device=all; QA approved |
 
+**Leftover to clean up by hand:** the scratch branch `claude/wp16-verify`
+is redundant (its `port-tests.py` is byte-identical to the integration
+branch and QA confirmed it holds no unique work), but this session's git
+proxy refuses `push --delete`, so it has to be removed from the GitHub UI
+or a local clone.
+
 **Phase 0 gate: passed 2026-09-12.** Outcomes recorded in `PLAN.md` § 4 and § 8.
 
 ## Phase 1 board
