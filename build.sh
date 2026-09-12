@@ -257,6 +257,7 @@ if (( TEST )); then
         Sources/Vorssaint/Core/QuitProtectionSupport.swift \
         Sources/Vorssaint/Core/QuitProtectionStrings.swift \
         Sources/Vorssaint/Core/Defaults.swift \
+        Sources/VorssaintCore/Core/DefaultsKeys.swift \
         Sources/Vorssaint/Core/FeatureCatalog.swift \
         Sources/Vorssaint/Core/FeaturePresets.swift \
         Sources/Vorssaint/Core/FeatureHubStrings.swift \
