@@ -244,7 +244,9 @@ a file named on the command line, a test for a temporary directory.
 |---|---|
 | `Sources/VorssaintCore/Core/Localization.swift` | `L10n`'s language read and write, the only `UserDefaults` call sites that were already in the core and covered by tests |
 
-**Not migrated, deliberately — the follow-up list:**
+**Not migrated, deliberately — the follow-up list.** The first row is the
+whole of `Sources/Vorssaint`; the rows under it call out the parts of that
+total, and the two core files, that need a decision rather than a rename:
 
 | Where | Count | Who moves it |
 |---|---|---|
