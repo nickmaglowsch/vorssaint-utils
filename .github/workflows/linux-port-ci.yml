@@ -172,7 +172,7 @@ jobs:
             if command -v "$candidate" >/dev/null; then NM="$candidate"; break; fi
           done
           : "${CC:?no C compiler}" "${AR:?no ar}" "${NM:?no nm}"
-          "$CC" --version | head -1
+          "$CC" --version | head -1 || true   # SIGPIPE is not a failure here
           { echo "CC=$CC"; echo "AR=$AR"; echo "NM=$NM"; } >> "$GITHUB_ENV"
 
       # The proof that the header is the same ABI the WP-01 Qt spike was built
@@ -288,9 +288,12 @@ jobs:
             -L "$(swift build --target VorssaintLinux --show-bin-path)" \
             -lstdc++ $(tr '\n' ' ' < /tmp/autolink.args)
           echo "=== what it links against ==="
-          ldd /tmp/vs-abi-client | head -20
+          # Not `ldd … | head`: the shell has pipefail and errexit on, head
+          # closes the pipe, ldd takes SIGPIPE and the step dies after a
+          # perfectly good link (run 34714901097).
+          ldd /tmp/vs-abi-client > /tmp/ldd.out
+          head -25 /tmp/ldd.out
           echo "=== running the C client ==="
-          set -o pipefail
           /tmp/vs-abi-client 2>&1 | tee /tmp/abi.out
           grep -q '^OK: 0 check(s) failed' /tmp/abi.out
           ! grep -q '\[FAIL\]' /tmp/abi.out
