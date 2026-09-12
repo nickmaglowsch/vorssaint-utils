@@ -52,9 +52,13 @@ jobs:
         shell: bash
         run: swift build --target VorssaintCore
 
-      - name: Build VorssaintCombine (OpenCombine wiring)
+      - name: Build VorssaintCoreTestSupport (Platform fakes)
         shell: bash
-        run: swift build --target VorssaintCombine
+        # WP-12 deleted the VorssaintCombine re-export target (COMBINE.md § 7);
+        # this step replaces it. It is a real gate, not a formality: this target
+        # is the only thing that imports VorssaintCore across a module boundary,
+        # so it is what catches a Platform protocol that forgot to be `public`.
+        run: swift build --target VorssaintCoreTestSupport
 
       - name: Build VorssaintLinux
         shell: bash
@@ -66,20 +70,14 @@ jobs:
           swift run VorssaintLinux | tee /tmp/vorssaint-linux.out
           grep -F "VorssaintCore 0.1.0-dev (linux)" /tmp/vorssaint-linux.out
 
-      - name: Unit tests
-        shell: bash
-        run: |
-          # The pure checks of the macOS `build.sh --test` harness, selected by
-          # Tools/linux-port/port-tests.py and committed under
-          # Tests/VorssaintCoreTests (WP-16, docs/linux-port/TESTS.md).
-          swift test --filter VorssaintCoreTests 2>&1 | tee /tmp/swift-test.out
-          grep -E "^Executed [0-9]+ tests?, with 0 failures" /tmp/swift-test.out
-
+      # Before the tests, so the job log ends with the test summary: the API
+      # only serves the tail of a 1600-line log, and apt's progress output
+      # would otherwise bury it.
       - name: The generated tests are what the generator produces
         shell: bash
         run: |
           command -v python3 >/dev/null \
-            || (apt-get update -qq && apt-get install -y -qq python3)
+            || (apt-get update -qq >/dev/null && apt-get install -y -qq python3 >/dev/null)
           # Hard gate: every emitted file resolves and is balanced.
           python3 Tools/linux-port/port-tests.py --verify
           # Drift is reported, not failed: every core move (WP-12 and the
@@ -94,6 +92,32 @@ jobs:
             git diff --stat -- Tests/VorssaintCoreTests
           fi
           git checkout -- Tests/VorssaintCoreTests
+
+      - name: Unit tests
+        shell: bash
+        run: |
+          # The pure checks of the macOS `build.sh --test` harness, selected by
+          # Tools/linux-port/port-tests.py and committed under
+          # Tests/VorssaintCoreTests (WP-16, docs/linux-port/TESTS.md).
+          # pipefail, or `| tee` would swallow a failing exit status and the
+          # grep below would happily match one green suite line out of many.
+          # -suppress-warnings: the generated cases carry the original
+          # harness's unused bindings, and 24 000 warning lines bury the one
+          # message that matters in a log that can only be read from the end.
+          set -o pipefail
+          status=0
+          swift test --filter VorssaintCoreTests -Xswiftc -suppress-warnings \
+            2>&1 | tee /tmp/swift-test.out || status=$?
+          echo "=== errors, if any ==============================="
+          grep -E "error:" /tmp/swift-test.out | head -40 || true
+          echo "=== per-case check counts ========================"
+          grep -F "[generated-checks]" /tmp/swift-test.out | tail -100 || true
+          echo "=== totals ======================================="
+          # corelibs-xctest indents the summary with a tab, so anchor loosely.
+          grep -E "Executed [0-9]+ tests?" /tmp/swift-test.out | tail -5 || true
+          test "$status" -eq 0
+          grep -qE "Executed [0-9]+ tests?, with 0 failures" /tmp/swift-test.out
+          ! grep -qE "with [1-9][0-9]* failures?" /tmp/swift-test.out
 
   macos:
     name: macOS app (build.sh)

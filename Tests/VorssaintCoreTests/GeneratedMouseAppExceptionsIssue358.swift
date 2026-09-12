@@ -39,25 +39,6 @@ final class GeneratedMouseAppExceptionsIssue358Tests: XCTestCase {
 
         let exceptionSet: Set<String> = ["com.example.modeler"]
 
-        if let regularBareApp, let resolvedRunningPath {
-            expect(regularBareApp.identity == resolvedRunningPath
-                    && regularBareApp.bundleID == nil
-                    && regularBareApp.name == "java"
-                    && regularBareApp.url.path == resolvedRunningPath,
-                   "a running regular bare executable produces a path row with its resolved path identity")
-        } else {
-            expect(false, "a running regular bare executable resolves its path row setup")
-        }
-
-        if let wrapperBareApp, let resolvedWrapperPath {
-            expect(wrapperBareApp.identity == resolvedWrapperPath
-                    && wrapperBareApp.bundleID == nil
-                    && wrapperBareApp.url.path == resolvedWrapperPath,
-                   "a running executable inside a non-app wrapper produces a path row")
-        } else {
-            expect(false, "a non-app wrapper executable resolves its path row setup")
-        }
-
         let appBundleURL = URL(fileURLWithPath: "/Applications/TextEdit.app")
 
         // Both ends of that agreement live outside this binary: the picker
@@ -76,7 +57,6 @@ final class GeneratedMouseAppExceptionsIssue358Tests: XCTestCase {
         var rawAddSites: [String] = []
 
         for (index, line) in pickerLines.enumerated()
-
         where !line.trimmingCharacters(in: .whitespaces).hasPrefix("//") && line.contains("onAdd(") {
             let added = (line.components(separatedBy: "onAdd(").last?
                 .components(separatedBy: ")").first ?? "").trimmingCharacters(in: .whitespaces)
@@ -129,7 +109,6 @@ final class GeneratedMouseAppExceptionsIssue358Tests: XCTestCase {
             encoding: .utf8)) ?? "").components(separatedBy: "\n")
 
         for (index, line) in matcherLines.enumerated()
-
         where !line.trimmingCharacters(in: .whitespaces).hasPrefix("//")
                 && line.contains("executableURL") && line.contains(".path") {
             if line.contains("MouseAppExceptionSupport.identity(")

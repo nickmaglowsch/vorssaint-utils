@@ -37,8 +37,6 @@ final class GeneratedWhatsAppDownloadsTests: XCTestCase {
             GeneratedSupport.formatSpecifiers(in: format)
         }
 
-        let whatsAppEnabledSuite = "vorss.tests.whatsapp.enabled"
-
         let downloadsRoot = URL(fileURLWithPath: "/Users/test/Downloads")
 
         let organizedFile = URL(fileURLWithPath: "/Users/test/Downloads/WhatsApp/2026/07/file.pdf")
@@ -285,23 +283,6 @@ final class GeneratedWhatsAppDownloadsTests: XCTestCase {
 
         try? FileManager.default.removeItem(at: safetyFixture)
 
-        // Building the installed-apps oracle walks the application folders, and
-        // the removal guard reads it under `.leftovers` alone — with leftover
-        // rows unchecked by default, the common clean must not pay for that
-        // walk. JunkCleaner is not part of this test binary, so pin the gate
-        // and the premise that makes an empty oracle safe at their source.
-        let junkCleanerSource = (try? String(
-            contentsOfFile: "Sources/Vorssaint/Services/Cleaner/JunkCleaner.swift",
-            encoding: .utf8)) ?? ""
-
-        // The known-application roster opens every installed app, and only the
-        // shared-data claims read it. AppUninstaller is not part of this test
-        // binary either, so pin the gate that keeps a removal that cannot claim
-        // shared data from paying for the roster.
-        let appUninstallerSource = (try? String(
-            contentsOfFile: "Sources/Vorssaint/Services/Uninstall/AppUninstaller.swift",
-            encoding: .utf8)) ?? ""
-
         expect(CleanerSupport.bundleIDCandidate(fromEntryName: "com.vendor.editor.prefPane")
                 == "com.vendor.editor",
                "preference panes map to their owning bundle identifier")
@@ -466,14 +447,6 @@ final class GeneratedWhatsAppDownloadsTests: XCTestCase {
                                                                executableExists: { _ in false }),
                "system agents and undecidable plists are never offered")
 
-        let autoQuitSettingsSource = (try? String(
-            contentsOfFile: "Sources/Vorssaint/UI/Settings/AutoQuitSettings.swift",
-            encoding: .utf8)) ?? ""
-
-        expect(autoQuitSettingsSource.contains("AutoQuitSupport.visibleExceptions")
-                && autoQuitSettingsSource.contains("InstalledApps.url(for:"),
-               "the AutoQuit settings list filters exceptions through installation-aware visibility")
-
         let outerApp = FileManager.default.temporaryDirectory
             .appendingPathComponent("VorssaintAutoQuitTests-\(UUID().uuidString)")
             .appendingPathComponent("Container.app")
@@ -482,12 +455,6 @@ final class GeneratedWhatsAppDownloadsTests: XCTestCase {
 
         try? FileManager.default.createDirectory(at: nestedApp.appendingPathComponent("Contents"),
                                                  withIntermediateDirectories: true)
-
-        let autoQuitServiceSource = (try? String(
-            contentsOfFile: "Sources/Vorssaint/Services/AutoQuit/AutoQuitService.swift",
-            encoding: .utf8)) ?? ""
-
-        let autoQuitServiceLines = autoQuitServiceSource.components(separatedBy: "\n")
 
         // The retry has to stop: an app whose windows Accessibility can never
         // describe would otherwise be polled for as long as it runs. The

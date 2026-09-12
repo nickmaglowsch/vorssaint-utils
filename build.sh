@@ -290,6 +290,10 @@ if (( TEST )); then
         Sources/VorssaintCore/Services/Snippets/TextSnippetSupport.swift \
         Sources/VorssaintCore/Platform/PlatformIdentifiers.swift \
         Sources/VorssaintCore/Platform/Transliterator.swift \
+        Sources/VorssaintCore/Platform/MeasurementFormatting.swift \
+        Sources/VorssaintCore/Platform/DurationFormatting.swift \
+        Sources/VorssaintMac/Platform/FoundationDurationFormatter.swift \
+        Sources/VorssaintMac/Platform/FoundationMeasurementFormatter.swift \
         Sources/VorssaintMac/Platform/CoreFoundationTransliterator.swift \
         Sources/VorssaintMac/Platform/MacPlatformSeams.swift \
         Sources/VorssaintCore/Platform/ImageDataValidator.swift \

@@ -594,3 +594,184 @@ under `Vorssaint/`, so the feature grouping is unchanged (PLAN.md § 5).
 | `Services/SudoersSupport.swift` | 20 | `6a9ee2e` |
 | `Services/SystemShortcutTakeoverSupport.swift` | 58 | `6a9ee2e` |
 | `VorssaintCoreVersion.swift` | 33 | WP-10 (stub, not moved) |
+
+---
+
+# WP-12: the corners that were cut, and what they actually unlocked
+
+Appendix by WP-12 (`WORK_PACKAGES.md`). § 4.3 above handed three corners to
+this work package with an estimate of what each would unlock. Two estimates
+held; one did not, and the reason is worth recording because it is a fact about
+the codebase, not about the estimate.
+
+**Result.** `Sources/VorssaintCore` now holds **129 files / 50 070 lines**
+(was 97 / 44 272), and the closure is still tight:
+
+```
+$ find Sources/VorssaintCore -name '*.swift' | wc -l
+129
+$ find Sources/VorssaintCore -name '*.swift' | xargs wc -l | tail -1
+  50070 total
+$ find Sources/VorssaintCore -name '*.swift' | sort > /tmp/core.txt
+$ python3 Tools/linux-port/declgraph.py --exclude spikes closure --from-file /tmp/core.txt --quiet
+seeds:    129 files, 50070 lines
+closure:  129 files, 50070 lines
+--- unresolved names: 119 (102 outside the Apple prefixes) ---
+```
+
+`--exclude spikes` is new and necessary: `spikes/wp00-swift-core/.../Vendored/`
+contains copies of `Defaults.swift`, `FeatureCatalog.swift` and three others,
+and the lexical graph counts them as owners of those names. Without the flag
+the closure reports phantom edges into the spike tree.
+
+## A. `RadialMenuSupport` — the estimate that did not hold
+
+§ 4.3 records the `NSImage(data:) == nil` check as the one thing keeping
+`RadialMenuSupport` out of the core, and predicts it would unlock
+`FeatureCatalog`, `FeaturePresets`, `SettingsBackupSupport`,
+`MouseAppExceptionSupport`, `MouseExceptionStrings`, `MouseButtonShortcutSupport`
+and `MouseSpacesGestureSupport`.
+
+It is not the only thing, and the file did not move. WP-12 cut the seam
+anyway, in place — `ImageDataValidation.current.isValidImageData(customData)`
+at `RadialMenuSupport.swift:666`, after the byte-count check, so the
+short-circuit order is unchanged — but the move is still blocked, four ways:
+
+```
+$ python3 - <<'PY'
+import sys; sys.path.insert(0, 'Tools/linux-port')
+import declgraph as d
+g = d.Graph('.', exclude=('spikes',))
+p = 'Sources/Vorssaint/Services/RadialMenu/RadialMenuSupport.swift'
+needed, _ = g.deps(p)
+for f in sorted(needed):
+    names = sorted(n for n in g.references[p] if f in g.owner.get(n, ()))
+    print(f.replace('Sources/Vorssaint/', ''), '=>', ' '.join(names))
+PY
+Core/FeatureCatalog.swift                          => AppFeature
+Core/GlobalShortcut.swift                          => GlobalShortcut
+Services/MouseButtons/MouseButtonShortcutSupport.swift => MouseButtonShortcutSupport
+Services/WindowLayout/WindowLayoutSupport.swift    => WindowLayoutAction
+```
+
+`GlobalShortcut` is the one § 2 of this document already proved cannot be
+split: 27 of its 30 non-UI users need the Carbon half, and the printable-key
+path goes through `TISCopyCurrentKeyboardInputSource` and `UCKeyTranslate`.
+`RadialMenuSupport` is one of those 27 — `isValidPayload` calls
+`GlobalShortcut(storageValue:)` and `RadialMenuSupport` builds
+`GlobalShortcut.radialMenuDefault` — so the radial menu cannot reach the core
+before the shortcut layer does. It is also in a cycle with `FeatureCatalog`,
+which references `RadialMenuMouseTrigger` and `RadialMenuSupport` back.
+
+The same check run against `FeatureCatalog` shows the estimate missed two more
+edges of its own:
+
+```
+Core/FeatureCatalog.swift -> Services/AppUpdates/AppUpdatesSupport.swift  (AppUpdatesSupport, CheckFrequency)
+                          -> Services/SuperKey/SuperKeySupport.swift      (SuperKeySource)
+                          -> Services/WindowLayout/WindowGestureSupport.swift (WindowEdgeSnapZone)
+```
+
+`AppUpdatesSupport` is itself blocked by `AppUpdateFeedSupport` (the
+`FoundationXML` gap) and `HomebrewSupport` (Darwin/libc). So the seven files
+§ 4.3 predicted stay where they are, and the honest statement is: **the radial
+corner unlocks nothing on its own; the shortcut layer is the real gate**, and
+that is a Platform-protocol item (`ShortcutRegistrar`, and the `UCKeyTranslate`
+→ xkbcommon question) rather than a move.
+
+The seam still lands, because it is worth having on its own terms and because
+the next attempt should not have to cut it again.
+
+## B. `RecorderSupport` — the estimate held
+
+`CGWindowID` and `CGDirectDisplayID` became `PlatformWindowID` and
+`PlatformDisplayID` in `Platform/PlatformIdentifiers.swift`, both `UInt32`,
+which is what those two CoreGraphics typealiases already are. **No caller
+changed**: `Set<CGWindowID>` and `Set<PlatformWindowID>` are the same type on
+macOS.
+
+One corner had to come out that § 4.3 did not name: `videoGeometry` and its
+`VideoGeometry` struct use `CGAffineTransform` and `CGRect.applying(_:)`,
+neither of which swift-corelibs-foundation has. Both went verbatim into
+`Services/Recorder/RecorderSupport+Mac.swift` as an `extension RecorderSupport`;
+every caller is an AVFoundation file (`RecorderComposer`, `RecorderExporter`,
+`RecorderEditorController`) plus two test assertions.
+
+Moved: `RecorderSupport`, `RecorderTimeline`, `RecordingSharingSupport`,
+`RecorderBlurRegion`, `RecorderImageOverlay`, `RecorderTextOverlay` — the five
+§ 4.2 predicted plus the file itself.
+
+## C. `CommandBarSearch` — the estimate held, with a split
+
+`CFStringTransform(…, kCFStringTransformMandarinLatin, …)` became the
+`Transliterator` seam. The macOS implementation keeps the original
+`CFStringTransform` spelling rather than the equivalent
+`String.applyingTransform`, because the Mac search index is a behaviour the
+port must not perturb.
+
+`CommandBarSupport.swift` still could not move whole: `CommandBarQueryHabits`
+and its key store use `CryptoKit`, `Security` and `Bundle.main` to keep the
+per-install HMAC key in the login Keychain. Those 401 lines went verbatim to
+`Services/CommandBar/CommandBarSupport+Mac.swift`; the 681 that remained moved,
+and with them `CommandBarDates`, `CommandBarUnits`, `CommandBarQueryMemory` and
+`CommandBarPreferences` — the four § 4.2 predicted.
+
+Two `Tests/MetricsTests.swift` path pins were retargeted rather than weakened:
+line 24788's case-folding sweep now reads the core half (where the folding is),
+and line 26257's uninstall alignment check reads the `+Mac` half (where the
+Keychain code is). Neither assertion changed.
+
+## D. `SpeedTest` — the estimate held
+
+`#if canImport(FoundationNetworking) import FoundationNetworking #endif`, the
+Combine guard of `COMBINE.md` § 1, and `CFAbsoluteTimeGetCurrent()` spelled as
+`Date().timeIntervalSinceReferenceDate`. Those are the same clock and the same
+epoch — `CFAbsoluteTime` *is* the interval since the reference date — so the
+measured numbers are identical, and `Tests/SpeedTestTests.swift` asserts only
+`> 0` and `!= nil` on them in any case.
+
+## E. Two gaps the compiler found that no census could
+
+Both are Foundation *classes marked unavailable* on Linux rather than missing
+modules, so an import-counting census cannot see them and only a real build
+can. Each became a seam of the same shape as the others:
+
+| Class | Where | Seam | Portable behaviour |
+|---|---|---|---|
+| `MeasurementFormatter` | `CommandBarUnits.format` (run 34665056778) | `MeasurementFormatting` | localized number, unit as its own symbol |
+| `DateComponentsFormatter` | `CommandBarDates.daysUntil` (run 34693363900) | `DurationFormatting` | localized number, untranslated unit word |
+
+Both degrade with a capability flag rather than silently, and both are
+restored to their exact macOS behaviour by `MacPlatformSeams.install()`, which
+runs on the first line of `Sources/Vorssaint/main.swift` and of the
+`Tests/MetricsTests.swift` harness.
+
+This is the third and fourth entry in the pattern § 4.1 opened: the WP-00
+census counted imports, and every gap it missed has been an API.
+
+## F. What is in the core that was not
+
+| path under `Sources/VorssaintCore/` | lines | why it could move |
+|---|---:|---|
+| `Platform/` (18 files) | 3 172 | new: the protocols, the seams and their value types |
+| `Services/Recorder/RecorderSupport.swift` | 739 | `PlatformWindowID`, and `videoGeometry` split out |
+| `Services/Recorder/RecorderTimeline.swift` | 322 | `RecorderSupport` |
+| `Services/Recorder/RecordingSharingSupport.swift` | 141 | `RecorderSupport` |
+| `Services/Recorder/RecorderBlurRegion.swift` | — | `RecorderTimeline` |
+| `Services/Recorder/RecorderImageOverlay.swift` | — | `RecorderTimeline` |
+| `Services/Recorder/RecorderTextOverlay.swift` | — | `RecorderTimeline` |
+| `Services/CommandBar/CommandBarSupport.swift` | 681 | `Transliterator`, and the Keychain half split out |
+| `Services/CommandBar/CommandBarDates.swift` | — | `CommandBarSearch`, `DurationFormatting` |
+| `Services/CommandBar/CommandBarUnits.swift` | — | `CommandBarSearch`, `MeasurementFormatting` |
+| `Services/CommandBar/CommandBarQueryMemory.swift` | — | `CommandBarSearch` |
+| `Services/CommandBar/CommandBarPreferences.swift` | — | `CommandBarSearch` |
+| `Services/Metrics/SpeedTest.swift` | 235 | `FoundationNetworking`, `Date()` timing |
+
+Three files were split at a platform corner into a `<Original>+Mac.swift`
+sibling left under `Sources/Vorssaint`, joining the two WP-11 made:
+`Services/Recorder/RecorderSupport+Mac.swift`,
+`Services/CommandBar/CommandBarSupport+Mac.swift`, and — not a move, only a
+seam — the edit in place at `Services/RadialMenu/RadialMenuSupport.swift:666`.
+
+The protocol layer itself is documented in
+[`PLATFORM.md`](PLATFORM.md).

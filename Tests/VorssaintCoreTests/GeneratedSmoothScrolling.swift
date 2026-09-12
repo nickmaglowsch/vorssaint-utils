@@ -212,31 +212,6 @@ final class GeneratedSmoothScrollingTests: XCTestCase {
                 && abs(sixtyHertzEngine.remainingHorizontal - oneTwentyHertzEngine.remainingHorizontal) < 0.000001,
                "equal elapsed time produces the same glide at 60 and 120 Hz")
 
-        let focusFollowsMouseServiceSource = (try? String(
-            contentsOfFile: "Sources/Vorssaint/Services/FocusFollowsMouse/FocusFollowsMouseService.swift",
-            encoding: .utf8)) ?? ""
-
-        expect(focusFollowsMouseServiceSource.contains(".leftMouseDragged")
-                && focusFollowsMouseServiceSource.contains(".rightMouseDragged")
-                && focusFollowsMouseServiceSource.contains(".otherMouseDragged")
-                && focusFollowsMouseServiceSource.contains("NSEvent.pressedMouseButtons == 0"),
-               "focus follows mouse tracks drags and checks every held mouse button")
-
-        expect(focusFollowsMouseServiceSource.contains("excludesPointerTarget(")
-                && focusFollowsMouseServiceSource.contains(
-                    ".focusFollowsMouse, at: evaluation.point"),
-               "focus follows mouse leaves selected apps alone before querying Accessibility")
-
-        expect(focusFollowsMouseServiceSource.contains("SessionActivity.shared.onChange")
-                && focusFollowsMouseServiceSource.contains(
-                    "sessionIsActive: SessionActivity.shared.isActive")
-                && focusFollowsMouseServiceSource.contains("AXIsProcessTrusted()"),
-               "focus follows mouse owns no monitor or timer in a switched-away or untrusted session")
-
-        expect(!focusFollowsMouseServiceSource.isEmpty
-                && !focusFollowsMouseServiceSource.contains("AXUIElementCreateSystemWide"),
-               "focus follows mouse cannot re-enter its own Accessibility tree through a global hit test")
-
         // A wheel that reports continuously already measures in points, and
         // that field is the one to trust; the line field only fills in for a
         // movement too small to register as a whole point.

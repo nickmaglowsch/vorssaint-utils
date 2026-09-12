@@ -133,26 +133,6 @@ final class GeneratedRegisteredDefaultsTests: XCTestCase {
         expect(!KeepAwakeAutomationSupport.isScreenLocked(sessionDictionary: nil),
                "an unreadable lock state does not strand Keep Awake in a pause")
 
-        let sleepDisabledReport = """
-        System-wide power settings:
-         SleepDisabled\t\t1
-        Currently in use:
-         standby              1
-        """
-
-        let sleepEnabledReport = """
-        System-wide power settings:
-         SleepDisabled\t\t0
-        Currently in use:
-         standby              1
-        """
-
-        expect(SudoersSupport.sleepDisabled(inPmsetOutput: sleepDisabledReport),
-               "a pmset report with SleepDisabled 1 reads as lid sleep disabled")
-
-        expect(!SudoersSupport.sleepDisabled(inPmsetOutput: sleepEnabledReport),
-               "a pmset report with SleepDisabled 0 reads as lid sleep enabled")
-
         expect(!SudoersSupport.sleepDisabled(inPmsetOutput: ""),
                "an empty pmset report reads as lid sleep enabled")
 
@@ -164,52 +144,6 @@ final class GeneratedRegisteredDefaultsTests: XCTestCase {
         expect(SudoersSupport.clamshellRule(uid: 501)
                == "#501 ALL=(root) NOPASSWD: /usr/bin/pmset disablesleep 1, /usr/bin/pmset disablesleep 0",
                "the closed-lid sudoers rule grants pmset disablesleep to the uid")
-
-        let shortcutSuite = "vorss.tests.switcher.shortcut"
-
-        // The session-start layout pass reads usesWindowRow, which now depends
-        // on the session scope; teardown resets the scope to .allApps, so the
-        // scope must be assigned before the layout pass or a window-scoped
-        // panel is sized for the grouped layout on its first frame.
-        let switcherSource = (try? String(
-            contentsOfFile: "Sources/Vorssaint/Services/Switcher/AppSwitcher.swift",
-            encoding: .utf8)) ?? ""
-
-        // Ends on whatever declaration comes next rather than naming the
-        // neighbour: a rename would find no separator, leave the slice running
-        // to end of file, and quietly restore the whole-file search this
-        // replaced — a failure that makes the slice bigger, so an empty check
-        // cannot see it. Hence the count assertion below.
-        let finishSessionParts = (switcherSource.components(separatedBy: "private func finishPendingSession")
-            .last ?? "").components(separatedBy: "\n    private func ")
-
-        let finishSessionBody = finishSessionParts.first ?? ""
-
-        expect(finishSessionParts.count > 1,
-               "the App Switcher ordering guard finds the end of finishPendingSession")
-
-        let switcherCode = finishSessionBody
-            .split(separator: "\n", omittingEmptySubsequences: false)
-            .filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("//") }
-            .joined(separator: "\n")
-
-        let scopeAssign = switcherCode.range(of: "sessionScope = pending.scope")
-
-        let startLayout = switcherCode.range(of: "recomputeLayouts(for: list)")
-
-        expect(!finishSessionBody.isEmpty,
-               "the App Switcher session-start ordering guard finds finishPendingSession")
-
-        expect(scopeAssign != nil && startLayout != nil
-               && scopeAssign!.lowerBound < startLayout!.lowerBound,
-               "the App Switcher session scope is assigned before the session-start layout pass")
-
-        // Trimming the list to one display (issue #1391) can drop the window
-        // that was in front, and then index 0 is no longer where the session
-        // started. The initial selection has to follow what the list holds.
-        expect(!switcherCode.contains("hasForegroundItem: source != nil")
-               && switcherCode.contains("hasForegroundItem: listedSource != nil"),
-               "the App Switcher initial selection follows the window the trimmed list still holds")
 
         let regularBundlePaths: [pid_t: String] = [101: "/Applications/Primary.app"]
 

@@ -69,19 +69,6 @@ final class GeneratedLaunchAtLoginReconciliationTests: XCTestCase {
                                                       locationIsUnstable: false) == .none,
                "an item awaiting approval in System Settings is never registered over (issue #260)")
 
-        // `SMAppService.Status` cannot be driven without a real login item, so
-        // what the service does with the third state is pinned by source. Both
-        // needles are public symbols, not a line's spelling.
-        let launchAtLoginSource = (try? String(
-            contentsOfFile: "Sources/Vorssaint/Services/LaunchAtLogin.swift",
-            encoding: .utf8)) ?? ""
-
-        expect(launchAtLoginSource.contains(".requiresApproval"),
-               "an approval-pending login item is read as its own state")
-
-        expect(launchAtLoginSource.contains("throw NeedsApprovalError()"),
-               "turning launch at login on says so when only approval is missing")
-
         print("[generated-checks] LaunchAtLoginReconciliation \(checks)")
     }
 }

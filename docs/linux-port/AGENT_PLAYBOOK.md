@@ -96,11 +96,15 @@ by serializing those changes through the core porter.
   log a tolerance where relevant, exactly as the upstream Accessibility code
   does.
 - **C/C++ under `linux/` builds warning-free under `-Werror` in all four
-  CMake build types** (none given, Debug, Release, RelWithDebInfo): the
-  optimisation level changes which warnings GCC can prove, and WP-S1 found
-  three real defects only at `-O3`. Every C package ships a
-  `scripts/build-matrix.sh` like `linux/helper/scripts/build-matrix.sh`
-  and the QA role runs it; a bare configure defaults to RelWithDebInfo.
+  CMake build types** (none given, Debug, Release, RelWithDebInfo) **and
+  passes its tests under AddressSanitizer, UndefinedBehaviorSanitizer and
+  LeakSanitizer**: the optimisation level changes which warnings GCC can
+  prove (WP-S1 found three real defects only at `-O3`), and the sanitizers
+  catch what no build type does (WP-D2 shipped a leaking CLI exit path that
+  four clean builds never saw). Every C package ships a
+  `scripts/build-matrix.sh` like `linux/helper/scripts/build-matrix.sh`,
+  covering all five legs, and the QA role runs it; a bare configure
+  defaults to RelWithDebInfo.
 - **Comments explain why, rarely.** Match the file you are in.
 - **Tests:** pure logic gets `swift test` unit tests in `Tests/`; platform
   backends get a fake compositor or fake D-Bus test where feasible and a

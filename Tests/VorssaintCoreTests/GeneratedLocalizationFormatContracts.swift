@@ -140,15 +140,6 @@ final class GeneratedLocalizationFormatContractsTests: XCTestCase {
         expect(breakingFrench.isEmpty,
                "French keeps its punctuation on the line it belongs to (\(Set(breakingFrench).sorted().prefix(4).joined(separator: ", ")))")
 
-        let themeSource = (try? String(contentsOfFile: "Sources/Vorssaint/UI/Theme.swift",
-                                       encoding: .utf8)) ?? ""
-
-        let raisedReads = themeSource
-            .components(separatedBy: "accessibilityDisplayShouldIncreaseContrast").count - 1
-
-        expect(raisedReads == 2,
-               "both panel outlines answer raised contrast, and nothing else pretends to")
-
         // A decimal built without a region is always written with a point, so
         // the panel, the menu bar and the editors were showing one to readers
         // whose system writes a comma. Every float says which region it is in;
@@ -187,16 +178,6 @@ final class GeneratedLocalizationFormatContractsTests: XCTestCase {
             .joined(separator: "\n")
 
         expect(!samplerCode.isEmpty, "the disk sampler reads back for its shape check")
-
-        let bulkKeys = samplerCode.components(separatedBy: "let keys: Set<URLResourceKey>")
-            .dropFirst().first?.components(separatedBy: "]").first ?? ""
-
-        expect(!bulkKeys.contains("volumeAvailableCapacityForImportantUsageKey")
-                && bulkKeys.contains("volumeIsReadOnlyKey"),
-               "the bulk volume fetch asks nothing that only a writable volume can answer")
-
-        expect(samplerCode.contains("guard !isReadOnly,"),
-               "purgeable space is read only where there is something to purge")
 
         // A format string whose placeholders differ between languages feeds
         // String(format:) arguments it was not written for, and the result is
@@ -300,8 +281,6 @@ final class GeneratedLocalizationFormatContractsTests: XCTestCase {
 
         expect(symbolNames.count > 80, "the symbol names were found (\(symbolNames.count))")
 
-        for name in symbolNames.sorted()
-
         // Same blind spot, other half: a file asked for by name is nil at run
         // time if it was renamed or dropped, and nothing says so until the
         // screen that needs it is opened.
@@ -322,12 +301,6 @@ final class GeneratedLocalizationFormatContractsTests: XCTestCase {
         expect(namedResources.count >= 5, "the named resources were found (\(namedResources.count))")
 
         var shippedNames: Set<String> = []
-
-        // The brand images are drawn during the build and staged from there,
-        // so the build script is where their names live.
-        let stagingScript = (try? String(contentsOfFile: "build.sh", encoding: .utf8)) ?? ""
-
-        expect(!stagingScript.isEmpty, "the build script reads back for its resource names")
 
         // The scripts that drive the Finder are compiled when they run, so an
         // unbalanced block fails in silence exactly where it matters most:
@@ -363,37 +336,6 @@ final class GeneratedLocalizationFormatContractsTests: XCTestCase {
             missingTools.append(tool)
         }
 
-        expect(missingTools.isEmpty,
-               "every system tool the app runs is where it expects (\(missingTools.joined(separator: ", ")))")
-
-        // The fan helper's launchd plist ships with the release identifier in
-        // three places, and the Developer build rewrites each one so the two
-        // apps can run side by side. A fourth mention added without a matching
-        // rewrite would leave the Developer build asking launchd for a service
-        // that is registered under the other name, and fan control would just
-        // never answer.
-        let helperTemplate = (try? String(
-            contentsOfFile: "Resources/com.vorssaint.utils.fan-control.plist",
-            encoding: .utf8)) ?? ""
-
-        expect(!helperTemplate.isEmpty, "the helper template reads back")
-
-        let releaseHelperID = "com.vorssaint.utils.fan-control"
-
-        let mentions = helperTemplate.components(separatedBy: releaseHelperID).count - 1
-
-        expect(mentions == 3,
-               "the helper template names the release service exactly where the build rewrites it (\(mentions))")
-
-        let buildText = (try? String(contentsOfFile: "build.sh", encoding: .utf8)) ?? ""
-
-        for key in ["Set :Label $FAN_HELPER_ID",
-                    "Set :BundleProgram Contents/Library/LaunchServices/$FAN_HELPER_ID",
-                    "Delete :MachServices:" + releaseHelperID,
-                    "Add :MachServices:$FAN_HELPER_ID"] {
-            expect(buildText.contains(key), "the Developer build rewrites \(key)")
-        }
-
         var brokenShortcuts: [String] = []
 
         // A restored backup is filtered by valueLooksRight, so a setting whose
@@ -412,20 +354,6 @@ final class GeneratedLocalizationFormatContractsTests: XCTestCase {
         let ownershipGuards = ["isShelfOwnedFile", "discardablePaths", "ownedPayloadURLs",
                                "isRegularFile", "tempDir", "legacyDir", "root", "uuidString",
                                "storeRoot", "contentsOfDirectory"]
-
-        let turkishInfoPlistStrings = (try? String(contentsOfFile: "Resources/tr.lproj/InfoPlist.strings",
-                                                   encoding: .utf8)) ?? ""
-
-        expect(turkishInfoPlistStrings.contains("NSAudioCaptureUsageDescription")
-               && turkishInfoPlistStrings.contains("Hiçbir şey kaydedilmez"),
-               "Turkish InfoPlist.strings localizes the audio permission prompt")
-
-        let koreanInfoPlistStrings = (try? String(contentsOfFile: "Resources/ko.lproj/InfoPlist.strings",
-                                                  encoding: .utf8)) ?? ""
-
-        expect(koreanInfoPlistStrings.contains("NSAudioCaptureUsageDescription")
-               && koreanInfoPlistStrings.contains("Mac 밖으로 나가지"),
-               "Korean InfoPlist.strings localizes the audio permission prompt")
 
         print("[generated-checks] LocalizationFormatContracts \(checks)")
     }

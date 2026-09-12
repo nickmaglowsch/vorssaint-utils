@@ -172,38 +172,6 @@ final class GeneratedScreenRecorderGeometryAndPolicyTests: XCTestCase {
 
         let exportedBytes = Data("the recording that finished exporting".utf8)
 
-        // An edit that cannot be composed stops the export. The plain path
-        // draws the recording untouched, so answering with it would hand back
-        // a file with the areas kept unreadable, and everything else drawn on
-        // the picture, missing.
-        let recorderComposerSource = (try? String(
-            contentsOfFile: "Sources/Vorssaint/Services/Recorder/RecorderComposer.swift",
-            encoding: .utf8)) ?? ""
-
-        expect(!recorderComposerSource.isEmpty,
-               "the recorder composer source reads back for its shape check")
-
-        expect(recorderComposerSource.contains(
-                    "outputSize: CGSize) async -> AVMutableVideoComposition?"),
-               "a composition that cannot be built answers with nothing, never with the plain one")
-
-        let recorderExporterSource = (try? String(
-            contentsOfFile: "Sources/Vorssaint/Services/Recorder/RecorderExporter.swift",
-            encoding: .utf8)) ?? ""
-
-        expect(!recorderExporterSource.isEmpty,
-               "the recorder exporter source reads back for its shape check")
-
-        let compositionsAsked = recorderExporterSource
-            .components(separatedBy: "RecorderComposer.videoComposition(").count - 1
-
-        let compositionsGuarded = recorderExporterSource
-            .components(separatedBy: "guard let composition = await RecorderComposer.videoComposition(")
-            .count - 1
-
-        expect(compositionsAsked > 0 && compositionsAsked == compositionsGuarded,
-               "an export stops when the edit cannot be composed, instead of saving the recording bare")
-
         expect(RecorderSupport.canStart(freeBytes: 10_000_000_000)
                 && !RecorderSupport.canStart(freeBytes: 100_000_000),
                "a recording refuses to start when the disk is nearly full")

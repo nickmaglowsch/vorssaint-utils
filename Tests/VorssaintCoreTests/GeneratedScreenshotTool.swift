@@ -37,53 +37,6 @@ final class GeneratedScreenshotToolTests: XCTestCase {
             GeneratedSupport.formatSpecifiers(in: format)
         }
 
-        let captureEngineSource = (try? String(
-            contentsOfFile: "Sources/Vorssaint/Services/QuickTools/ScreenshotCaptureEngine.swift",
-            encoding: .utf8)) ?? ""
-
-        expect(captureEngineSource.contains("$0.frame.intersects(plan.bounds)")
-                && captureEngineSource.contains("hits.count == 1")
-                && !captureEngineSource.contains(".contains(plan.bounds)"),
-               "a window straddling two displays falls back to the single-window capture instead of a one-display slice")
-
-        // The engine is outside the pure-helper test binary. Pin the permission
-        // gate before its AX call so window capture never starts an
-        // Accessibility round trip merely because geometry found a candidate.
-        let screenshotCaptureEngineSource = (try? String(
-            contentsOfFile: "Sources/Vorssaint/Services/QuickTools/ScreenshotCaptureEngine.swift",
-            encoding: .utf8)) ?? ""
-
-        let captureWindowBody = (screenshotCaptureEngineSource
-            .components(separatedBy: "static func captureWindow(").last ?? "")
-            .components(separatedBy: "\n    /// On-screen windows").first ?? ""
-
-        let accessibilityGate = captureWindowBody.range(of: "if Permissions.shared.accessibility {")
-
-        let attachmentConfirmation = captureWindowBody.range(
-            of: "accessibilityAttachedWindowIDs(")
-
-        expect(accessibilityGate != nil && attachmentConfirmation != nil
-               && accessibilityGate!.lowerBound < attachmentConfirmation!.lowerBound,
-               "window capture checks its existing Accessibility grant before AX confirmation")
-
-        let accessibilityAttachedWindowIDsBody = (screenshotCaptureEngineSource
-            .components(separatedBy: "private static func accessibilityAttachedWindowIDs(").last ?? "")
-            .components(separatedBy: "\n    private static func accessibilityElements(").first ?? ""
-
-        let accessibilityAttachedWindowIDsCode = accessibilityAttachedWindowIDsBody
-            .components(separatedBy: "\n")
-            .filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("//") }
-            .joined(separator: "\n")
-
-        let unresolvedCandidatePasses = accessibilityAttachedWindowIDsCode.range(of: "guard let element = elementsByID[candidateID] else {\n                confirmed.insert(candidateID)\n                continue\n            }")
-
-        let standardWindowFails = accessibilityAttachedWindowIDsCode.range(of: "if let subrole = accessibilityString(element, kAXSubroleAttribute as CFString),\n               subrole == (kAXStandardWindowSubrole as String) || subrole == \"AXFullScreenWindow\" {\n                continue\n            }\n            confirmed.insert(candidateID)")
-
-        let childrenPassIsAbsent = !accessibilityAttachedWindowIDsCode.contains("kAXChildrenAttribute")
-
-        expect(unresolvedCandidatePasses != nil && standardWindowFails != nil && childrenPassIsAbsent,
-               "AX keeps unresolved candidates and excludes only identified standard windows")
-
         var scrollingStressPassed = true
 
         var unmatchedScrollPixels = [UInt8](repeating: 0, count: 16 * 120)
@@ -107,135 +60,6 @@ final class GeneratedScreenshotToolTests: XCTestCase {
         patternParts.second = 9
 
         let captureMenuSuite = "com.vorssaint.tests.capture-menu.\(UUID().uuidString)"
-
-        let captureMenuDefaults = UserDefaults(suiteName: captureMenuSuite)!
-
-        defer { captureMenuDefaults.removePersistentDomain(forName: captureMenuSuite) }
-
-        let captureSettingsSource = (try? String(
-            contentsOfFile: "Sources/Vorssaint/UI/Settings/ScreenCaptureSettings.swift",
-            encoding: .utf8)) ?? ""
-
-        expect(captureSettingsSource.contains("selectedTool")
-                && captureSettingsSource.contains(".pickerStyle(.segmented)")
-                && captureSettingsSource.contains("ToolShortcutRows(tool: currentTool")
-                && captureSettingsSource.contains("RecentCapturesShortcutRows()"),
-               "the capture page keeps tool and shared-history shortcuts in the top section")
-
-        let recentCaptureServiceSource = (try? String(
-            contentsOfFile: "Sources/Vorssaint/Services/QuickTools/RecentCaptureService.swift",
-            encoding: .utf8)) ?? ""
-
-        let captureSelectionSource = (try? String(
-            contentsOfFile: "Sources/Vorssaint/Services/QuickTools/ScreenshotSelectionController.swift",
-            encoding: .utf8)) ?? ""
-
-        expect(captureSelectionSource.contains(
-            "override func mouseExited(with event: NSEvent) {\n        refreshPointerState()\n        refreshGuideVisibility()"),
-               "system chrome cannot hide the capture chooser while the pointer remains on its display")
-
-        expect(captureSelectionSource.contains(
-            "screenCaptureOptions?.showsCaptureMenu == false ? 82 : 146")
-                && captureSelectionSource.contains(
-                    ".opacity(options.selectedTool == .recording ? 1 : 0)"),
-               "capture modes reserve the recording controls' height so the chooser never jumps")
-
-        expect(captureSelectionSource.contains("screenCaptureToolDidChange()")
-                && captureSelectionSource.contains("!nextPolicy.sharesSource(with: capturePolicy)")
-                && captureSelectionSource.contains("adoptCapturePolicy(nextPolicy)")
-                && captureSelectionSource.contains("panel.update(frozenImage:")
-                && captureSelectionSource.contains("screenCaptureOptions?.onSelectionChange ="),
-               "a capture mode that needs other pixels gets them behind the panels, which stay on screen")
-
-        expect(captureSelectionSource.contains("private var pointerIsInside = false")
-                && !captureSelectionSource.contains("|| bounds.contains(hoverPoint)"),
-               "the capture loupe draws on only the display that owns the current pointer")
-
-        let captureServiceSource = (try? String(
-            contentsOfFile: "Sources/Vorssaint/Services/QuickTools/ScreenCaptureService.swift",
-            encoding: .utf8)) ?? ""
-
-        expect(!captureServiceSource.contains("replaceSelection"),
-               "the capture service does not cancel and recreate selection controllers when changing modes")
-
-        // The preview appears unasked for, so presenting it must not take the
-        // keyboard away from whatever the person is typing into. Its shortcuts
-        // read a local monitor, which is delivered nothing until the panel is
-        // key. Presenting stays silent unless the person opted in, and hover
-        // takes nothing either; a click hands the keyboard over in the panel's
-        // sendEvent because hosted SwiftUI content answers presses that never
-        // reach mouseDown. Comments are stripped so prose naming the API
-        // cannot answer for the code.
-        let quickPreviewSource = (try? String(
-            contentsOfFile: "Sources/Vorssaint/Services/QuickTools/ScreenshotQuickPreviewController.swift",
-            encoding: .utf8)) ?? ""
-
-        expect(!quickPreviewSource.isEmpty, "the screenshot preview source reads back for its shape check")
-
-        let quickPreviewCode = quickPreviewSource.components(separatedBy: "\n")
-            .filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("//") }
-            .joined(separator: "\n")
-
-        // Split at the hosting controller: the hover closure is built above it,
-        // so the presentation statements are what remains.
-        let presentBody = quickPreviewCode.components(separatedBy: "let host = NSHostingController")
-            .dropFirst().first?.components(separatedBy: "private func").first ?? ""
-
-        expect(presentBody.contains("orderFrontRegardless()"),
-               "the screenshot preview is presented without activating the app")
-
-        // A click is the hand-off, and it is read in sendEvent because the
-        // hosted SwiftUI content answers presses that never reach mouseDown.
-        let panelBody = quickPreviewCode.components(separatedBy: "class ScreenshotQuickPreviewPanel")
-            .dropFirst().first?.components(separatedBy: "\n}").first ?? ""
-
-        // The opt-in keys the panel only after it is on screen, and the line
-        // above the call is the preference check itself, so dropping the guard
-        // or keying before ordering front both go red.
-        let presentLines = presentBody.components(separatedBy: "\n")
-
-        let orderFrontLine = presentLines.firstIndex { $0.contains("orderFrontRegardless()") } ?? -1
-
-        let makeKeyLine = presentLines.firstIndex { $0.contains("makeKey") } ?? -1
-
-        expect(orderFrontLine >= 0 && makeKeyLine > orderFrontLine
-                && presentLines[makeKeyLine - 1].contains("screenshotPreviewTakesFocus"),
-               "presenting the screenshot preview takes key focus only behind the opt-in, once the panel is on screen")
-
-        let makeKeyCount = quickPreviewCode.components(separatedBy: "makeKey").count - 1
-
-        let panelMakeKeyCount = panelBody.components(separatedBy: "makeKey").count - 1
-
-        expect(makeKeyCount == panelMakeKeyCount + 1 && panelMakeKeyCount >= 1,
-               "hover never takes key focus; only the opted-in presentation and the panel's own click hand-off may")
-
-        expect(panelBody.contains("sendEvent") && panelBody.contains("leftMouseDown")
-                && panelBody.contains("makeKey") && panelBody.contains("super.sendEvent"),
-               "clicking the screenshot preview takes key focus and still delivers every preview button")
-
-        // Both editors state a size the same way. The recorder wrote
-        // "1960x1274" beside a screenshot editor that already read
-        // "2940 \u{00D7} 1912 px", and the letter x is the tell.
-        let recorderEditorSource = (try? String(
-            contentsOfFile: "Sources/Vorssaint/UI/Recorder/RecorderEditorView.swift",
-            encoding: .utf8)) ?? ""
-
-        expect(!recorderEditorSource.isEmpty, "the recorder editor source reads back for its shape check")
-
-        expect(recorderEditorSource.contains("\\(Int(size.width)) \u{00D7} \\(Int(size.height))"),
-               "the recorder states its output size with the multiplication sign")
-
-        // A card that names itself twice reads like filler. The look cards had
-        // borrowed the shape, pointer and background labels as subtitles, so
-        // two of the three said their own name back in English.
-        let inspectorSource = (try? String(
-            contentsOfFile: "Sources/Vorssaint/UI/Recorder/RecorderInspector.swift",
-            encoding: .utf8)) ?? ""
-
-        expect(!inspectorSource.isEmpty, "the recorder inspector source reads back for its shape check")
-
-        expect(!inspectorSource.contains("subtitle"),
-               "a look card carries one name, not a label borrowed from another control")
 
         // A button says what it does. The empty zoom state had borrowed the
         // timeline lane's hint, so the button read "Click here to add a zoom"
@@ -262,19 +86,6 @@ final class GeneratedScreenshotToolTests: XCTestCase {
         expect(CommandBarMenuPath.crumb(appName: "Notes", path: ["", "View"])
                 == "Notes \u{203A} View",
                "an empty step leaves no dangling separator")
-
-        // The cleanup above is the only kind that survives exit(). A defer
-        // that removes a file here would look like housekeeping and do none.
-        let suiteSource = (try? String(contentsOfFile: "Tests/MetricsTests.swift",
-                                       encoding: .utf8)) ?? ""
-
-        expect(!suiteSource.isEmpty, "the suite reads itself back for its own shape check")
-
-        // Split so the needle never matches the line that looks for it.
-        let deadCleanup = "defer { try? FileManager" + ".default.removeItem"
-
-        expect(!suiteSource.contains(deadCleanup),
-               "scratch is handed back before the run reports, never by a defer this exit skips")
 
         // Reading a file is not a drawing step. The watermark logo was being
         // decoded inside the preview's body, so every frame of an opacity
@@ -340,15 +151,6 @@ final class GeneratedScreenshotToolTests: XCTestCase {
 
         let copyRoot = FileManager.default.temporaryDirectory
             .appendingPathComponent("ScreenshotCopyTests-\(UUID().uuidString)", isDirectory: true)
-
-        if let staleCopy {
-            try? FileManager.default.setAttributes(
-                [.modificationDate: Date(timeIntervalSince1970: 1)],
-                ofItemAtPath: staleCopy.path)
-        }
-
-        expect(staleCopy.map { !FileManager.default.fileExists(atPath: $0.path) } == true,
-               "copying a screenshot removes expired copied files")
 
         let copySymlink = FileManager.default.temporaryDirectory
             .appendingPathComponent("ScreenshotCopyLink-\(UUID().uuidString)")

@@ -104,8 +104,8 @@ app is behaviourally unchanged.
 |---|---|---|---|---|---|
 | WP-10 | Package layout: VorssaintCore / VorssaintMac / VorssaintLinux targets | M | WP-00 | Core porter | merged (both gates green) |
 | WP-11 | Move Foundation-only files into VorssaintCore | L | WP-10 | Core porter | merged (97 files, zero Linux diagnostics, macOS unchanged) |
-| WP-12 | Platform protocol layer | L | WP-11 | Core porter | todo |
-| WP-13 | Combine abstraction (OpenCombine on Linux) | S | WP-10 | Core porter | merged (per-file guard convention in COMBINE.md; lead accepted deleting the VorssaintCombine target, done after WP-11 lands) |
+| WP-12 | Platform protocol layer | L | WP-11 | Core porter | review (14 protocols + fakes + macOS adapters; 6 seams; core 129 files / 50 070 lines; VorssaintCombine deleted; PLATFORM.md) |
+| WP-13 | Combine abstraction (OpenCombine on Linux) | S | WP-10 | Core porter | merged (per-file guard convention in COMBINE.md; the VorssaintCombine target was deleted by WP-12) |
 | WP-14 | Settings store abstraction (UserDefaults ↔ JSON/GSettings) | M | WP-12 | Core porter | todo |
 | WP-15 | Feature catalog: platform support flags and Linux presets | S | WP-12 | Core porter | todo |
 | WP-16 | Test harness: `swift test` on both platforms, port `Tests/*` pure checks | M | WP-11 | QA/reviewer | review (VorssaintCoreTests target + Tools/linux-port/port-tests.py; counts in TESTS.md) |
@@ -319,7 +319,7 @@ the triage matrix update for its feature(s).
 | ID | Feature(s) | Size | after | Status |
 |---|---|---|---|---|
 | WP-D1 | `InputRelay` in the helper: device discovery (udev), grab/re-emit, rule engine API over D-Bus, latency budget test (largely delivered by WP-S1; remaining: Event schema, SetContext, timer source) | L | WP-S1, WP-03 | in progress |
-| WP-D2 | keyboardDebounce, mouseClickDebounce, scrollInverter, smoothScroll rules (plus superKey, mouseButton and quitProtection rules pulled forward from D3/D5/D6 into the same helper package) | M | WP-D1 | in progress |
+| WP-D2 | keyboardDebounce, mouseClickDebounce, scrollInverter, smoothScroll rules (plus superKey, mouseButton and quitProtection rules pulled forward from D3/D5/D6 into the same helper package). Hardware acceptance adds: run `--tap` then `--rules-file` on the first machine with real input devices before anything else (the timerfd and `EV_LED` paths in `device_evdev.c` are new code that has never executed); re-judge the six tuning constants named together in `rules.h` and record the chosen values with the reason; measure the smooth-scroll wakeup cost (a wakeup every 16.7 ms during a glide) and put it in the feature's energy badge | M | WP-D1 | in progress |
 | WP-D3 | superKey (tap/hold, LED, layout tap action) | M | WP-D1 | todo |
 | WP-D4 | textSnippets trigger + expansion (typing and paste paths) and snippet quick menu | L | WP-D1, WP-A8 | todo |
 | WP-D5 | mouseButtonShortcuts, mouseNavigation remaps, app exceptions via focused `app_id` | M | WP-D1, WP-C1 | todo |

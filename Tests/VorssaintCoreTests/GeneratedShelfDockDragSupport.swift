@@ -37,44 +37,6 @@ final class GeneratedShelfDockDragSupportTests: XCTestCase {
             GeneratedSupport.formatSpecifiers(in: format)
         }
 
-        let shelfServiceSource = (try? String(
-            contentsOfFile: "Sources/Vorssaint/Services/Shelf/ShelfService.swift",
-            encoding: .utf8)) ?? ""
-
-        let dockedWatchdog = shelfServiceSource
-            .components(separatedBy: "private func startDockedWatchdog()")
-            .dropFirst().first?.components(separatedBy: "\n    private func ").first ?? ""
-
-        expect(dockedWatchdog.contains("updateDockedProximity(")
-                && dockedWatchdog.contains("handleDragForEdge(at:"),
-               "the drag watchdog finishes dock and edge dwells after pointer movement stops")
-
-        let explicitShelfClose = shelfServiceSource
-            .components(separatedBy: "func close()")
-            .dropFirst().first?.components(separatedBy: "\n    func noteInteraction").first ?? ""
-
-        let ordinaryShelfHide = shelfServiceSource
-            .components(separatedBy: "func hide()")
-            .dropFirst().first?.components(separatedBy: "\n    func close").first ?? ""
-
-        let shelfViewSource = (try? String(
-            contentsOfFile: "Sources/Vorssaint/UI/Shelf/ShelfView.swift",
-            encoding: .utf8)) ?? ""
-
-        let dockedShelfViewSource = (try? String(
-            contentsOfFile: "Sources/Vorssaint/UI/Shelf/ShelfDropZoneView.swift",
-            encoding: .utf8)) ?? ""
-
-        expect(explicitShelfClose.contains("DefaultsKey.shelfClearOnClose")
-                && explicitShelfClose.contains("clear()")
-                && explicitShelfClose.contains("hide()")
-                && !ordinaryShelfHide.contains("DefaultsKey.shelfClearOnClose"),
-               "only an explicit shelf close consults the optional clearing preference")
-
-        expect(shelfViewSource.contains("onDismiss ?? { shelf.close() }")
-                && dockedShelfViewSource.contains("onDismiss: { shelf.collapseDocked() }"),
-               "the floating close clears when requested while docked collapse keeps items")
-
         expect(String(format: FeatureStrings.clipboard(.enUS).deleteSelectedFormat, 3) == "Delete 3",
                "English bulk delete string formats count correctly")
 

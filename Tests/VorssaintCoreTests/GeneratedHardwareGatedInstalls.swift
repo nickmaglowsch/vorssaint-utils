@@ -47,21 +47,6 @@ final class GeneratedHardwareGatedInstallsTests: XCTestCase {
         // never revokes. A third entry here is a bug, not a new allowance.
         var availabilityWriters: Set<String> = []
 
-        let featureHubSource = (try? String(
-            contentsOfFile: "Sources/Vorssaint/UI/Settings/FeatureHubSettings.swift",
-            encoding: .utf8)) ?? ""
-
-        let onboardingFeatureSource = (try? String(
-            contentsOfFile: "Sources/Vorssaint/UI/Onboarding/OnboardingView.swift",
-            encoding: .utf8)) ?? ""
-
-        expect(featureHubSource.contains("installBlockedReason")
-                && onboardingFeatureSource.contains("installBlockedReason"),
-               "both feature pickers refuse an unsupported install from the same rule")
-
-        expect(featureHubSource.contains("installableCount"),
-               "the hub counts against what this Mac can install, so install-all can finish")
-
         expect(BluetoothSleepSupport.sleepPlan(isPoweredOn: true, restoresOnWake: true)
                 == BluetoothSleepSupport.SleepPlan(powersOff: true, owesRestore: true),
                "Bluetooth on before sleep is switched off and owed back")
@@ -124,21 +109,6 @@ final class GeneratedHardwareGatedInstallsTests: XCTestCase {
                 ]],
             ]],
         ]
-
-        if let installerData = try? PropertyListSerialization.data(fromPropertyList: installerInfo,
-                                                                    format: .xml,
-                                                                    options: 0) {
-            expect(DiskImageInstallerSupport.imageURL(
-                mountedAt: URL(fileURLWithPath: "/tmp/Installer Mount"),
-                hdiutilInfo: installerData)?.path == "/Users/test/Downloads/App.dmg",
-                "hdiutil plist maps the canonical mount path back to its disk image")
-            expect(DiskImageInstallerSupport.imageURL(
-                mountedAt: URL(fileURLWithPath: "/tmp/Other Mount"),
-                hdiutilInfo: installerData) == nil,
-                "an unrelated mounted volume is never treated as the disk image")
-        } else {
-            expect(false, "disk image installer plist fixture can be encoded")
-        }
 
         expect(DiskImageInstallerSupport.destinationURL(
             for: URL(fileURLWithPath: "/Volumes/Installer/Example.app"),
