@@ -51,7 +51,8 @@ downloads. Consequences for Phase 0:
 | WP | Status | Branch | Notes |
 |---|---|---|---|
 | WP-10 | merged | plan branch | package split + `linux-port-ci.yml` gate (Linux core build, macOS build.sh + selftest + 31565 checks), QA approved |
-| WP-11 | review | plan branch | 97 files / 44 389 lines in VorssaintCore; `Tools/linux-port/declgraph.py`; `CORE_MOVES.md` has every move, split and reason |
+| WP-11 | merged | plan branch | QA approved with doc nits (fixed); 97 files / 44 389 lines in VorssaintCore; `Tools/linux-port/declgraph.py`; `CORE_MOVES.md` has every move, split and reason |
+| WP-12 | in progress | worktree → plan branch (CI) | Platform protocols, fakes, the RadialMenuSupport seam and the other corners, trash shim, VorssaintCombine target removal |
 | WP-16 | in progress | worktree → plan branch (CI) | `swift test` target on Linux, generated from the pure checks in Tests/; fixes the two vacuous walks |
 | WP-S1 | in progress (daemon side) | worktree | production helper from the WP-03 spike: session binding, hot-plug, hwmon, DDC, systemd/polkit/udev files |
 | WP-C1 | in progress | worktree | C window backends: X11 EWMH, wlr foreign-toplevel + Sway IPC, Hyprland IPC, KWin script bridge; `vorssaint_platform.h` contract |

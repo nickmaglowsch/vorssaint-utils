@@ -378,9 +378,11 @@ checks in `Tests/MetricsTests.swift` enumerate `Sources/Vorssaint/Core` and
 - line 13582, the French non-breaking-space sweep.
 
 Both still pass — they collect violations and assert the collection is empty —
-but they now read **zero** files, because every `*Strings.swift`,
-`Strings+*.swift` and `Localization.swift` is under
-`Sources/VorssaintCore/Core`. They are vacuous, not red. WP-16 should widen
+but they now read only two of their former files (`MouseExceptionStrings.swift`
+and `SuperKeyStrings.swift`, the two `*Strings.swift` left behind), because
+every other `*Strings.swift`, all `Strings+*.swift` and `Localization.swift`
+are under `Sources/VorssaintCore/Core` and the `Localizations` directory
+they also walk no longer exists. They are nearly vacuous, not red. WP-16 should widen
 both walks to `Sources` (the other walks in the file already use `Sources`
 or `Sources/Vorssaint` deliberately and are unaffected — they hunt
 `CGEvent.tapCreate` and `waitUntilAllOperationsAreFinished`, which only exist
@@ -414,7 +416,7 @@ the branch. Four pushes; both gates green on the last.
 
 ```
 [225/225] Compiling VorssaintCore VorssaintCoreVersion.swift
-Build of target: 'VorssaintCore' complete! (22.13s)
+Build of target: 'VorssaintCore' complete! (21.69s)
 Build of target: 'VorssaintCombine' complete! (1.07s)
 Build of target: 'VorssaintLinux' complete! (1.06s)
 Build of product 'VorssaintLinux' complete! (0.94s)
