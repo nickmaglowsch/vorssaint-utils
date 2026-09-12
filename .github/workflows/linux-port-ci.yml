@@ -229,10 +229,19 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          objects=$(find .build/debug -name '*.o' -path '*.build/*' \
+          # `.build/debug` is a symlink into `.build/<triple>/debug`, and find
+          # does not follow one, so ask SwiftPM where it actually put things
+          # rather than guessing (run 34714270680 found zero objects that way).
+          bin=$(swift build --target VorssaintLinux --show-bin-path)
+          echo "bin path: $bin"
+          objects=$(find "$bin" -name '*.o' -path '*.build/*' \
             \( -path '*VorssaintCore.build*' -o -path '*VorssaintLinux.build*' \
                -o -path '*OpenCombine*' \) ! -name 'main.swift.o' | sort)
-          test -n "$objects"
+          if [ -z "$objects" ]; then
+            echo "no object files under $bin; what is there:"
+            find "$bin" -maxdepth 2 | head -40
+            exit 1
+          fi
           echo "$objects" | wc -l | xargs echo "object files:"
           echo "$objects" > /tmp/objects.txt
           "$AR" crs /tmp/libvorssaintbridge.a $objects
@@ -271,7 +280,8 @@ jobs:
           tr '\n' ' ' < /tmp/autolink.args; echo
           # shellcheck disable=SC2046
           swiftc -o /tmp/vs-abi-client /tmp/abi_client.o /tmp/libvorssaintbridge.a \
-            -L .build/debug $(tr '\n' ' ' < /tmp/autolink.args)
+            -L "$(swift build --target VorssaintLinux --show-bin-path)" \
+            $(tr '\n' ' ' < /tmp/autolink.args)
           echo "=== what it links against ==="
           ldd /tmp/vs-abi-client | head -20
           echo "=== running the C client ==="

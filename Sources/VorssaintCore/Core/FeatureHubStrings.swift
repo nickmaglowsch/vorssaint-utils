@@ -1103,7 +1103,7 @@ extension FeatureHubStrings {
         presetLinuxBatteryQuietName: "Batterie et silence",
         presetLinuxBatteryQuietDesc: "Moniteur d’énergie, automatisations de maintien éveillé, Bluetooth à la mise en veille et luminosité.",
         unsupportedOnThisSystem: "Cette fonction n’a pas d’équivalent sur ce système.",
-        unsupportedMissingCapabilitiesFormat: "Cette session de bureau ne fournit pas ce dont cette fonction a besoin : %@"
+        unsupportedMissingCapabilitiesFormat: "Cette session de bureau ne fournit pas ce dont cette fonction a besoin\u{00A0}: %@"
     )
 
     static let it = FeatureHubStrings(

@@ -202,21 +202,28 @@ tick changes the array, so every patch carries all sixty samples. Measured, by
 step prints the `[bridge-diff]` lines on every run:
 
 ```
-[bridge-diff] metrics, 60 changing ticks: full=25702 B, merge-patch=25522 B, patch saves 180 B (0.7 %)
+[bridge-diff] metrics, 60 changing ticks: full=34876 B, merge-patch=32656 B, patch saves 2220 B (6.4 %)
 [bridge-diff] metrics, 60 idle publishes: delivered=0 B in 0 callbacks, suppressed=60
-[bridge-diff] l10n catalog snapshot: 36194 B, 918 strings
+[bridge-diff] l10n catalog snapshot: 54388 B, 974 strings
 ```
 
-0.7 % is the `"cpu"` and `"capacity"` and `"source"` keys the patch can leave
-out; the history is 99 % of the payload and the patch resends every byte of it.
-For that the shell would carry a merge implementation.
+(Run 34714270680, job "Linux core (Swift 6.1)", step "Unit tests".)
+
+**6.4 %.** That is the `capacity` and `source` keys — and, on the ticks where
+the newest sample happens to repeat the previous one, `cpu` — that a patch can
+leave out. The history is 94 % of the payload and the patch resends every byte
+of it, every tick, because RFC 7386 has no way to say "one element changed".
+For 6.4 % the shell would carry a merge implementation, a per-model base
+document, and a null-means-delete rule.
 
 **The fast path, by contrast, is total when nothing moves.** Sixty publishes
-with no change deliver zero bytes and zero callbacks. That is the regime almost
-everything in this app lives in: `l10n` is a 36 KB snapshot that changes when
+with no change deliver zero bytes in zero callbacks. That is the regime almost
+everything in this app lives in: `l10n` is a 53 KB snapshot that changes when
 somebody picks a language, `featureRuntime` changes when somebody installs
 something, and both are published far more often than they change, because
-§ 1's rule is "publish on every mutation and let the bridge decide".
+§ 1's rule is "publish on every mutation and let the bridge decide". A merge
+patch saves nothing at all here — it is `{}`, which still has to be delivered
+and parsed, unless the sender diffs first, at which point it is doing this.
 
 Consequences to know about:
 
@@ -311,7 +318,7 @@ caller's thread, and the caller is contractually the core's own thread.
 | id | Swift | Snapshot | Commands |
 |---|---|---|---|
 | `featureRuntime` | `FeatureRuntimeBridgeService` | `features[]` (id, installed, installable), counts, `needsRestartToUnload`, `revision` | `install`, `uninstall`, `installAll`, `uninstallAll` |
-| `l10n` | `L10nBridgeService` | `language`, `languages[]`, `usesFewCountForm`, `strings` (918 keys) | `setLanguage` |
+| `l10n` | `L10nBridgeService` | `language`, `languages[]`, `usesFewCountForm`, `strings` (974 keys) | `setLanguage` |
 | `metrics` | `MetricsBridgeService` | `cpu`, `history[≤60]`, `capacity`, `source` | `sample`, `reset` |
 
 **`featureRuntime` is the persisted half of `FeatureRuntime`, not a wrapper of

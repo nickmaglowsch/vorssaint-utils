@@ -12,8 +12,8 @@ import Foundation
 
 /// The whole UI catalog, for the language in force.
 ///
-/// `strings` is the flat `Strings` struct as a dictionary: 900-odd
-/// compiler-checked fields, keyed by their own property names. That is the
+/// `strings` is the flat `Strings` struct as a dictionary: 974
+/// compiler-checked fields today, keyed by their own property names. That is the
 /// point of the shape — QML writes `l10n.state.strings.menuQuit` and gets the
 /// same string the SwiftUI view gets from `l10n.s.menuQuit`, out of the same
 /// catalogs, so there is no second translation file for the Linux shell and
@@ -22,8 +22,8 @@ import Foundation
 /// way a thirteen-language catalog stays honest without a compiler on the QML
 /// side.
 ///
-/// It is also the bridge's largest snapshot by an order of magnitude — about
-/// 30 KB — and it changes only when someone picks another language. See
+/// It is also the bridge's largest snapshot by an order of magnitude — 53 KB,
+/// measured on CI — and it changes only when someone picks another language. See
 /// `BRIDGE.md` § "Diffing" for why that is an argument for the fast path
 /// rather than for a merge patch.
 public struct L10nSnapshot: Codable, Equatable {

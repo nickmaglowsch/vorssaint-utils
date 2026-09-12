@@ -110,7 +110,7 @@ app is behaviourally unchanged.
 | WP-15 | Feature catalog: platform support flags and Linux presets | S | WP-12 | Core porter | todo |
 | WP-16 | Test harness: `swift test` on both platforms, port `Tests/*` pure checks | M | WP-11 | QA/reviewer | merged (73 generated cases, 90 Linux tests green; both vacuous walks widened) |
 | WP-17 | macOS CI job proves `main` unchanged (selftest + ui-smoke on the new layout) | S | WP-11 | Packaging/CI | merged (by WP-10) — the `macos` job of linux-port-ci.yml runs `./build.sh`, `--selftest` and `./build.sh --test` on every push; `Tools/ui-smoke.sh` is not run and cannot be (TESTS.md § 7) |
-| WP-18 | `CoreBridge`: `@_cdecl` subscribe/command/snapshot surface, `Codable` snapshots and commands per service, diffing, fake-service tests. Carries one defect against WP-12 found by WP-B1: `CapturedFrame` declares "always premultiplied BGRA" while the portal negotiates BGRx, whose fourth byte is undefined — a wrapper that relabels it yields fully transparent screenshots, so the format must be carried through from the engine | M | WP-12, WP-13 | Core porter | in progress |
+| WP-18 | `CoreBridge`: `@_cdecl` subscribe/command/snapshot surface, `Codable` snapshots and commands per service, diffing, fake-service tests. Carries one defect against WP-12 found by WP-B1: `CapturedFrame` declares "always premultiplied BGRA" while the portal negotiates BGRx, whose fourth byte is undefined — a wrapper that relabels it yields fully transparent screenshots, so the format must be carried through from the engine | M | WP-12, WP-13 | Core porter | review |
 
 **WP-10.** `Package.swift` gains three targets. `Vorssaint` (macOS app)
 depends on `VorssaintCore` and `VorssaintMac`; `VorssaintLinux` (executable)
