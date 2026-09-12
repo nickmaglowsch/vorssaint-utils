@@ -109,12 +109,6 @@ final class GeneratedMediaSizeTargetsTests: XCTestCase {
                                        contents: Data([0x47, 0x49, 0x46, 0x38]),
                                        attributes: nil)
 
-        let intentionallyHiddenMediaOutput = mediaVisibilityDir.appendingPathComponent(".Manual.gif")
-
-        FileManager.default.createFile(atPath: intentionallyHiddenMediaOutput.path,
-                                       contents: Data([0x47, 0x49, 0x46, 0x38]),
-                                       attributes: nil)
-
         var percentFieldAttached = false
 
         let savedMixerVolumes = ["com.apple.Safari": 0.35, "com.apple.Music": 1.4]

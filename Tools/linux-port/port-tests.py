@@ -121,7 +121,16 @@ COMBINE_TYPES = {
 # name-based rule can see. Keep it short — a growing list means the rules are
 # wrong, not the checks.
 EXCLUDED = {
-    # "Tests/MetricsTests.swift": {1234: "reason (run …)"},
+    "Tests/MetricsTests.swift": {
+        14150: "asserts /bin/launchctl, /usr/bin/hdiutil, /usr/sbin/spctl … "
+               "exist on the machine running the tests; they are macOS system "
+               "tools and the check is about the Mac product, not the code "
+               "(run 34693146465)",
+        15139: "`/tmp/Installer Mount` resolves to `/private/tmp/Installer "
+               "Mount` on macOS and to itself on Linux, so the hdiutil plist "
+               "round-trip compares two different paths. Takes the two other "
+               "checks in the same `if let` block with it (run 34693146465)",
+    },
 }
 
 IDENT = re.compile(r"\b([A-Za-z_][A-Za-z0-9_]*)\b")
@@ -542,6 +551,7 @@ def classify(units, kind, boundaries=(), excluded=(), mac_members=None):
     """
     mac_members = mac_members or {}
     available = set(HARNESS_NAMES)
+    effects = {}
     decisions = []
     for index, unit in enumerate(units):
         if index in boundaries:
@@ -549,6 +559,7 @@ def classify(units, kind, boundaries=(), excluded=(), mac_members=None):
             # local binding cannot reach across the boundary: forget them, or
             # the generated code would name variables it never declares.
             available = set(HARNESS_NAMES)
+            effects = {}
         reason = None
         if unit.start in excluded:
             reason = "excluded:" + excluded[unit.start]
@@ -583,9 +594,20 @@ def classify(units, kind, boundaries=(), excluded=(), mac_members=None):
             # label: it belongs to a receiver that was already checked.
         if reason is None:
             available |= unit.declared
+            for declared in unit.declared:
+                effects[declared] = unit.refs | unit.declared
             decisions.append((unit, True, None))
         else:
+            # Poison every local the dropped statement touched — and, one step
+            # further, everything the *declaration* of such a local touches.
+            # `expect(SwitcherSupport.…(targetIsMinimized: minimizeIntentMinimized(true)))`
+            # drops for a Mac symbol, and the counter it would have bumped
+            # lives inside `minimizeIntentMinimized`, not in this statement:
+            # without this step the later `expect(minimizeIntentMinimizedReads
+            # == 1)` survives and fails on Linux (run 34693146465).
             poisoned = unit.refs & available
+            for name in list(poisoned):
+                poisoned |= effects.get(name, set()) & available
             available -= (poisoned - HARNESS_NAMES)
             decisions.append((unit, False, reason))
     return decisions

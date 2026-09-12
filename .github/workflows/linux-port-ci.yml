@@ -90,9 +90,10 @@ jobs:
           echo "=== per-case check counts ========================"
           grep -F "[generated-checks]" /tmp/swift-test.out | tail -100 || true
           echo "=== totals ======================================="
-          grep -E "^Executed [0-9]+ tests?" /tmp/swift-test.out | tail -5 || true
+          # corelibs-xctest indents the summary with a tab, so anchor loosely.
+          grep -E "Executed [0-9]+ tests?" /tmp/swift-test.out | tail -5 || true
           test "$status" -eq 0
-          grep -E "^Executed [0-9]+ tests?, with 0 failures" /tmp/swift-test.out
+          grep -qE "Executed [0-9]+ tests?, with 0 failures" /tmp/swift-test.out
           ! grep -qE "with [1-9][0-9]* failures?" /tmp/swift-test.out
 
       - name: The generated tests are what the generator produces
