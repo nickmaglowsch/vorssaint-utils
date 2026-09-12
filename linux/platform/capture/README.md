@@ -157,12 +157,14 @@ each is a real difference between ScreenCaptureKit and a portal.
    wrapper can only honour `.window` by running the portal's chooser and then
    checking what came back, which is what `require_source_type` is for. On a
    session whose `capture.window` is clear it must refuse rather than widen the
-   capture to the whole screen.
+   capture to the whole screen. **Decided:** window capture on Linux is always
+   an interactive pick, and the feature copy says so; this is an acceptance
+   criterion on the consuming packages, not something to paper over here.
 5. **`CaptureStreamOptions.excludedWindows` has no portal equivalent.** There is
    no `capture.windowExclusion` on any portal: the compositor composites the
-   output and we receive it. The recorder's own overlay will appear in a Linux
-   recording unless the recorder hides it for the duration — a behaviour
-   difference WP-B5 has to design for rather than a flag it can set.
+   output and we receive it. **Decided:** WP-B5 hides the recorder's own overlay
+   for the duration of a recording rather than asking the compositor to exclude
+   it — a behaviour to design for, not a flag to set.
 
 ## `vs_result_string` moved
 
@@ -171,9 +173,10 @@ now `../vs_result.c`, linked as `vorssaint_platform_common` into both libraries,
 so a binary that uses two backends — which the Swift side will — has one
 definition rather than one per concern. The strings moved unchanged, including
 the two that still say "window" (`VS_ERR_NOT_FOUND`, `VS_ERR_NO_BACKEND`): four
-window suites match on that text, and rewording a user-visible surface is a
-decision for the lead, not a side effect of adding a second concern. Until it is
-made, the capture engine avoids `VS_ERR_NOT_FOUND` on any path a user sees.
+window suites match on that text, and the decision taken was that they stay. A
+user-visible message is not collateral of a second concern landing. Until a
+shared vocabulary is written deliberately, with those suites updated in the same
+change, the capture engine keeps `VS_ERR_NOT_FOUND` off any path a user sees.
 
 ## Building and testing
 

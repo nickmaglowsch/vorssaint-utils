@@ -401,8 +401,10 @@ work package if the triage matrix wants one.
    window), and `CaptureStreamOptions.excludedWindows` has no portal
    equivalent — the recorder's own overlay will appear in a Linux recording
    unless the recorder hides it while recording.
-7. **A decision for the lead.** `vs_result_string` moved to
+7. **Settled, not open.** `vs_result_string` moved to
    `linux/platform/vs_result.c` so two backend libraries can link into one
-   binary; its `VS_ERR_NOT_FOUND` and `VS_ERR_NO_BACKEND` strings still say
-   "window", which four window suites match on. Rewording them is a
-   user-visible rename and was left alone.
+   binary. Its `VS_ERR_NOT_FOUND` and `VS_ERR_NO_BACKEND` strings still say
+   "window", which four window suites match on; the lead's decision is that
+   they stay that way. A user-visible message is not collateral of a second
+   concern landing, and a shared vocabulary, if it is ever wanted, gets its own
+   change with those suites updated deliberately.
