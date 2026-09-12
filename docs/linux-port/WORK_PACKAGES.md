@@ -271,7 +271,7 @@ the triage matrix update for its feature(s).
 | WP-A2 | monitorPower via UPower, peripheral batteries, alerts | M | WP-22 | todo |
 | WP-A3 | monitorGPU: amdgpu/i915 sysfs + NVML when present, vendor matrix | M | WP-A1 | todo |
 | WP-A4 | Temperatures via hwmon, sensor selection rules reused; `--sensors` dump | S | WP-A1 | todo |
-| WP-A5 | mixer, soundOutputSwitcher, micMute over PipeWire (libpipewire) with libpulse fallback | L | WP-22 | todo |
+| WP-A5 | mixer, soundOutputSwitcher, micMute over PipeWire (libpipewire) with libpulse fallback; backend half in C under linux/platform/audio can start before the shell | L | WP-22 (UI); none (backend) | in progress (backend) |
 | WP-A6 | keepAwake via logind inhibitors, automations, menu bar icon states | M | WP-21, WP-26 | todo |
 | WP-A7 | bluetoothSleep via BlueZ + logind | S | WP-26 | todo |
 | WP-A8 | clipboardHistory, pastePlain, urlCleaner: data-control backend (KDE/wlroots/Hyprland), XFixes backend (X11), GNOME backend via the extension (WP-C2, may land later) or the portal Clipboard session, quick panel | L | WP-24, WP-29 | todo |
@@ -286,7 +286,7 @@ the triage matrix update for its feature(s).
 
 | ID | Feature(s) | Size | after | Status |
 |---|---|---|---|---|
-| WP-B1 | Capture engine: portal ScreenCast/Screenshot → PipeWire frames, restore tokens, output/window enumeration. Per WP-02: read `AvailableSourceTypes` and verify each stream's `source_type` (wlr serves WINDOW as MONITOR); screenshot via a ScreenCast frame where the Screenshot portal is absent (no `impl.portal.Access`); audio on a second ordinary `pw_context_connect`, never the portal fd | L | WP-02, WP-29 | todo |
+| WP-B1 | Capture engine: portal ScreenCast/Screenshot → PipeWire frames, restore tokens, output/window enumeration. Per WP-02: read `AvailableSourceTypes` and verify each stream's `source_type` (wlr serves WINDOW as MONITOR); screenshot via a ScreenCast frame where the Screenshot portal is absent (no `impl.portal.Access`); audio on a second ordinary `pw_context_connect`, never the portal fd | L | WP-02 (engine); WP-29 (overlay) | in progress (engine) |
 | WP-B2 | screenshot: selector overlay, frozen frame, window/area/screen, quick preview, save/copy, recent captures | L | WP-B1 | todo |
 | WP-B3 | screenshot editor (annotations, crop, redaction, backgrounds, pins) on cairo/GTK4 with `ScreenshotSupport` | L | WP-B2 | todo |
 | WP-B4 | screenOCR + QR (bundled Tesseract + tessdata, ZXing-C++) and colorPicker (portal PickColor + magnifier) | M | WP-B2 | todo |
@@ -318,8 +318,8 @@ the triage matrix update for its feature(s).
 
 | ID | Feature(s) | Size | after | Status |
 |---|---|---|---|---|
-| WP-D1 | `InputRelay` in the helper: device discovery (udev), grab/re-emit, xkb mirroring, rule engine API over D-Bus, latency budget test | L | WP-S1, WP-03 | todo |
-| WP-D2 | keyboardDebounce, mouseClickDebounce, scrollInverter, smoothScroll rules | M | WP-D1 | todo |
+| WP-D1 | `InputRelay` in the helper: device discovery (udev), grab/re-emit, rule engine API over D-Bus, latency budget test (largely delivered by WP-S1; remaining: Event schema, SetContext, timer source) | L | WP-S1, WP-03 | in progress |
+| WP-D2 | keyboardDebounce, mouseClickDebounce, scrollInverter, smoothScroll rules (plus superKey, mouseButton and quitProtection rules pulled forward from D3/D5/D6 into the same helper package) | M | WP-D1 | in progress |
 | WP-D3 | superKey (tap/hold, LED, layout tap action) | M | WP-D1 | todo |
 | WP-D4 | textSnippets trigger + expansion (typing and paste paths) and snippet quick menu | L | WP-D1, WP-A8 | todo |
 | WP-D5 | mouseButtonShortcuts, mouseNavigation remaps, app exceptions via focused `app_id` | M | WP-D1, WP-C1 | todo |
