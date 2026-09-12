@@ -319,7 +319,7 @@ the triage matrix update for its feature(s).
 | ID | Feature(s) | Size | after | Status |
 |---|---|---|---|---|
 | WP-D1 | `InputRelay` in the helper: device discovery (udev), grab/re-emit, rule engine API over D-Bus, latency budget test (largely delivered by WP-S1; remaining: Event schema, SetContext, timer source) | L | WP-S1, WP-03 | in progress |
-| WP-D2 | keyboardDebounce, mouseClickDebounce, scrollInverter, smoothScroll rules (plus superKey, mouseButton and quitProtection rules pulled forward from D3/D5/D6 into the same helper package) | M | WP-D1 | in progress |
+| WP-D2 | keyboardDebounce, mouseClickDebounce, scrollInverter, smoothScroll rules (plus superKey, mouseButton and quitProtection rules pulled forward from D3/D5/D6 into the same helper package). Hardware acceptance adds: run `--tap` then `--rules-file` on the first machine with real input devices before anything else (the timerfd and `EV_LED` paths in `device_evdev.c` are new code that has never executed); re-judge the six tuning constants named together in `rules.h` and record the chosen values with the reason; measure the smooth-scroll wakeup cost (a wakeup every 16.7 ms during a glide) and put it in the feature's energy badge | M | WP-D1 | in progress |
 | WP-D3 | superKey (tap/hold, LED, layout tap action) | M | WP-D1 | todo |
 | WP-D4 | textSnippets trigger + expansion (typing and paste paths) and snippet quick menu | L | WP-D1, WP-A8 | todo |
 | WP-D5 | mouseButtonShortcuts, mouseNavigation remaps, app exceptions via focused `app_id` | M | WP-D1, WP-C1 | todo |
