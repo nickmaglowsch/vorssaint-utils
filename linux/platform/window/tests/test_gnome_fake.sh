@@ -6,12 +6,20 @@
 # org.vorssaint.WindowBridge the way the vorssaint-bridge Shell extension
 # (WP-C2) must. GNOME Shell cannot run here; this pins the interface and proves
 # the client side decodes and read-back-verifies it.
+#
+# The assertions below are also what proves the real extension interoperable:
+# VS_BRIDGE_CMD replaces the Python fake with any other implementation of the
+# interface, and WP-C2's `window_gnome_extension` test points it at the
+# extension's own D-Bus layer running under gjs. Keep every assertion here
+# implementation-neutral, so both halves are held to the same contract.
 
 set -euo pipefail
 
 VS_WINDOW=${1:?usage: test_gnome_fake.sh /path/to/vs-window}
 PYTHON=${VS_PYTHON:-python3}
 SOURCE_DIR=${VS_SOURCE_DIR:-$(dirname "$0")}
+BRIDGE_CMD=${VS_BRIDGE_CMD:-}
+BRIDGE_LABEL=${VS_BRIDGE_LABEL:-fake_window_bridge.py}
 WORK=$(mktemp -d)
 
 cleanup() { rm -rf "$WORK"; }
@@ -20,7 +28,12 @@ trap cleanup EXIT
 fail() { echo "FAIL: $*" >&2; exit 1; }
 
 command -v dbus-run-session >/dev/null 2>&1 || { echo "SKIP: dbus-run-session missing"; exit 77; }
-"$PYTHON" -c 'import dbus, gi' 2>/dev/null || { echo "SKIP: python dbus/gi missing"; exit 77; }
+if [[ -z "$BRIDGE_CMD" ]]; then
+    "$PYTHON" -c 'import dbus, gi' 2>/dev/null || { echo "SKIP: python dbus/gi missing"; exit 77; }
+    BRIDGE_CMD="$PYTHON $SOURCE_DIR/fake_window_bridge.py"
+fi
+command -v "${BRIDGE_CMD%% *}" >/dev/null 2>&1 \
+    || { echo "SKIP: ${BRIDGE_CMD%% *} missing"; exit 77; }
 
 export XDG_RUNTIME_DIR="$WORK/run"
 mkdir -p "$XDG_RUNTIME_DIR"
@@ -31,7 +44,7 @@ set -euo pipefail
 fail() { echo "FAIL: \$*" >&2; exit 1; }
 
 start_bridge() {
-    "$PYTHON" "$SOURCE_DIR/fake_window_bridge.py" "\$@" >"$WORK/fake.out" 2>"$WORK/fake.err" &
+    $BRIDGE_CMD "\$@" >"$WORK/fake.out" 2>"$WORK/fake.err" &
     BRIDGE_PID=\$!
     for _ in \$(seq 1 60); do
         grep -q ready "$WORK/fake.out" 2>/dev/null && break
@@ -119,7 +132,7 @@ grep -q '^event	activated	104	' "$WORK/events.txt" || fail "no activated event"
 grep -q '^event	removed	104	' "$WORK/events.txt" || fail "no removed event"
 grep -q '^event	workspace	0	-	1\$' "$WORK/events.txt" || fail "no workspace event"
 
-echo "PASS: gnome (against fake_window_bridge.py; unverified on a live GNOME Shell)"
+echo "PASS: gnome (against $BRIDGE_LABEL; unverified on a live GNOME Shell)"
 INNER
 
 dbus-run-session -- bash "$WORK/body.sh"

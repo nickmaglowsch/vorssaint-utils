@@ -42,18 +42,24 @@ and exercised only against a fake, because the compositor cannot run here.
 `has_previews` is reserved for WP-C3 (portal ScreenCast window streams,
 `ext-image-copy-capture-v1`, XComposite); no backend sets it yet.
 
+Every `gnome` cell is designed-not-measured: the capabilities are what the
+`vorssaint-bridge` extension (WP-C2) implements over Mutter and what this
+client asserts against it on a real bus, but no GNOME Shell has run them.
+`GNOME_BRIDGE.md` lists exactly which claims a live session still has to
+settle.
+
 ### What each backend reports per window
 
 | Field | x11 | wlr (sway) | hyprland | kwin | gnome |
 |---|---|---|---|---|---|
-| `app_id` | `WM_CLASS` instance | Wayland `app_id` | `class` | `resourceClass` | extension's choice |
-| `app_name` | `WM_CLASS` class | = `app_id` (protocol has no second name) | = `class` | `resourceName` | extension's choice |
-| `title` | `_NET_WM_NAME`, else `WM_NAME` | `title` | `title` | `caption` | extension's choice |
-| `pid` | `_NET_WM_PID` (absent on some clients) | sway IPC only | `pid` | `pid` | extension's choice |
+| `app_id` | `WM_CLASS` instance | Wayland `app_id` | `class` | `resourceClass` | `.desktop` id via `Shell.WindowTracker`, else `WM_CLASS` instance |
+| `app_name` | `WM_CLASS` class | = `app_id` (protocol has no second name) | = `class` | `resourceName` | `Shell.App` name, else `WM_CLASS` class |
+| `title` | `_NET_WM_NAME`, else `WM_NAME` | `title` | `title` | `caption` | `meta_window_get_title` |
+| `pid` | `_NET_WM_PID` (absent on some clients) | sway IPC only | `pid` | `pid` | `meta_window_get_pid` |
 | geometry | frame rect: client rect grown by `_NET_FRAME_EXTENTS` | sway IPC `rect` only | `at` + `size` | `frameGeometry` | `get_frame_rect` |
 | workspace | `_NET_WM_DESKTOP` | sway IPC only | `workspace.id` | desktop index | workspace index |
-| output | — (not read) | sway IPC `output`, else `output_enter` | `j/monitors` by index | `output.name` | monitor name |
-| stacking | `_NET_CLIENT_LIST_STACKING`, marked **valid** | announcement order, marked **unreliable** | `j/clients` order, marked **unreliable** | `windowList()`, marked **valid** | extension's order, marked **valid** |
+| output | — (not read) | sway IPC `output`, else `output_enter` | `j/monitors` by index | `output.name` | connector via `DisplayConfig`, else `monitor-N` |
+| stacking | `_NET_CLIENT_LIST_STACKING`, marked **valid** | announcement order, marked **unreliable** | `j/clients` order, marked **unreliable** | `windowList()`, marked **valid** | `global.get_window_actors()`, Mutter's own stack, marked **valid** |
 
 `stacking_valid` matters to WP-C3: the macOS switcher reads
 `CGWindowListCopyWindowInfo` front-to-back and relies on that order. Two
@@ -363,6 +369,12 @@ workspace, output`, with `flags` the same `vs_window_flag` bitmask the C header
 defines. WP-C2 implements this interface; nothing else in the app talks to the
 extension.
 
+The extension also carries the clipboard members WP-A8 needs
+(`ClipboardMimeTypes`, `ClipboardRead`, `ClipboardWrite`, `ClipboardClear` and
+the `ClipboardChanged` signal) and a `Version` property, because GNOME has no
+data-control protocol either. This backend calls none of them; see
+`GNOME_BRIDGE.md`.
+
 `MoveResize` returns without error whether or not Mutter honoured the request,
 so only the backend's read-back through `Geometry` can tell the caller the
 truth; that path is what the fake's "Text Editor refuses to resize" fixture
@@ -392,6 +404,17 @@ PASS: gnome (against fake_window_bridge.py; unverified on a live GNOME Shell)
 With no bridge on the bus the backend declines rather than guessing, which is
 what makes `switcher` on GNOME show as unavailable until the extension is
 installed.
+
+**The other half now exists.** WP-C2 implemented the extension in
+`linux/platform/window/gnome-extension/`, and the same suite runs a second time
+against it: `window_gnome_extension` is this script with `VS_BRIDGE_CMD`
+pointed at `gjs -m gnome-extension/test/run_bridge.js`, so the extension's own
+`lib/service.js` owns the name and answers this C client for real, with only
+the compositor substituted by a fixture. Every GNOME row in the two tables
+above is filled from that implementation and stays **designed, not measured**:
+gnome-shell cannot start in this container, so nothing here has touched Mutter.
+`docs/linux-port/GNOME_BRIDGE.md` has the interface, what Mutter can and cannot
+do, the per-version compatibility risk, and the full test evidence.
 
 ## What this gives the features
 

@@ -308,7 +308,7 @@ the triage matrix update for its feature(s).
 | ID | Feature(s) | Size | after | Status |
 |---|---|---|---|---|
 | WP-C1 | `WindowSystem` backends in C under `linux/platform/window`: X11 EWMH, `ext-foreign-toplevel-list` + `wlr-foreign-toplevel-management`, KWin scripting D-Bus, Hyprland/Sway IPC; capability flags per backend; the C API in `vorssaint_platform.h` is the contract WP-12's Swift protocol mirrors | L | WP-10 (C side); WP-12, WP-20 (Swift wiring) | review |
-| WP-C2 | GNOME Shell extension (`vorssaint-bridge`) exposing window list/activate/move-resize/workspace and clipboard change/read/write over D-Bus, installed and updated from the Capabilities page, CI against the two latest Shell versions | L | WP-C1 | todo |
+| WP-C2 | GNOME Shell extension (`vorssaint-bridge`) exposing window list/activate/move-resize/workspace and clipboard change/read/write over D-Bus, installed and updated from the Capabilities page, CI against the two latest Shell versions | L | WP-C1 | review |
 | WP-C3 | switcher: list, MRU order, search, simple mode, per-app rules, display filtering; previews from portal window streams where available | L | WP-C1, WP-B1, WP-24 | todo |
 | WP-C4 | windowLayout keyboard snapping + display move on backends that can move/resize; edge-drag on X11 | L | WP-C1, WP-24 | todo |
 | WP-C5 | autoQuit + workspace gestures for mouseButtonShortcuts | M | WP-C1 | todo |
