@@ -279,9 +279,14 @@ jobs:
           echo "=== autolink flags ==="
           tr '\n' ' ' < /tmp/autolink.args; echo
           # shellcheck disable=SC2046
+          # -lstdc++ because OpenCombine's lock is a C++ file
+          # (COpenCombineHelpers.cpp, a std::recursive_mutex behind a virtual
+          # interface). SwiftPM links it for its own products; a hand-driven
+          # link has to say so, and without it the only undefined symbols are
+          # that file's (run 34714607191).
           swiftc -o /tmp/vs-abi-client /tmp/abi_client.o /tmp/libvorssaintbridge.a \
             -L "$(swift build --target VorssaintLinux --show-bin-path)" \
-            $(tr '\n' ' ' < /tmp/autolink.args)
+            -lstdc++ $(tr '\n' ' ' < /tmp/autolink.args)
           echo "=== what it links against ==="
           ldd /tmp/vs-abi-client | head -20
           echo "=== running the C client ==="
