@@ -290,6 +290,7 @@ if (( TEST )); then
         Sources/VorssaintCore/Services/Snippets/TextSnippetSupport.swift \
         Sources/Vorssaint/Services/RadialMenu/RadialMenuSupport.swift \
         Sources/VorssaintCore/Services/QuickTools/ScratchpadSupport.swift \
+        Sources/Vorssaint/Services/QuickTools/ScratchpadSupport+Mac.swift \
         Sources/Vorssaint/Services/QuickTools/ScratchpadStore.swift \
         Sources/VorssaintCore/Services/KillProcess/KillProcessSupport.swift \
         Sources/Vorssaint/Services/Recorder/RecorderSupport.swift \
