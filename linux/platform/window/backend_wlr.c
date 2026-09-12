@@ -51,10 +51,22 @@ typedef struct {
     int32_t workspace;
 } wlr_pending_event;
 
+/** One `wl_output`, kept with the registry name the compositor announced it
+ *  under so `global_remove` can find it again. */
+typedef struct {
+    uint32_t global_name;
+    struct wl_output *proxy;
+    char name[VS_WINDOW_OUTPUT_MAX];
+} wlr_output_entry;
+
 typedef struct wlr_state {
     struct wl_display *display;
     struct wl_registry *registry;
+    /** Back-pointer, so a global going away can lower the capability flags the
+     *  caller reads. */
+    vs_window_system *system;
     struct zwlr_foreign_toplevel_manager_v1 *manager;
+    uint32_t manager_name;
     struct ext_foreign_toplevel_list_v1 *ext_list;
     struct wl_seat *seat;
     uint32_t seat_name;
@@ -73,8 +85,7 @@ typedef struct wlr_state {
     bool has_sway;
 
     /* Outputs, so a toplevel's `output_enter` can be named. */
-    struct wl_output **outputs;
-    char (*output_names)[VS_WINDOW_OUTPUT_MAX];
+    wlr_output_entry *outputs;
     size_t output_count;
 } wlr_state;
 
@@ -180,8 +191,8 @@ static void wlr_handle_output_enter(void *data, struct zwlr_foreign_toplevel_han
     wlr_toplevel *toplevel = data;
     wlr_state *state = toplevel->state;
     for (size_t i = 0; i < state->output_count; i++) {
-        if (state->outputs[i] != output) continue;
-        vs_window_set_string(toplevel->output, sizeof(toplevel->output), state->output_names[i]);
+        if (state->outputs[i].proxy != output) continue;
+        vs_window_set_string(toplevel->output, sizeof(toplevel->output), state->outputs[i].name);
         return;
     }
 }
@@ -289,11 +300,12 @@ static void wlr_manager_toplevel(void *data, struct zwlr_foreign_toplevel_manage
     zwlr_foreign_toplevel_handle_v1_add_listener(handle, &wlr_handle_listener, toplevel);
 }
 
+static void wlr_degrade(wlr_state *state);
+
 static void wlr_manager_finished(void *data, struct zwlr_foreign_toplevel_manager_v1 *manager)
 {
     (void)manager;
-    wlr_state *state = data;
-    wlr_queue(state, VS_WINDOW_EVENT_BACKEND_LOST, 0, NULL, -1);
+    wlr_degrade(data);
 }
 
 static const struct zwlr_foreign_toplevel_manager_v1_listener wlr_manager_listener = {
@@ -420,8 +432,8 @@ static void wlr_output_name(void *data, struct wl_output *output, const char *na
 {
     wlr_state *state = data;
     for (size_t i = 0; i < state->output_count; i++) {
-        if (state->outputs[i] != output) continue;
-        vs_window_set_string(state->output_names[i], VS_WINDOW_OUTPUT_MAX, name);
+        if (state->outputs[i].proxy != output) continue;
+        vs_window_set_string(state->outputs[i].name, VS_WINDOW_OUTPUT_MAX, name);
         return;
     }
 }
@@ -448,6 +460,7 @@ static void wlr_registry_global(void *data, struct wl_registry *registry, uint32
     wlr_state *state = data;
     if (strcmp(interface, zwlr_foreign_toplevel_manager_v1_interface.name) == 0) {
         uint32_t bind_version = version < WLR_MANAGER_VERSION ? version : WLR_MANAGER_VERSION;
+        state->manager_name = name;
         state->manager = wl_registry_bind(registry, name,
                                           &zwlr_foreign_toplevel_manager_v1_interface, bind_version);
         zwlr_foreign_toplevel_manager_v1_add_listener(state->manager, &wlr_manager_listener, state);
@@ -458,26 +471,74 @@ static void wlr_registry_global(void *data, struct wl_registry *registry, uint32
         state->seat_name = name;
         state->seat = wl_registry_bind(registry, name, &wl_seat_interface, 1);
     } else if (strcmp(interface, wl_output_interface.name) == 0 && version >= 4) {
-        struct wl_output **outputs =
+        wlr_output_entry *outputs =
             realloc(state->outputs, (state->output_count + 1) * sizeof(*outputs));
         if (!outputs) return;
         state->outputs = outputs;
-        char (*names)[VS_WINDOW_OUTPUT_MAX] =
-            realloc(state->output_names, (state->output_count + 1) * VS_WINDOW_OUTPUT_MAX);
-        if (!names) return;
-        state->output_names = names;
-        state->outputs[state->output_count] = wl_registry_bind(registry, name, &wl_output_interface, 4);
-        state->output_names[state->output_count][0] = '\0';
-        wl_output_add_listener(state->outputs[state->output_count], &wlr_output_listener, state);
+        wlr_output_entry *entry = &state->outputs[state->output_count];
+        entry->global_name = name;
+        entry->name[0] = '\0';
+        entry->proxy = wl_registry_bind(registry, name, &wl_output_interface, 4);
+        wl_output_add_listener(entry->proxy, &wlr_output_listener, state);
         state->output_count++;
     }
 }
 
+/** The manager global went away, or the compositor said `finished`. Neither is
+ *  fatal: the toplevels already announced stay listable, but nothing can be
+ *  asked of them any more, so the capability flags drop to match and the caller
+ *  is told rather than left to discover it one failed request at a time. */
+static void wlr_degrade(wlr_state *state)
+{
+    if (state->manager) {
+        zwlr_foreign_toplevel_manager_v1_destroy(state->manager);
+        state->manager = NULL;
+    }
+    if (state->system) {
+        /* Placement and workspace switching ride on the sway IPC socket, not on
+         * the protocol, so they are re-added if that socket is still there. */
+        uint32_t surviving = vs_window_capabilities_without_control(state->system->capabilities);
+        if (state->has_sway) {
+            surviving |= state->system->capabilities &
+                         (uint32_t)(VS_WINDOW_CAN_MOVE_RESIZE | VS_WINDOW_CAN_WORKSPACE_SWITCH);
+        }
+        state->system->capabilities = surviving;
+    }
+    vs_window_log("wlr: foreign-toplevel manager is gone; list only from here on");
+    wlr_queue(state, VS_WINDOW_EVENT_BACKEND_LOST, 0, NULL, -1);
+}
+
 static void wlr_registry_remove(void *data, struct wl_registry *registry, uint32_t name)
 {
-    (void)data;
     (void)registry;
-    (void)name;
+    wlr_state *state = data;
+
+    if (state->manager && name == state->manager_name) {
+        wlr_degrade(state);
+        return;
+    }
+
+    for (size_t i = 0; i < state->output_count; i++) {
+        if (state->outputs[i].global_name != name) continue;
+
+        /* Any toplevel still naming this output would otherwise keep reporting
+         * a monitor that no longer exists; the compositor re-sends
+         * `output_enter` for wherever the window went. */
+        for (wlr_toplevel *toplevel = state->toplevels; toplevel; toplevel = toplevel->next) {
+            if (strcmp(toplevel->output, state->outputs[i].name) != 0) continue;
+            toplevel->output[0] = '\0';
+            vs_window_info info;
+            wlr_fill(state, toplevel, &info, NULL, 0, -1);
+            wlr_queue(state, VS_WINDOW_EVENT_CHANGED, toplevel->id, &info, -1);
+        }
+
+        vs_window_log("wlr: output %s removed", state->outputs[i].name);
+        wl_output_release(state->outputs[i].proxy);
+        memmove(&state->outputs[i], &state->outputs[i + 1],
+                (state->output_count - i - 1) * sizeof(*state->outputs));
+        state->output_count--;
+        return;
+    }
 }
 
 static const struct wl_registry_listener wlr_registry_listener = {
@@ -551,6 +612,7 @@ static int wlr_list(vs_window_system *self, vs_window_info **windows_out, size_t
 static int wlr_activate(vs_window_system *self, vs_window_id id)
 {
     wlr_state *state = self->impl;
+    if (!state->manager) return VS_ERR_UNSUPPORTED;
     wlr_toplevel *toplevel = wlr_find(state, id);
     if (!toplevel) return VS_ERR_NOT_FOUND;
     if (!state->seat) return VS_ERR_UNSUPPORTED;
@@ -565,6 +627,7 @@ static int wlr_activate(vs_window_system *self, vs_window_id id)
 static int wlr_close(vs_window_system *self, vs_window_id id)
 {
     wlr_state *state = self->impl;
+    if (!state->manager) return VS_ERR_UNSUPPORTED;
     wlr_toplevel *toplevel = wlr_find(state, id);
     if (!toplevel) return VS_ERR_NOT_FOUND;
     zwlr_foreign_toplevel_handle_v1_close(toplevel->handle);
@@ -578,12 +641,29 @@ static int wlr_close(vs_window_system *self, vs_window_id id)
 static int wlr_set_minimized(vs_window_system *self, vs_window_id id, bool minimized)
 {
     wlr_state *state = self->impl;
+    if (!state->manager) return VS_ERR_UNSUPPORTED;
     wlr_toplevel *toplevel = wlr_find(state, id);
     if (!toplevel) return VS_ERR_NOT_FOUND;
     if (minimized) zwlr_foreign_toplevel_handle_v1_set_minimized(toplevel->handle);
     else zwlr_foreign_toplevel_handle_v1_unset_minimized(toplevel->handle);
-    if (wl_display_roundtrip(state->display) < 0) return VS_ERR_BACKEND;
-    return VS_OK;
+
+    /* Read back from the compositor's own `state` event, not from the request:
+     * the protocol carries set_minimized, but wlroots has no minimized state
+     * and sway acknowledges the request without acting on it. Same contract as
+     * move_resize — the caller is told the state did not change rather than
+     * being handed a success the compositor never delivered. */
+    for (int attempt = 0; attempt < 8; attempt++) {
+        if (wl_display_roundtrip(state->display) < 0) return VS_ERR_BACKEND;
+        /* `closed` frees the handle, so re-resolve rather than reusing it. */
+        toplevel = wlr_find(state, id);
+        if (!toplevel) return VS_ERR_NOT_FOUND;
+        if (((toplevel->flags & VS_WINDOW_MINIMIZED) != 0) == minimized) return VS_OK;
+        struct timespec pause = { .tv_sec = 0, .tv_nsec = 25 * 1000 * 1000 };
+        nanosleep(&pause, NULL);
+    }
+    vs_window_log("wlr: compositor accepted set_minimized(%d) and did not change the state",
+                  minimized ? 1 : 0);
+    return VS_ERR_NOT_APPLIED;
 }
 
 /** Resolve a toplevel to the sway container id, which is what sway commands
@@ -761,9 +841,8 @@ static void wlr_state_free(wlr_state *state)
         if (state->manager) zwlr_foreign_toplevel_manager_v1_destroy(state->manager);
         if (state->ext_list) ext_foreign_toplevel_list_v1_destroy(state->ext_list);
         if (state->seat) wl_seat_destroy(state->seat);
-        for (size_t i = 0; i < state->output_count; i++) wl_output_destroy(state->outputs[i]);
+        for (size_t i = 0; i < state->output_count; i++) wl_output_release(state->outputs[i].proxy);
         free(state->outputs);
-        free(state->output_names);
         if (state->registry) wl_registry_destroy(state->registry);
         if (state->display) wl_display_disconnect(state->display);
         if (state->has_sway) sway_ipc_close(&state->sway);
@@ -811,7 +890,6 @@ vs_window_system *vs_window_backend_wlr_create(int *result_out)
                       zwlr_foreign_toplevel_manager_v1_interface.name);
         wl_display_disconnect(state->display);
         free(state->outputs);
-        free(state->output_names);
         free(state);
         if (result_out) *result_out = VS_ERR_NO_BACKEND;
         return NULL;
@@ -830,6 +908,7 @@ vs_window_system *vs_window_backend_wlr_create(int *result_out)
 
     system->name = "wlr";
     system->impl = state;
+    state->system = system;
     system->capabilities = VS_WINDOW_CAN_LIST | VS_WINDOW_CAN_ACTIVATE | VS_WINDOW_CAN_CLOSE |
                            VS_WINDOW_CAN_MINIMIZE | VS_WINDOW_HAS_LIVE_EVENTS;
     if (state->has_sway) {

@@ -158,14 +158,23 @@ MOVED2=$("$VS_WINDOW" --backend wlr move "$ID_BETA" 40 30 500 400 2) \
 
 # ----------------------------------------------------------------- minimize
 # wlroots has no minimized state of its own: sway acknowledges set_minimized
-# and does nothing. The backend must not pretend otherwise, so this asserts
-# what actually happens rather than what we would like to happen.
-"$VS_WINDOW" --backend wlr minimize "$ID_GAMMA" 1 || fail "set_minimized was rejected"
-sleep 1
-MINIMIZED=$("$VS_WINDOW" --backend wlr list | awk -F'\t' \
-    '$2 == "vorssaint-gamma" { print ($6 ~ /minimized/) ? "yes" : "no" }')
-echo "gamma minimized after request: $MINIMIZED"
-[[ -n "$MINIMIZED" ]] || fail "gamma vanished from the list"
+# and does nothing. The capability stays advertised because the protocol
+# carries the request, but the call reads the compositor's own `state` event
+# back and must report VS_ERR_NOT_APPLIED rather than a success it cannot back
+# up — the same contract move_resize keeps.
+if "$VS_WINDOW" --backend wlr minimize "$ID_GAMMA" 1 >"$WORK/minimize.txt" 2>&1; then
+    # A future wlroots that grows a minimized state is allowed to pass here,
+    # but then the window really has to be minimized.
+    "$VS_WINDOW" --backend wlr list | awk -F'\t' \
+        '$2 == "vorssaint-gamma" && $6 ~ /minimized/ { found = 1 } END { exit !found }' \
+        || fail "minimize reported success without minimizing the window"
+    echo "minimize: this compositor really minimizes"
+else
+    grep -q "did not change" "$WORK/minimize.txt" \
+        || fail "wrong error for an ignored minimize: $(cat "$WORK/minimize.txt")"
+    echo "minimize: sway acknowledged and ignored it, reported as not applied"
+fi
+"$VS_WINDOW" --backend wlr list | grep -q "vorssaint-gamma" || fail "gamma vanished from the list"
 
 # ---------------------------------------------------------------- workspace
 "$VS_WINDOW" --backend wlr workspace >"$WORK/workspace.txt" || fail "workspace read failed"
@@ -177,6 +186,38 @@ echo "gamma minimized after request: $MINIMIZED"
     '$2 == "vorssaint-alpha" { if ($6 !~ /on-current-workspace/ && $6 !~ /on-screen/) found = 1 } END { exit !found }' \
     || fail "alpha still claims to be on the current workspace"
 "$VS_WINDOW" --backend wlr workspace 1 >/dev/null
+
+# ------------------------------------------------------------ output removal
+# A monitor unplug withdraws the wl_output global. The headless backend can do
+# this for real, so the registry's global_remove path is exercised rather than
+# reasoned about: the backend must drop the proxy, stop naming the dead output,
+# and keep working.
+swaymsg create_output >/dev/null || fail "create_output failed"
+sleep 1
+swaymsg -t get_outputs -r | grep -q HEADLESS-2 || fail "HEADLESS-2 was not created"
+swaymsg '[app_id=vorssaint-gamma] move container to output HEADLESS-2' >/dev/null \
+    || fail "could not move gamma to HEADLESS-2"
+sleep 1
+"$VS_WINDOW" --backend wlr list | awk -F'\t' \
+    '$2 == "vorssaint-gamma" && $8 == "HEADLESS-2" { found = 1 } END { exit !found }' \
+    || fail "gamma is not reported on HEADLESS-2"
+
+"$VS_WINDOW" --backend wlr watch 6 >"$WORK/unplug.txt" 2>&1 &
+UNPLUG_WATCH=$!
+PIDS+=("$UNPLUG_WATCH")
+sleep 1
+swaymsg 'output HEADLESS-2 unplug' >/dev/null || fail "unplug failed"
+sleep 3
+kill "$UNPLUG_WATCH" 2>/dev/null || true
+wait "$UNPLUG_WATCH" 2>/dev/null || true
+
+swaymsg -t get_outputs -r | grep -q HEADLESS-2 && fail "HEADLESS-2 survived the unplug"
+"$VS_WINDOW" --backend wlr list >"$WORK/after-unplug.txt" || fail "list failed after unplug"
+cat "$WORK/after-unplug.txt"
+grep -q HEADLESS-2 "$WORK/after-unplug.txt" && fail "a window still names the removed output"
+grep -q "vorssaint-gamma" "$WORK/after-unplug.txt" || fail "gamma was lost with its output"
+# The backend must still be usable, not merely not crashed.
+"$VS_WINDOW" --backend wlr activate "$ID_GAMMA" || fail "activate broke after an output removal"
 
 # ------------------------------------------------------------------- events
 "$VS_WINDOW" --backend wlr watch 90 >"$WORK/events.txt" 2>&1 &

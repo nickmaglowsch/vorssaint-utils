@@ -33,7 +33,7 @@ and exercised only against a fake, because the compositor cannot run here.
 | `can_list` | ✓ measured | ✓ measured | ✓ designed | ✓ designed | ✓ designed |
 | `can_activate` | ✓ measured | ✓ measured | ✓ designed | ✓ designed | ✓ designed |
 | `can_close` | ✓ measured | ✓ measured | ✓ designed | ✓ designed | ✓ designed |
-| `can_minimize` | ✓ measured | ◐ measured (advertised, sway ignores it) | ✗ by design | ✓ designed | ✓ designed |
+| `can_minimize` | ✓ measured | ◐ measured (advertised; sway ignores it, so the call returns `VS_ERR_NOT_APPLIED`) | ✗ by design | ✓ designed | ✓ designed |
 | `can_move_resize` | ✓ measured | ✓ measured (sway IPC only) | ✓ designed | ✓ designed | ✓ designed |
 | `can_workspace_switch` | ✓ measured | ✓ measured (sway IPC only) | ✓ designed | ✓ designed | ✓ designed |
 | `has_live_events` | ✓ measured | ✓ measured | ✓ designed | ✓ designed | ✓ designed |
@@ -156,13 +156,30 @@ Two behaviours measured here bind the implementation:
 - **`close` needs a round trip, not a flush.** Flushing and disconnecting loses
   the close often enough to be seen in the suite.
 
-`set_minimized` is advertised because the protocol has the request, but sway
-acknowledges it and does nothing — wlroots has no minimized state. The suite
-records what actually happens rather than what we would like to:
+`set_minimized` stays advertised because the protocol carries the request, but
+sway acknowledges it and does nothing — wlroots has no minimized state. The
+call therefore reads the compositor's own `state` event back and answers
+`VS_ERR_NOT_APPLIED`, the same contract `move_resize` keeps, instead of
+returning a success it cannot back up. The suite asserts that, and still lets a
+future wlroots that grows a real minimized state pass:
 
 ```
-gamma minimized after request: no
+minimize: sway acknowledged and ignored it, reported as not applied
 ```
+
+**Globals going away.** `wl_output` removal (a monitor unplug) is handled: the
+proxy is released, the entry drops out of the table, and any toplevel still
+naming that output is cleared and re-announced as changed. The headless backend
+can do this for real, so the suite exercises it rather than reasoning about it —
+`swaymsg create_output`, move a window there, `swaymsg output HEADLESS-2
+unplug`, then assert no window names the dead output, the window survives, and
+the backend still answers. Withdrawal of the *manager* global (or its `finished`
+event) drops the backend to listing only: `capabilities` shrinks to what still
+works, `VS_WINDOW_EVENT_BACKEND_LOST` is queued, and placement stays if the sway
+IPC socket is still there. **No compositor available here can withdraw a
+global**, so that path is covered by a unit test of the shared decision
+(`vs_window_capabilities_without_control`) plus the output-removal path that
+exercises the same `global_remove` wiring; it is not end-to-end verified.
 
 **Measured** (headless sway 1.9, `WLR_BACKENDS=headless WLR_RENDERER=pixman
 WLR_LIBINPUT_NO_DEVICES=1`, one 1920x1080 output, `foot` windows):

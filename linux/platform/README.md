@@ -32,9 +32,16 @@ Rules every section follows, and every reviewer should check:
 
 - **Every call returns `int`**: `VS_OK` or a negative `vs_result`. No call
   returns a pointer that means "failed" without also saying why.
-- **Capabilities are fixed for the life of the instance.** A member whose
+- **Capabilities only shrink, and only on an event.** A member whose
   capability bit is clear still exists and returns `VS_ERR_UNSUPPORTED`; the
-  caller never has to test a function pointer for NULL.
+  caller never has to test a function pointer for NULL. The bitmask changes
+  only when the channel that carried those verbs goes away — a compositor
+  withdrawing a global, a bridge leaving the bus — and that is announced as
+  `VS_WINDOW_EVENT_BACKEND_LOST`, so a caller re-reads the field on that event
+  and nowhere else.
+- **One instance, one thread, no surprises.** Nothing here starts a thread, and
+  no call is reentrant. The event callback runs only inside that instance's own
+  `dispatch`, on the thread that called it; separate instances are independent.
 - **Success is read back, not assumed.** Compositors, window managers and
   D-Bus bridges all acknowledge a request and then do something else.
   `VS_ERR_NOT_APPLIED` is the answer for "we asked, it agreed, the state did

@@ -43,6 +43,13 @@ void vs_window_vec_free(vs_window_vec *vec);
 /** Default `free_list` for backends whose lists are plain malloc'd arrays. */
 void vs_window_free_list_default(vs_window_system *self, vs_window_info *windows, size_t count);
 
+/** What a backend can still do once the protocol or bridge that carried its
+ *  control verbs has gone away: the windows it already knows stay listable and
+ *  nothing else survives. Shared so the "degraded" state means one thing across
+ *  backends, and so it can be tested without a compositor that can withdraw a
+ *  global. */
+uint32_t vs_window_capabilities_without_control(uint32_t capabilities);
+
 /** Log to stderr when VS_WINDOW_DEBUG is set in the environment. */
 void vs_window_log(const char *format, ...) __attribute__((format(printf, 1, 2)));
 

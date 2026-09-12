@@ -17,6 +17,14 @@
  *   - Nothing in this header allocates with anything but malloc/free; every
  *     `*_out` array returned by a backend is released by its `free_*` member.
  *   - No call blocks for longer than its documented budget.
+ *
+ * Threading: every vtable in this header is single-threaded. One instance
+ * belongs to one thread; two threads must not call into the same instance, even
+ * for two different members, and none of these calls is reentrant. Backends
+ * start no threads of their own, so events never arrive out of the blue: a
+ * backend only ever calls the event callback from inside that instance's own
+ * `dispatch`, on the thread that called it. Separate instances are independent
+ * and may be used from different threads.
  */
 
 #ifndef VORSSAINT_PLATFORM_H
@@ -175,7 +183,10 @@ typedef enum vs_window_event_type {
     VS_WINDOW_EVENT_CHANGED,
     VS_WINDOW_EVENT_ACTIVATED,
     VS_WINDOW_EVENT_WORKSPACE_CHANGED,
-    /** The backend lost its connection; the caller must recreate it. */
+    /** The backend lost the channel its control verbs rode on. `capabilities`
+     *  has already shrunk to what still works — often listing alone — so the
+     *  caller re-reads it, and recreates the backend when it wants the rest
+     *  back. */
     VS_WINDOW_EVENT_BACKEND_LOST,
 } vs_window_event_type;
 
@@ -199,15 +210,21 @@ struct vs_window_system {
     /** Backend identity, for logs and the capabilities page: "x11", "wlr",
      *  "hyprland", "kwin", "gnome". */
     const char *name;
-    /** Bitmask of `vs_window_capability`, fixed for the life of the instance.
-     *  A member whose capability bit is clear still exists and returns
-     *  VS_ERR_UNSUPPORTED. */
+    /** Bitmask of `vs_window_capability`. A member whose capability bit is
+     *  clear still exists and returns VS_ERR_UNSUPPORTED.
+     *
+     *  Capabilities only ever shrink, and only when the channel that carried
+     *  them goes away — a compositor withdrawing a global, a bridge leaving the
+     *  bus. That is reported as VS_WINDOW_EVENT_BACKEND_LOST, so a caller that
+     *  cached this field re-reads it on that event; nothing else changes it. */
     uint32_t capabilities;
     /** Backend-private state. */
     void *impl;
 
     /** Snapshot of every toplevel, bottom-most first. The caller owns the array
-     *  until it passes it to `free_list`. Budget: 100 ms. */
+     *  until it passes it to `free_list`. Budget: 100 ms. May run the backend's
+     *  connection, so queued events can be delivered by a later `dispatch`
+     *  rather than by this call. */
     int (*list)(vs_window_system *self, vs_window_info **windows_out, size_t *count_out);
     void (*free_list)(vs_window_system *self, vs_window_info *windows, size_t count);
 
@@ -228,14 +245,16 @@ struct vs_window_system {
     int (*current_workspace)(vs_window_system *self, int32_t *workspace_out);
     int (*set_workspace)(vs_window_system *self, int32_t workspace);
 
-    /** Install the event sink. Pass NULL to remove it. Events are delivered
-     *  from `dispatch`, never from another thread. */
+    /** Install the event sink. Pass NULL to remove it. The callback runs inside
+     *  `dispatch`, on the calling thread, and may call back into this same
+     *  instance only after `dispatch` returns. */
     int (*set_event_callback)(vs_window_system *self, vs_window_event_cb callback, void *user_data);
     /** Pollable descriptor that becomes readable when events are pending, or -1
      *  when the backend has none (`VS_WINDOW_HAS_LIVE_EVENTS` clear). */
     int (*event_fd)(vs_window_system *self);
-    /** Drain what is pending and deliver it to the callback. Never blocks.
-     *  Returns the number of events delivered, or a negative `vs_result`. */
+    /** Drain what is pending and deliver it to the callback. Never blocks. The
+     *  only place the callback runs. Returns the number of events delivered, or
+     *  a negative `vs_result`. */
     int (*dispatch)(vs_window_system *self);
 
     void (*destroy)(vs_window_system *self);

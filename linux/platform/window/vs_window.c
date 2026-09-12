@@ -94,6 +94,11 @@ void vs_window_vec_free(vs_window_vec *vec)
     vec->capacity = 0;
 }
 
+uint32_t vs_window_capabilities_without_control(uint32_t capabilities)
+{
+    return capabilities & (uint32_t)(VS_WINDOW_CAN_LIST | VS_WINDOW_HAS_PREVIEWS);
+}
+
 void vs_window_free_list_default(vs_window_system *self, vs_window_info *windows, size_t count)
 {
     (void)self;

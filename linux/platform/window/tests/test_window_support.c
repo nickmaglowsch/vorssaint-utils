@@ -109,6 +109,32 @@ static void test_backend_names(void)
     CHECK(has_x11 && has_wlr && has_hyprland && has_kwin && has_gnome);
 }
 
+/* The degraded state a backend falls into when the protocol or bridge carrying
+ * its control verbs goes away (a compositor withdrawing
+ * zwlr_foreign_toplevel_manager_v1, or sending `finished`). No compositor
+ * available here can withdraw a global, so the decision itself is tested
+ * directly and the wiring is exercised through the output-removal path. */
+static void test_capabilities_without_control(void)
+{
+    uint32_t full = VS_WINDOW_CAN_LIST | VS_WINDOW_CAN_ACTIVATE | VS_WINDOW_CAN_CLOSE |
+                    VS_WINDOW_CAN_MINIMIZE | VS_WINDOW_CAN_MOVE_RESIZE |
+                    VS_WINDOW_CAN_WORKSPACE_SWITCH | VS_WINDOW_HAS_LIVE_EVENTS;
+    uint32_t degraded = vs_window_capabilities_without_control(full);
+
+    CHECK(degraded & VS_WINDOW_CAN_LIST);
+    CHECK(!(degraded & VS_WINDOW_CAN_ACTIVATE));
+    CHECK(!(degraded & VS_WINDOW_CAN_CLOSE));
+    CHECK(!(degraded & VS_WINDOW_CAN_MINIMIZE));
+    CHECK(!(degraded & VS_WINDOW_CAN_MOVE_RESIZE));
+    CHECK(!(degraded & VS_WINDOW_CAN_WORKSPACE_SWITCH));
+    CHECK(!(degraded & VS_WINDOW_HAS_LIVE_EVENTS));
+
+    /* Idempotent: losing the control channel twice is the same state. */
+    CHECK(vs_window_capabilities_without_control(degraded) == degraded);
+    /* A backend that could only list never had anything to lose. */
+    CHECK(vs_window_capabilities_without_control(VS_WINDOW_CAN_LIST) == VS_WINDOW_CAN_LIST);
+}
+
 static void test_unknown_backend_is_rejected(void)
 {
     int result = VS_OK;
@@ -124,6 +150,7 @@ int main(void)
     test_rect_tolerance();
     test_vector();
     test_backend_names();
+    test_capabilities_without_control();
     test_unknown_backend_is_rejected();
 
     if (failures) {
