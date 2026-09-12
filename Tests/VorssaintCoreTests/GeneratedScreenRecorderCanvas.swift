@@ -37,10 +37,6 @@ final class GeneratedScreenRecorderCanvasTests: XCTestCase {
             GeneratedSupport.formatSpecifiers(in: format)
         }
 
-        expect(RecorderSupport.videoGeometry(naturalSize: .zero,
-                                             preferredTransform: .identity).size == .zero,
-               "missing video dimensions stay invalid instead of becoming an artificial frame")
-
         expect(RecorderSupport.sanitizedZoomAmount(99) == RecorderSupport.zoomAmountRange.upperBound
                 && RecorderSupport.sanitizedZoomAmount(.nan) == 1.8,
                "a broken zoom amount falls back instead of magnifying to nothing")

@@ -127,6 +127,9 @@ EXCLUDED = {
 IDENT = re.compile(r"\b([A-Za-z_][A-Za-z0-9_]*)\b")
 BARE = re.compile(r"(?<![.\w$])([a-z_][A-Za-z0-9_]*)\b(?!\s*:)")
 # `let x` with no `=` and no type after it: the Swift 5.7 shorthand binding.
+# `SomeType.member` — a qualified use, the only member reference whose
+# receiver type can be read off the text.
+MEMBER_USE = re.compile(r"\b([A-Z][A-Za-z0-9_]*)\.([a-zA-Z_][A-Za-z0-9_]*)")
 SHORTHAND = re.compile(r"\b(?:let|var)\s+([a-z_][A-Za-z0-9_]*)\s*(?=[,{)\]]|$)",
                        re.MULTILINE)
 MARK = re.compile(r"^\s*// MARK:\s*(.+?)\s*$")
@@ -268,6 +271,50 @@ def declaration_index():
     return kind
 
 
+EXTENSION = re.compile(r"\bextension\s+([A-Z][A-Za-z0-9_]*)[^{]*\{")
+MEMBER = re.compile(r"\b(?:static\s+|class\s+|private\s+|public\s+|final\s+)*"
+                    r"(?:func|var|let)\s+([a-zA-Z_][A-Za-z0-9_]*)")
+
+
+def mac_member_index(kind):
+    """Members a *non-core* file adds to a core type, by extension.
+
+    `ScratchpadSupport` is in the core; `ScratchpadSupport.markdownPreview` is
+    declared in `Sources/Vorssaint/Services/QuickTools/ScratchpadSupport+Mac.swift`,
+    which the Linux test target does not compile. A rule that only looks at
+    type names cannot see that — run 34692949935 failed on exactly this
+    ("type 'ScratchpadSupport' has no member 'markdownPreview'") — so the
+    member names of those extensions are collected and treated as Mac-only.
+    """
+    members = {}
+    for dirpath, dirnames, filenames in os.walk(SOURCE_ROOT):
+        dirnames.sort()
+        for name in sorted(filenames):
+            if not name.endswith(".swift"):
+                continue
+            path = os.path.join(dirpath, name)
+            if path.startswith(CORE_PREFIX):
+                continue
+            raw = open(path, encoding="utf-8", errors="replace").read()
+            if "extension " not in raw:
+                continue
+            text = scrub(raw)
+            for match in EXTENSION.finditer(text):
+                if kind.get(match.group(1)) != "core":
+                    continue
+                depth = 1
+                i = match.end()
+                while i < len(text) and depth:
+                    if text[i] == "{":
+                        depth += 1
+                    elif text[i] == "}":
+                        depth -= 1
+                    i += 1
+                members.setdefault(match.group(1), set()).update(
+                    MEMBER.findall(text[match.end():i]))
+    return members
+
+
 # ------------------------------------------------------------------ chunking
 
 class Unit:
@@ -290,6 +337,7 @@ class Unit:
         # declaration and is really a *use* of an outer name: emitting it while
         # the statement that declared `x` was dropped produced "cannot find
         # 'regularBareApp' in scope" (run 34692708425).
+        self.member_uses = set(MEMBER_USE.findall(self.stripped))
         self.shorthand = set(SHORTHAND.findall(self.stripped))
         self.declared -= self.shorthand
         self.complete = not (
@@ -485,13 +533,14 @@ def harness_body(path):
 
 # ------------------------------------------------------------- portability
 
-def classify(units, kind, boundaries=(), excluded=()):
+def classify(units, kind, boundaries=(), excluded=(), mac_members=None):
     """Walk the units in order, deciding which can run on Linux.
 
     `available` holds the local names introduced by units that were kept. A
     dropped unit poisons every available name it touches, because it may have
     been the statement that gave the name its expected value.
     """
+    mac_members = mac_members or {}
     available = set(HARNESS_NAMES)
     decisions = []
     for index, unit in enumerate(units):
@@ -503,6 +552,11 @@ def classify(units, kind, boundaries=(), excluded=()):
         reason = None
         if unit.start in excluded:
             reason = "excluded:" + excluded[unit.start]
+        elif any(member in mac_members.get(owner, ())
+                 for owner, member in unit.member_uses):
+            reason = "mac-member:" + sorted(
+                "%s.%s" % (owner, member) for owner, member in unit.member_uses
+                if member in mac_members.get(owner, ()))[0]
         elif not unit.complete:
             # The splitter cut this statement in half; emitting either half
             # would not compile. Drop it (and, through the poisoning below,
@@ -615,6 +669,7 @@ def reindent(text, spaces):
 
 def generate(sources, verbose=False):
     kind = declaration_index()
+    mac_members = mac_member_index(kind)
     report = []
     files = {}
     used_names = set()
@@ -624,7 +679,8 @@ def generate(sources, verbose=False):
             continue
         units, marks = split_units(lines, first, last, indent)
         decisions = classify(units, kind, boundaries=set(marks),
-                             excluded=EXCLUDED.get(source, {}))
+                             excluded=EXCLUDED.get(source, {}),
+                             mac_members=mac_members)
         # Group into sections.
         sections = []
         current = {"title": "Prelude", "decisions": []}
