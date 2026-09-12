@@ -357,7 +357,12 @@ jobs:
           set -euo pipefail
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
           swift --version
-          ldd --version | head -1
+          # Not `ldd --version | head -1`: the step runs with pipefail and
+          # errexit, head closes the pipe, ldd takes SIGPIPE, and the step
+          # dies with 141 having proved nothing (run 34723008825). The same
+          # trap the bridge-abi job's ldd call documents.
+          ldd --version > /tmp/ldd-version.txt
+          head -1 /tmp/ldd-version.txt
           grep PRETTY_NAME /etc/os-release
 
       - name: Qt 6, the sampler's dependencies and the packaging tools
@@ -379,7 +384,8 @@ jobs:
             xvfb x11-utils imagemagick dbus-x11 python3-dbus python3-gi \
             gir1.2-glib-2.0 fonts-dejavu-core
           qmake6 -query QT_VERSION
-          cmake --version | head -1
+          cmake --version > /tmp/cmake-version.txt
+          head -1 /tmp/cmake-version.txt
 
       # Exactly what the bridge-abi job does, and for the same reason: SwiftPM
       # builds executables, not archives, so the archive is made from the
@@ -529,7 +535,8 @@ jobs:
             libxcb-keysyms1 libxcb-randr0 libxcb-render-util0 libxcb-shape0 \
             libxcb-xkb1 libxkbcommon-x11-0 ca-certificates file
           grep PRETTY_NAME /etc/os-release
-          ldd --version | head -1
+          ldd --version > /tmp/ldd-version.txt
+          head -1 /tmp/ldd-version.txt
           ! command -v qmake6 || { echo "Qt is installed here; the test is not clean"; exit 1; }
 
       - uses: actions/download-artifact@v4
