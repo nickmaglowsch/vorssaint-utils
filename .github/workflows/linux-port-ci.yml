@@ -533,7 +533,16 @@ jobs:
             libglib2.0-0t64 libfontconfig1 libfreetype6 libxkbcommon0 \
             libx11-xcb1 libxcb-cursor0 libxcb-icccm4 libxcb-image0 \
             libxcb-keysyms1 libxcb-randr0 libxcb-render-util0 libxcb-shape0 \
-            libxcb-xkb1 libxkbcommon-x11-0 ca-certificates file
+            libxcb-xkb1 libxkbcommon-x11-0 ca-certificates file \
+            libharfbuzz0b libxext6 libxrender1 libsm6 libice6 libexpat1 \
+            libwayland-client0 libwayland-cursor0 libwayland-egl1
+          # An AppImage deliberately leaves the graphics and text stack to the
+          # host (the pkg2appimage excludelist: libharfbuzz, libGL, libwayland
+          # and friends, so it uses the host's drivers and fontconfig rather
+          # than a stale copy of its own). A bare distro container is not a
+          # desktop and has none of them, so this leg installs exactly that
+          # set: a missing entry here is a dependency a real desktop would
+          # already have (run 34723208844 found libharfbuzz.so.0 that way).
           grep PRETTY_NAME /etc/os-release
           ldd --version > /tmp/ldd-version.txt
           head -1 /tmp/ldd-version.txt
