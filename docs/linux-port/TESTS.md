@@ -76,6 +76,18 @@ How it selects:
    stdlib/Foundation surface in the tool. Anything else — a declaration that
    stayed in `Sources/Vorssaint`, `CGPoint`, `pid_t`, a helper defined in
    another `Tests/` file — drops the statement.
+
+   The soundness of step 3 is not total, and the limit is worth stating:
+   a name reached through a dot is assumed to belong to a receiver that was
+   already checked, so an *instance member* on a core type is not verified
+   against the declaration index. Members added to a core type by an
+   extension in a non-core file (`ScratchpadSupport.markdownPreview` in
+   `ScratchpadSupport+Mac.swift`, say) are caught, because the tool indexes
+   those separately and matches them as `Type.member` — bare-name matching
+   cost 126 unrelated statements and was abandoned. What is not caught is a
+   member a core file itself declares behind `#if os(macOS)`. The Linux
+   compiler on CI is the backstop for that case, and it is why the generated
+   suite is a CI gate rather than a local claim.
 4. **Poisoning.** When a statement is dropped, every local name it touched is
    dropped from scope too, so a later check cannot silently read a variable
    whose value came from a statement that is no longer there.

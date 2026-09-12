@@ -108,7 +108,7 @@ app is behaviourally unchanged.
 | WP-13 | Combine abstraction (OpenCombine on Linux) | S | WP-10 | Core porter | merged (per-file guard convention in COMBINE.md; the VorssaintCombine target was deleted by WP-12) |
 | WP-14 | Settings store abstraction (UserDefaults ↔ JSON/GSettings) | M | WP-12 | Core porter | todo |
 | WP-15 | Feature catalog: platform support flags and Linux presets | S | WP-12 | Core porter | todo |
-| WP-16 | Test harness: `swift test` on both platforms, port `Tests/*` pure checks | M | WP-11 | QA/reviewer | review (VorssaintCoreTests target + Tools/linux-port/port-tests.py; counts in TESTS.md) |
+| WP-16 | Test harness: `swift test` on both platforms, port `Tests/*` pure checks | M | WP-11 | QA/reviewer | merged (73 generated cases, 90 Linux tests green; both vacuous walks widened) |
 | WP-17 | macOS CI job proves `main` unchanged (selftest + ui-smoke on the new layout) | S | WP-11 | Packaging/CI | merged (by WP-10) — the `macos` job of linux-port-ci.yml runs `./build.sh`, `--selftest` and `./build.sh --test` on every push; `Tools/ui-smoke.sh` is not run and cannot be (TESTS.md § 7) |
 | WP-18 | `CoreBridge`: `@_cdecl` subscribe/command/snapshot surface, `Codable` snapshots and commands per service, diffing, fake-service tests | M | WP-12, WP-13 | Core porter | todo |
 
