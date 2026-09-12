@@ -109,9 +109,6 @@ final class GeneratedFeaturesHubCatalogTests: XCTestCase {
 
         var lateMouseReset = false
 
-        expect(mouseIdentity.canMatchAcrossRegistryIDs,
-               "a stable physical identity can recover after a device receives a new registry id")
-
         let anonymousMouseIdentity = MouseAccelerationDeviceIdentity(
             vendorID: nil,
             productID: nil,

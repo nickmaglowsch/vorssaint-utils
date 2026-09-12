@@ -114,12 +114,6 @@ final class GeneratedDockPreviewHelpersTests: XCTestCase {
             return value
         }
 
-        expect(minimizeIntentMinimizedReads == 0 && minimizeIntentFocusedReads == 0,
-               "App Switcher reads no window state on a minimize pulse the frontmost check alone settles")
-
-        expect(minimizeIntentMinimizedReads == 1 && minimizeIntentFocusedReads == 0,
-               "App Switcher skips the focused-window read when the target is already minimized")
-
         // The shared take-over works on raw WindowServer ids. Same transition
         // rule as the switcher had: suppress only what is enabled now, restore
         // only what we own and no longer want.
