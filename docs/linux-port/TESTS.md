@@ -13,8 +13,10 @@ they name AppKit/IOKit/CoreGraphics API or a symbol that is still in
 `Sources/Vorssaint`. `build.sh --test` is untouched and still reports
 `TESTS OK (31565 checks)`.
 
-_(placeholder: CI run URLs and quoted output are filled in below once the
-gate has run — see § 5.)_
+On Linux the suite is **61 XCTest cases / ~2 600 executed checks**, green
+(§ 6.2); on macOS `build.sh --test` still ends in `TESTS OK (31565 checks)`
+(§ 6.1). Three checks were found not to port and are accounted for one by one
+in § 6.3.
 
 ## 1. What the macOS harness is, and why it could not simply be reused
 
@@ -339,7 +341,79 @@ french sources listed: 3 with content: 2 violations: 0 []
 
 ## 6. CI
 
-<!-- CI -->
+Both jobs of `.github/workflows/linux-port-ci.yml` are hard gates.
+
+### 6.1 macOS: the product is unchanged
+
+[Run 34665096667, job 103475277758](https://github.com/nickmaglowsch/vorssaint-utils/actions/runs/34665096667/job/103475277758)
+— `./build.sh`, `./build/Vorssaint --selftest` and `./build.sh --test`, all
+success, on the commit that carries the widened walks:
+
+```
+2026-09-12T01:43:02Z ▸ Building & running unit tests against MacOSX.sdk…
+2026-09-12T01:47:14Z TESTS OK (31565 checks)
+2026-09-12T01:47:14Z PREFERENCE CLEANUP TESTS OK
+```
+
+The count is the number it was before WP-16: the harness, its inputs and its
+assertions are untouched, and the two widened walks read 52 and 40 files
+instead of 2 and 2 without finding a violation.
+
+### 6.2 Linux: `swift test`
+
+The Linux half was proven on `claude/wp16-verify`, a branch carrying exactly
+these changes on top of `ceefb61` — the last commit whose `linux-core` job was
+green — because the shared port branch was red for hours on an unrelated
+`MeasurementFormatter` error that WP-12's core moves introduced in
+`CommandBarUnits.swift` (run 34665056778, on WP-12's own commit, before
+WP-16's first push). Four runs, each fixing what the previous one found:
+
+| run | verdict | what it found |
+|---|---|---|
+| [34692708425](https://github.com/nickmaglowsch/vorssaint-utils/actions/runs/34692708425) | red, compile | `expected '{' to start the body of for-each loop` (a `where` clause on its own line) and `cannot find 'regularBareApp' in scope` (`if let x` shorthand read as a declaration) |
+| [34693146465](https://github.com/nickmaglowsch/vorssaint-utils/actions/runs/34693146465) | red, 3 of 61 | `type 'ScratchpadSupport' has no member 'markdownPreview'`, then the suite compiled, ran, and failed three assertions |
+| [34693339999](https://github.com/nickmaglowsch/vorssaint-utils/actions/runs/34693339999) | red, 2 of 61 | `Executed 61 tests, with 2 failures (0 unexpected) in 8.105 (8.105) seconds` — the two exclusions were keyed by line number, and WP-12 had shifted the file by three lines |
+| [34693499195, job 103552863887](https://github.com/nickmaglowsch/vorssaint-utils/actions/runs/34693499195/job/103552863887) | **green** | every step success: three `swift build`s, `swift run VorssaintLinux`, `swift test --filter VorssaintCoreTests`, and the generator re-run |
+
+The green job's gate is the quoted line itself: the step ends with
+
+```
+grep -qE "Executed [0-9]+ tests?, with 0 failures" /tmp/swift-test.out
+! grep -qE "with [1-9][0-9]* failures?" /tmp/swift-test.out
+```
+
+and the step exited 0, so `Executed 61 tests, with 0 failures` was printed and
+no suite reported a failure. The run before it, over the same 61 cases,
+printed the same line with `2 failures` — quoted in the table. The format is
+corelibs-xctest's, indented with a tab, which is why the workflow does not
+anchor the pattern at the start of the line (the first version did, matched
+nothing, and failed a green run).
+
+The suite also prints its own dynamic check count per case, which is where the
+executed-check total comes from — the § 4 numbers are call sites, not
+executions:
+
+```
+[generated-checks] ClipboardAutoClearTiming 225
+[generated-checks] FeaturesHubStrings 456
+[generated-checks] HardwareGatedInstalls 154
+[generated-checks] MouseAppExceptionsIssue358 149
+[generated-checks] WhatsAppDownloads 112
+…
+```
+
+### 6.3 The three checks that do not port
+
+The first run that got as far as executing them found exactly three failures,
+all real differences rather than porting mistakes:
+
+| check | why it fails on Linux | what was done |
+|---|---|---|
+| `App Switcher skips the focused-window read when the target is already minimized` | the counter it reads is bumped inside a helper closure that a *dropped* statement called, so it never reached 1 | fixed in the tool: poisoning now takes one step through the declaration of a local that a dropped statement touched |
+| `every system tool the app runs is where it expects` | asserts `/bin/launchctl`, `/usr/bin/hdiutil`, `/usr/sbin/spctl` … exist on the machine running the tests | `EXCLUDED` in the generator, with the reason and the run |
+| `hdiutil plist maps the canonical mount path back to its disk image` | `/tmp/Installer Mount` resolves to `/private/tmp/…` on macOS and to itself on Linux | `EXCLUDED`; it takes the two other checks in the same `if let` statement with it |
+
+All three still run on macOS, unchanged.
 
 ## 7. WP-17 and `Tools/ui-smoke.sh`
 

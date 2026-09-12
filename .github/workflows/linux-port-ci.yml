@@ -70,6 +70,29 @@ jobs:
           swift run VorssaintLinux | tee /tmp/vorssaint-linux.out
           grep -F "VorssaintCore 0.1.0-dev (linux)" /tmp/vorssaint-linux.out
 
+      # Before the tests, so the job log ends with the test summary: the API
+      # only serves the tail of a 1600-line log, and apt's progress output
+      # would otherwise bury it.
+      - name: The generated tests are what the generator produces
+        shell: bash
+        run: |
+          command -v python3 >/dev/null \
+            || (apt-get update -qq >/dev/null && apt-get install -y -qq python3 >/dev/null)
+          # Hard gate: every emitted file resolves and is balanced.
+          python3 Tools/linux-port/port-tests.py --verify
+          # Drift is reported, not failed: every core move (WP-12 and the
+          # feature squads) legitimately enlarges the selection, and the file
+          # to regenerate belongs to whoever moves next, not to the push that
+          # happens to land after them. A hand edit shows up here too —
+          # the tool overwrites Generated*.swift on the next run.
+          python3 Tools/linux-port/port-tests.py
+          if ! git diff --quiet -- Tests/VorssaintCoreTests; then
+            echo "::warning::Tests/VorssaintCoreTests is stale — run" \
+                 "python3 Tools/linux-port/port-tests.py and commit the result"
+            git diff --stat -- Tests/VorssaintCoreTests
+          fi
+          git checkout -- Tests/VorssaintCoreTests
+
       - name: Unit tests
         shell: bash
         run: |
@@ -95,26 +118,6 @@ jobs:
           test "$status" -eq 0
           grep -qE "Executed [0-9]+ tests?, with 0 failures" /tmp/swift-test.out
           ! grep -qE "with [1-9][0-9]* failures?" /tmp/swift-test.out
-
-      - name: The generated tests are what the generator produces
-        shell: bash
-        run: |
-          command -v python3 >/dev/null \
-            || (apt-get update -qq && apt-get install -y -qq python3)
-          # Hard gate: every emitted file resolves and is balanced.
-          python3 Tools/linux-port/port-tests.py --verify
-          # Drift is reported, not failed: every core move (WP-12 and the
-          # feature squads) legitimately enlarges the selection, and the file
-          # to regenerate belongs to whoever moves next, not to the push that
-          # happens to land after them. A hand edit shows up here too —
-          # the tool overwrites Generated*.swift on the next run.
-          python3 Tools/linux-port/port-tests.py
-          if ! git diff --quiet -- Tests/VorssaintCoreTests; then
-            echo "::warning::Tests/VorssaintCoreTests is stale — run" \
-                 "python3 Tools/linux-port/port-tests.py and commit the result"
-            git diff --stat -- Tests/VorssaintCoreTests
-          fi
-          git checkout -- Tests/VorssaintCoreTests
 
   macos:
     name: macOS app (build.sh)
