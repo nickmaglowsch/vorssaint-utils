@@ -263,6 +263,7 @@ if (( TEST )); then
         Sources/VorssaintCore/Core/FeatureHubStrings.swift \
         Sources/VorssaintCore/Core/ShortcutSettingsStrings.swift \
         Sources/Vorssaint/Core/SettingsBackupSupport.swift \
+        Sources/VorssaintCore/Core/SettingsBackupFormat.swift \
         Sources/VorssaintCore/Core/BackupStrings.swift \
         Sources/VorssaintCore/Core/SnippetStrings.swift \
         Sources/VorssaintCore/Core/BrightnessStrings.swift \
