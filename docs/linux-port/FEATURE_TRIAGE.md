@@ -119,10 +119,10 @@ design is WP-S1. The listen-only features use the same relay in tap mode.
 | Feature | Size / reusable | macOS mechanism | Linux mechanism | G | K | W | X | Verdict | Wave |
 |---|---|---|---|---|---|---|---|---|---|
 | monitorCPU | (3.2k+2.2k / 40%) | host_statistics, SMC temps | `/proc/stat`, hwmon `temp*_input` (k10temp, coretemp, zenpower), `/proc/<pid>/stat` for per-process. | ✓ | ✓ | ✓ | ✓ | Port | A |
-| monitorGPU | | IORegistry GPU counters | amdgpu sysfs `gpu_busy_percent`, `mem_info_*`; NVIDIA via NVML if the driver is present; Intel via `i915` sysfs or `intel_gpu_top` semantics. Vendor matrix documented. | ✓ | ✓ | ✓ | ✓ | Reduced | A |
-| monitorMemory | | vm_statistics | `/proc/meminfo`, `/proc/vmstat` (PSI from `/proc/pressure/memory` for "pressure"). | ✓ | ✓ | ✓ | ✓ | Port | A |
-| monitorNetwork | | getifaddrs/sysctl | `/proc/net/dev`; speed test 100 % reused. | ✓ | ✓ | ✓ | ✓ | Port | A |
-| monitorDisk | | IOBlockStorage stats, DiskArbitration | `/proc/diskstats`, `statvfs`; eject via UDisks2. | ✓ | ✓ | ✓ | ✓ | Port | A |
+| monitorGPU | | IORegistry GPU counters | amdgpu sysfs `gpu_busy_percent`, `mem_info_*`; NVIDIA via NVML `dlopen`ed, never linked; Intel publishes **no** busy percentage without `CAP_PERFMON`, so the panel shows the GT clock and says why. Measured vendor matrix: `SENSORS_BACKEND.md`. | ✓ | ✓ | ✓ | ✓ | Reduced | A |
+| monitorMemory | | vm_statistics | `/proc/meminfo` (Used = `MemTotal - MemAvailable`, App = `AnonPages`, Cached = `Buffers+Cached+SReclaimable-Shmem`); pressure from `/proc/pressure/memory`, falling back to the MemAvailable shortfall with a flag saying which. | ✓ | ✓ | ✓ | ✓ | Port | A |
+| monitorNetwork | | getifaddrs/sysctl | `/proc/net/dev`; interface type and default route from `/sys/class/net` and `/proc/net/route`; speed test 100 % reused. | ✓ | ✓ | ✓ | ✓ | Port | A |
+| monitorDisk | | IOBlockStorage stats, DiskArbitration | `/proc/diskstats`, `statvfs` over `/proc/self/mounts`; eject via UDisks2. SMART/NVMe health needs `SG_IO`/`NVME_IOCTL_ADMIN_CMD`, i.e. root, so it is helper work and the rows are hidden until then (verdict may need to become Reduced: lead's call, `SENSORS_BACKEND.md` § Decisions). | ✓ | ✓ | ✓ | ✓ | Port | A |
 | monitorPower | | AppleSmartBattery, IOPS | UPower D-Bus (`org.freedesktop.UPower.Device`: percentage, state, energy-rate, time-to-empty, cycle count, temperature) or `/sys/class/power_supply` directly; adapter watts from `power_now`; peripheral batteries via UPower too. | ✓ | ✓ | ✓ | ✓ | Port | A |
 | fanControl | 1.6k / 40% | SMC writes via root launchd daemon | hwmon `pwm*` writes through `vorssaint-helper` (polkit action, systemd unit); curve/heartbeat/watchdog logic reused. Hardware coverage depends on the driver (`nct6775`, `thinkpad_acpi`, `dell-smm-hwmon`, `asus-nb-wmi`). | ✓ | ✓ | ✓ | ✓ | Reduced | C |
 

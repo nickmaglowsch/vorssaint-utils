@@ -341,6 +341,20 @@ of hwmon and power_supply, the attributes amdgpu and i915 publish — with
 representative values that the tests name where they matter.
 
 `scripts/build-matrix.sh` is the five-leg build the playbook requires: the four
-CMake build types plus an ASan/UBSan/LSan leg whose suites must pass. The
-sanitizer leg additionally drives every `vs-sensors` command against the live
-machine, because the harness is where a missed `free_*` would hide.
+CMake build types plus an ASan/UBSan/LSan leg whose suites must pass. It builds
+the whole platform tree in every leg, so a warning this package introduces
+elsewhere is caught here; it runs the rest of the tree's ctest once, minus the
+capture and audio stack suites, which bring up sway, a portal and PipeWire and
+cannot be trusted to come up cleanly on a shared container — those belong to
+their own packages' matrices. The sanitizer leg additionally drives every
+`vs-sensors` command against the live machine *and* against each fixture tree,
+because the harness is where a missed `free_*` would hide and a bare container
+exercises almost none of the allocating paths.
+
+The recorded output of a full five-leg run is in
+[`docs/linux-port/SENSORS_BACKEND.md`](../../../docs/linux-port/SENSORS_BACKEND.md).
+
+A suite that needs teardown defines `test_cleanup`; it must not install its own
+`EXIT` trap, because `harness.sh` owns the single one. (It used to install a
+trap per `run`, which silently replaced the suite's and leaked a `dbus-daemon`
+on every fake-UPower run.)
