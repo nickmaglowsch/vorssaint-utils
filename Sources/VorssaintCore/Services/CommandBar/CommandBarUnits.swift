@@ -197,17 +197,17 @@ enum CommandBarUnits {
         return "\(feet) \(remainder)"
     }
 
+    /// Was a `MeasurementFormatter` built inline; WP-12 put it behind
+    /// `MeasurementFormatting` because swift-corelibs-foundation marks that
+    /// class unavailable. The macOS implementation is the same formatter with
+    /// the same three settings — `.providedUnit` (the unit asked for is the
+    /// unit shown; nobody types "to mb" hoping for gigabytes), `.medium`, and
+    /// the fraction digits below.
     private static func format(_ measurement: Measurement<Dimension>, locale: Locale) -> String {
-        let formatter = MeasurementFormatter()
-        formatter.locale = locale
-        // The unit asked for is the unit shown; nobody types "to mb" hoping
-        // for gigabytes.
-        formatter.unitOptions = .providedUnit
-        formatter.unitStyle = .medium
-        formatter.numberFormatter.locale = locale
-        formatter.numberFormatter.maximumFractionDigits = fractionDigits(for: measurement.value)
-        formatter.numberFormatter.minimumFractionDigits = 0
-        return formatter.string(from: measurement)
+        MeasurementFormatters.current.string(
+            from: measurement,
+            locale: locale,
+            maximumFractionDigits: fractionDigits(for: measurement.value))
     }
 
     /// Small numbers keep their decimals, big ones lose the noise.

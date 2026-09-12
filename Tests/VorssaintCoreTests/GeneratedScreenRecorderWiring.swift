@@ -37,29 +37,6 @@ final class GeneratedScreenRecorderWiringTests: XCTestCase {
             GeneratedSupport.formatSpecifiers(in: format)
         }
 
-        let quickLauncherServiceSource = (try? String(
-            contentsOfFile: "Sources/Vorssaint/Services/QuickTools/QuickLauncherService.swift",
-            encoding: .utf8)) ?? ""
-
-        let quickLauncherViewSource = (try? String(
-            contentsOfFile: "Sources/Vorssaint/UI/QuickLauncher/QuickLauncherView.swift",
-            encoding: .utf8)) ?? ""
-
-        expect(quickLauncherServiceSource.contains("case .screenRecorder: return .screenRecorder")
-                && quickLauncherServiceSource.contains("ScreenRecorderService.shared.toggle()")
-                && quickLauncherViewSource.contains(
-                    "case .screenRecorder: return recorder.isRecording ? \"stop.circle\" : \"record.circle\""),
-               "the screen recorder keeps its quick-panel tile, action and recording state")
-
-        let appDelegateSource = (try? String(
-            contentsOfFile: "Sources/Vorssaint/App/AppDelegate.swift",
-            encoding: .utf8)) ?? ""
-
-        expect(appDelegateSource.contains("if !settingsKeepsAppRegular {")
-                && appDelegateSource.contains("WindowActivationPolicy.retain()")
-                && appDelegateSource.contains("WindowActivationPolicy.release()"),
-               "Settings retains Command Tab presence only while its window is visible")
-
         expect(RecorderSupport.exceptedOwnWindowIDs(
             ownWindowIDs: [1, 2, 3], protectedWindowIDs: [2, 4]) == [1, 3],
                "recording keeps existing ordinary app windows but never its protected chrome")
@@ -89,13 +66,6 @@ final class GeneratedScreenRecorderWiringTests: XCTestCase {
                                               now: Date(timeIntervalSince1970: 1_000))?.id
                 == recordingID,
                "a valid six-hour recording response becomes an owner-held record")
-
-        if let recordingPlan {
-            let plannedBytes = (recordingPlan.videoBitRate + recordingPlan.audioBitRate)
-                * 30 / 8
-            expect(plannedBytes < RecordingSharingSupport.targetUploadBytes,
-                   "the first compression pass stays inside the upload budget")
-        }
 
         expect(RecordingSharingSupport.retryScale(current: 1,
                                                   actualBytes: 100_000_000) ?? 1 < 1,

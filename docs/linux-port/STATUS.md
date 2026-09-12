@@ -52,11 +52,14 @@ downloads. Consequences for Phase 0:
 |---|---|---|---|
 | WP-10 | merged | plan branch | package split + `linux-port-ci.yml` gate (Linux core build, macOS build.sh + selftest + 31565 checks), QA approved |
 | WP-11 | merged | plan branch | QA approved with doc nits (fixed); 97 files / 44 389 lines in VorssaintCore; `Tools/linux-port/declgraph.py`; `CORE_MOVES.md` has every move, split and reason |
-| WP-12 | in progress | worktree → plan branch (CI) | Platform protocols, fakes, the RadialMenuSupport seam and the other corners, trash shim, VorssaintCombine target removal |
-| WP-16 | in progress | worktree → plan branch (CI) | `swift test` target on Linux, generated from the pure checks in Tests/; fixes the two vacuous walks |
+| WP-12 | in progress (Linux gate green, macOS pending) | worktree → plan branch (CI) | Platform protocols, fakes, the RadialMenuSupport seam and the other corners, trash shim, VorssaintCombine target removal |
+| WP-16 | review | plan branch | 73 generated XCTest cases from the macOS vectors, 90 tests green on Linux; both vacuous walks widened (2 files → 52 and 40); QA running |
 | WP-S1 | in progress (daemon side) | worktree | production helper from the WP-03 spike: session binding, hot-plug, hwmon, DDC, systemd/polkit/udev files |
 | WP-B1 | in progress | worktree | capture engine library in C under linux/platform/capture (from the WP-02 chain) |
 | WP-A5 | in progress (backend) | worktree | PipeWire audio backend in C under linux/platform/audio, libpulse fallback |
 | WP-D1/D2 | in progress | worktree | relay rule set in linux/helper mirroring the Swift Support state machines |
 | WP-C1 | merged | plan branch | five backends; QA found a no-op Wayland global_remove and an unverified set_minimized, both fixed and tested with a real output unplug; Hyprland/KWin/GNOME rows still need a live session |
+| WP-D1/D2 | review | worktree | 198 assertions, 147 ported from the macOS Swift vectors; QA running |
+| WP-C2 | in progress | worktree | GNOME Shell bridge extension: the WindowBridge interface WP-C1's client expects, plus clipboard |
+| WP-A1..A4 | in progress (backend) | worktree | sensors library in C: /proc, /sys, hwmon, UPower, GPU vendors |
 | WP-13 | merged | plan branch | COMBINE.md + audit script (83 Combine-touching files, 35 only via AppKit/SwiftUI re-export); VorssaintCombine target to be deleted after WP-11 |

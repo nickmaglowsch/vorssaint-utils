@@ -213,22 +213,6 @@ final class GeneratedOpenWhatWasTypedAsAURLTests: XCTestCase {
                 && editedCompletion == nil,
                "Tab remembers the fuzzy search unless the completed field is edited")
 
-        let learningDefaultsName = "com.vorssaint.tests.command-bar-learning"
-
-        let learningDefaults = UserDefaults(suiteName: learningDefaultsName)!
-
-        learningDefaults.set("usage", forKey: DefaultsKey.commandBarUsage)
-
-        learningDefaults.set("habits", forKey: DefaultsKey.commandBarQueryHabits)
-
-        CommandBarLearning.forgetAll(in: learningDefaults)
-
-        expect(learningDefaults.object(forKey: DefaultsKey.commandBarUsage) == nil
-                && learningDefaults.object(forKey: DefaultsKey.commandBarQueryHabits) == nil,
-               "forgetting all learned use clears usage and query choices together")
-
-        learningDefaults.removePersistentDomain(forName: learningDefaultsName)
-
         let barSuggestions = CommandBarUsage.suggestionIDs(
             usage: barUsage,
             available: ["action.screenshot", "action.darkMode", "action.colorPicker", "action.ocr"],

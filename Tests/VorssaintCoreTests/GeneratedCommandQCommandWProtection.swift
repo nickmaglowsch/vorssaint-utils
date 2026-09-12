@@ -150,18 +150,6 @@ final class GeneratedCommandQCommandWProtectionTests: XCTestCase {
                                                       shortcut: .quit, extraModifier: .shift),
                "an unrelated modifier combination is not protected")
 
-        let usID = "com.apple.keylayout.US"
-
-        let russianID = "com.apple.keylayout.Russian"
-
-        let greekID = "com.apple.keylayout.Greek"
-
-        let dvorakID = "com.apple.keylayout.Dvorak"
-
-        let dvorakCommandID = "com.apple.keylayout.DVORAK-QWERTYCMD"
-
-        let frenchID = "com.apple.keylayout.French"
-
         let quitProtectionKeys = [
             DefaultsKey.quitProtectionQuitEnabled,
             DefaultsKey.quitProtectionQuitMode,
@@ -230,26 +218,6 @@ final class GeneratedCommandQCommandWProtectionTests: XCTestCase {
         """.utf8)
 
         var batchShelfChildTitles: [String] = []
-
-        // The sweep decision lives in ShelfService, which `--test` does not
-        // compile, so it is pinned by shape: restore may reach the payload
-        // sweep only past the guard that a store read whole has to pass. A
-        // `.partial` store's dropped entries still own files in that
-        // directory, and the blob it kept still points at them.
-        let restoreItemsBody = ((try? String(
-            contentsOfFile: "Sources/Vorssaint/Services/Shelf/ShelfService.swift",
-            encoding: .utf8)) ?? "")
-            .components(separatedBy: "private func restoreItems()")
-            .dropFirst().first?
-            .components(separatedBy: "\n    private func ").first ?? ""
-
-        let pastRestoreGuard = restoreItemsBody
-            .components(separatedBy: "guard case .items = store else { return }")
-
-        expect(pastRestoreGuard.count == 2
-                && !pastRestoreGuard[0].contains("sweepOwnedFiles(")
-                && pastRestoreGuard[1].contains("sweepOwnedFiles("),
-               "restore sweeps the shelf's payload files only for a store it read whole")
 
         // Guards the class, not the one instance that emptied shelves: the
         // saved blob may only be read through `load`, which hands the caller a

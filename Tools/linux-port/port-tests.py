@@ -114,8 +114,35 @@ COMBINE_TYPES = {
     "Subscribers",
 }
 
+# Statements the selection rules accept but the Linux run cannot keep, keyed
+# by source file and by the line the statement starts on. Each entry needs a
+# reason and the CI run that showed it; this is the escape hatch for a
+# behavioural difference between Darwin Foundation and corelibs that no
+# name-based rule can see. Keep it short — a growing list means the rules are
+# wrong, not the checks.
+EXCLUDED = {
+    "Tests/MetricsTests.swift": [
+        ("every system tool the app runs is where it expects",
+         "asserts /bin/launchctl, /usr/bin/hdiutil, /usr/sbin/spctl … exist on "
+         "the machine running the tests. They are macOS system tools: the "
+         "check is about the Mac the product runs on, not about the code "
+         "(run 34693339999)"),
+        ("hdiutil plist maps the canonical mount path back to its disk image",
+         "`/tmp/Installer Mount` resolves to `/private/tmp/Installer Mount` on "
+         "macOS and to itself on Linux, so the round-trip compares two "
+         "different paths. Takes the two other checks inside the same `if let` "
+         "statement with it (run 34693339999)"),
+    ],
+}
+
 IDENT = re.compile(r"\b([A-Za-z_][A-Za-z0-9_]*)\b")
 BARE = re.compile(r"(?<![.\w$])([a-z_][A-Za-z0-9_]*)\b(?!\s*:)")
+# `let x` with no `=` and no type after it: the Swift 5.7 shorthand binding.
+# `SomeType.member` — a qualified use, the only member reference whose
+# receiver type can be read off the text.
+MEMBER_USE = re.compile(r"\b([A-Z][A-Za-z0-9_]*)\.([a-zA-Z_][A-Za-z0-9_]*)")
+SHORTHAND = re.compile(r"\b(?:let|var)\s+([a-z_][A-Za-z0-9_]*)\s*(?=[,{)\]]|$)",
+                       re.MULTILINE)
 MARK = re.compile(r"^\s*// MARK:\s*(.+?)\s*$")
 STATIC_ASSIGN = re.compile(r"^([A-Z][A-Za-z0-9_]*)\.([a-z][A-Za-z0-9_]*)\s*=\s*\S")
 
@@ -255,6 +282,50 @@ def declaration_index():
     return kind
 
 
+EXTENSION = re.compile(r"\bextension\s+([A-Z][A-Za-z0-9_]*)[^{]*\{")
+MEMBER = re.compile(r"\b(?:static\s+|class\s+|private\s+|public\s+|final\s+)*"
+                    r"(?:func|var|let)\s+([a-zA-Z_][A-Za-z0-9_]*)")
+
+
+def mac_member_index(kind):
+    """Members a *non-core* file adds to a core type, by extension.
+
+    `ScratchpadSupport` is in the core; `ScratchpadSupport.markdownPreview` is
+    declared in `Sources/Vorssaint/Services/QuickTools/ScratchpadSupport+Mac.swift`,
+    which the Linux test target does not compile. A rule that only looks at
+    type names cannot see that — run 34692949935 failed on exactly this
+    ("type 'ScratchpadSupport' has no member 'markdownPreview'") — so the
+    member names of those extensions are collected and treated as Mac-only.
+    """
+    members = {}
+    for dirpath, dirnames, filenames in os.walk(SOURCE_ROOT):
+        dirnames.sort()
+        for name in sorted(filenames):
+            if not name.endswith(".swift"):
+                continue
+            path = os.path.join(dirpath, name)
+            if path.startswith(CORE_PREFIX):
+                continue
+            raw = open(path, encoding="utf-8", errors="replace").read()
+            if "extension " not in raw:
+                continue
+            text = scrub(raw)
+            for match in EXTENSION.finditer(text):
+                if kind.get(match.group(1)) != "core":
+                    continue
+                depth = 1
+                i = match.end()
+                while i < len(text) and depth:
+                    if text[i] == "{":
+                        depth += 1
+                    elif text[i] == "}":
+                        depth -= 1
+                    i += 1
+                members.setdefault(match.group(1), set()).update(
+                    MEMBER.findall(text[match.end():i]))
+    return members
+
+
 # ------------------------------------------------------------------ chunking
 
 class Unit:
@@ -273,6 +344,16 @@ class Unit:
         # helper from another Tests file, or a Darwin typealias such as
         # `pid_t` — and must not be emitted.
         self.bare = set(BARE.findall(self.stripped))
+        # `if let x, let y {` — the shorthand optional binding. It reads like a
+        # declaration and is really a *use* of an outer name: emitting it while
+        # the statement that declared `x` was dropped produced "cannot find
+        # 'regularBareApp' in scope" (run 34692708425).
+        self.member_uses = set(MEMBER_USE.findall(self.stripped))
+        self.shorthand = set(SHORTHAND.findall(self.stripped))
+        self.declared -= self.shorthand
+        self.complete = not (
+            (NEEDS_BRACE.match(self.stripped) and "{" not in self.stripped)
+            or DANGLING.search(self.stripped.rstrip()))
         self.checks = len(re.findall(r"(?<![.\w])expect(?:Equal|Close|Format)?\s*\(",
                                      self.stripped))
 
@@ -353,7 +434,22 @@ def declared_names(text):
     return names
 
 
-CONTINUATIONS = ("else", "while", ".", ")", "]", ",", "}", "catch", "+", "?")
+# Tokens that can open a line which continues the statement above it rather
+# than starting a new one, even at the statement indentation. `where` is the
+# one that cost a CI run: `for name in xs.sorted()` / `where NSImage(…) == nil {`
+# is one statement written on two lines, and splitting it emitted a for-each
+# with no body (run 34692708425, "expected '{' to start the body of for-each
+# loop").
+CONTINUATIONS = ("else", "while", "where", "catch", "in ",
+                 ".", ")", "]", ",", "}", "?", ":",
+                 "+", "-", "*", "/", "%", "&&", "||", "??",
+                 "==", "!=", "<", ">", "=")
+
+# A unit that opens one of these must contain a brace: otherwise the splitter
+# cut a statement in half and emitting it would not compile.
+NEEDS_BRACE = re.compile(r"^\s*(?:for|if|guard|while|switch|do|repeat|func|"
+                         r"struct|enum|class|actor|extension)\b")
+DANGLING = re.compile(r"(?:[=+\-*/%<>!&|^,?:.]|\b(?:where|in|try|return|else|case))\s*$")
 
 
 def split_units(lines, first, last, indent):
@@ -448,14 +544,16 @@ def harness_body(path):
 
 # ------------------------------------------------------------- portability
 
-def classify(units, kind, boundaries=()):
+def classify(units, kind, boundaries=(), excluded=(), mac_members=None):
     """Walk the units in order, deciding which can run on Linux.
 
     `available` holds the local names introduced by units that were kept. A
     dropped unit poisons every available name it touches, because it may have
     been the statement that gave the name its expected value.
     """
+    mac_members = mac_members or {}
     available = set(HARNESS_NAMES)
+    effects = {}
     decisions = []
     for index, unit in enumerate(units):
         if index in boundaries:
@@ -463,8 +561,23 @@ def classify(units, kind, boundaries=()):
             # local binding cannot reach across the boundary: forget them, or
             # the generated code would name variables it never declares.
             available = set(HARNESS_NAMES)
+            effects = {}
         reason = None
-        for name in sorted(unit.refs):
+        hit = next((why for needle, why in excluded if needle in unit.stripped
+                    or needle in unit.text), None)
+        if hit:
+            reason = "excluded:" + hit
+        elif any(member in mac_members.get(owner, ())
+                 for owner, member in unit.member_uses):
+            reason = "mac-member:" + sorted(
+                "%s.%s" % (owner, member) for owner, member in unit.member_uses
+                if member in mac_members.get(owner, ()))[0]
+        elif not unit.complete:
+            # The splitter cut this statement in half; emitting either half
+            # would not compile. Drop it (and, through the poisoning below,
+            # everything that depended on it).
+            reason = "incomplete:line%d" % unit.start
+        for name in sorted(unit.refs | unit.shorthand) if reason is None else []:
             if name in KEYWORDS or name in unit.declared or name in available:
                 continue
             if name in FREE_FUNCTIONS or name in ALLOWED_TYPES or name in COMBINE_TYPES:
@@ -485,9 +598,20 @@ def classify(units, kind, boundaries=()):
             # label: it belongs to a receiver that was already checked.
         if reason is None:
             available |= unit.declared
+            for declared in unit.declared:
+                effects[declared] = unit.refs | unit.declared
             decisions.append((unit, True, None))
         else:
+            # Poison every local the dropped statement touched — and, one step
+            # further, everything the *declaration* of such a local touches.
+            # `expect(SwitcherSupport.…(targetIsMinimized: minimizeIntentMinimized(true)))`
+            # drops for a Mac symbol, and the counter it would have bumped
+            # lives inside `minimizeIntentMinimized`, not in this statement:
+            # without this step the later `expect(minimizeIntentMinimizedReads
+            # == 1)` survives and fails on Linux (run 34693146465).
             poisoned = unit.refs & available
+            for name in list(poisoned):
+                poisoned |= effects.get(name, set()) & available
             available -= (poisoned - HARNESS_NAMES)
             decisions.append((unit, False, reason))
     return decisions
@@ -571,6 +695,7 @@ def reindent(text, spaces):
 
 def generate(sources, verbose=False):
     kind = declaration_index()
+    mac_members = mac_member_index(kind)
     report = []
     files = {}
     used_names = set()
@@ -579,7 +704,9 @@ def generate(sources, verbose=False):
         if last <= first:
             continue
         units, marks = split_units(lines, first, last, indent)
-        decisions = classify(units, kind, boundaries=set(marks))
+        decisions = classify(units, kind, boundaries=set(marks),
+                             excluded=EXCLUDED.get(source, ()),
+                             mac_members=mac_members)
         # Group into sections.
         sections = []
         current = {"title": "Prelude", "decisions": []}
@@ -727,7 +854,10 @@ def verify():
                     break
         if depth != 0:
             problems.append("%s: %d bracket(s) left open" % (name, depth))
-        declared = declared_names(body) | HARNESS_NAMES
+        # Shorthand `if let x` binds an outer name; it declares nothing new,
+        # so blank those occurrences before reading the declarations out (a
+        # name can be both: declared with `let x = …` and rebound later).
+        declared = declared_names(SHORTHAND.sub(" ", body)) | HARNESS_NAMES
         for ref in sorted(set(IDENT.findall(body))):
             if ref in KEYWORDS or ref in declared or ref in FREE_FUNCTIONS:
                 continue

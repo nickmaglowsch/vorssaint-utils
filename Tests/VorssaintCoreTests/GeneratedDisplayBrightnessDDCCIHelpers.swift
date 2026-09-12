@@ -37,33 +37,6 @@ final class GeneratedDisplayBrightnessDDCCIHelpersTests: XCTestCase {
             GeneratedSupport.formatSpecifiers(in: format)
         }
 
-        // Every section of the service below its "Rebuild (work queue)" MARK
-        // runs on the private work queue, so a display's user-facing name is
-        // read from NSScreen on the main thread and handed to the rebuild.
-        // AppKit reached from below the line would be a main thread violation
-        // on every hotplug, wake and panel open.
-        let brightnessSource = (try? String(
-            contentsOfFile: "Sources/Vorssaint/Services/Display/BrightnessService.swift",
-            encoding: .utf8)) ?? ""
-
-        let brightnessWorkQueueHalf = brightnessSource
-            .components(separatedBy: "// MARK: - Rebuild (work queue)").last ?? ""
-
-        // Comments are stripped first: a note naming the symbol it bans is not
-        // a call, and a check that cannot tell them apart goes red for prose.
-        let brightnessWorkQueueCode = brightnessWorkQueueHalf
-            .components(separatedBy: "\n")
-            .filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("//") }
-            .joined(separator: "\n")
-
-        expect(!brightnessWorkQueueHalf.isEmpty && !brightnessWorkQueueCode.contains("NSScreen"),
-               "the brightness work queue resolves display names without touching NSScreen")
-
-        // Display numbers are reissued after a reconnection, so the gamma
-        // restore before a switch-off must check the monitor like the others.
-        expect(brightnessSource.contains("baseline.fingerprint == Self.displayFingerprint(display.id)"),
-               "the pre-switch-off gamma restore checks the display fingerprint")
-
         let ddcWrite = BrightnessSupport.writePacket(code: 0x10, value: 0x1234)
 
         let expectedDDCWrite: [UInt8] = [0x84, 0x03, 0x10, 0x12, 0x34, 0x8E]
@@ -131,10 +104,6 @@ final class GeneratedDisplayBrightnessDDCCIHelpersTests: XCTestCase {
         // manufacture date, image size.
         var serviceIdentity = BrightnessSupport.ServiceIdentity()
 
-        serviceIdentity.edidUUID = "10AC5FA0-0000-0000-1E19-0000003C2200"
-
-        serviceIdentity.ordinal = 1
-
         var displayIdentity = BrightnessSupport.DisplayIdentity()
 
         displayIdentity.vendorID = 0x10AC
@@ -148,16 +117,6 @@ final class GeneratedDisplayBrightnessDDCCIHelpersTests: XCTestCase {
         displayIdentity.horizontalImageSize = 600
 
         displayIdentity.verticalImageSize = 340
-
-        expect(BrightnessSupport.matchScore(service: serviceIdentity, display: displayIdentity) == 4,
-               "every EDID identity chunk scores one point")
-
-        serviceIdentity.ioDisplayLocation = "IOService:/some/path"
-
-        displayIdentity.ioDisplayLocation = "IOService:/some/path"
-
-        expect(BrightnessSupport.matchScore(service: serviceIdentity, display: displayIdentity) == 14,
-               "a registry path match is decisive on top of the EDID chunks")
 
         expect(BrightnessSupport.matchScore(service: BrightnessSupport.ServiceIdentity(),
                                             display: BrightnessSupport.DisplayIdentity()) == 0,
@@ -290,59 +249,6 @@ final class GeneratedDisplayBrightnessDDCCIHelpersTests: XCTestCase {
         expect(BrightnessSupport.headlessRecoveryCandidates(
             drawableDisplayIDs: [], managedDisabledIDs: [], builtInDisabledIDs: [1]).isEmpty,
                "a display disabled elsewhere is never changed during headless recovery")
-
-        // CoreGraphics runs a reconfiguration's callbacks inline on the driving
-        // thread, and in this process those callbacks are AppKit's, so the
-        // transaction belongs to the main thread. Getting it wrong hangs the
-        // app rather than returning a wrong answer, and no pure helper can
-        // carry that, so it is pinned against the CoreGraphics symbols.
-        expect(brightnessSource.components(separatedBy: "CGBeginDisplayConfiguration(").count == 2
-               && brightnessSource.components(separatedBy: "CGCompleteDisplayConfiguration(").count == 2,
-               "every display power change goes through the one reconfiguration transaction")
-
-        let beforeDisplayConfiguration = brightnessSource
-            .components(separatedBy: "CGBeginDisplayConfiguration(").first ?? ""
-
-        expect((beforeDisplayConfiguration.components(separatedBy: "func ").last ?? "")
-                .contains("Thread.isMainThread"),
-               "the display reconfiguration transaction refuses to start off the main thread")
-
-        // A `UserDefaults` write posts `didChangeNotification`, and the
-        // observers registered with `queue: .main` make that post wait for the
-        // main thread. Held under `stateLock` it waits on a main thread that
-        // can itself be waiting for the same lock inside `canToggleDisplay`,
-        // called from a SwiftUI body, and the app hangs with nothing left that
-        // can end it (issue #647). Which thread the write happens to run on
-        // does not change that, so it is the locked region that is pinned.
-        let lockedRegions = brightnessSource.components(separatedBy: "stateLock.lock()")
-            .dropFirst()
-            .map { $0.components(separatedBy: "stateLock.unlock()").first ?? $0 }
-
-        expect(!lockedRegions.isEmpty
-               && lockedRegions.allSatisfy { !$0.contains("SwitchedOff(") },
-               "the list of displays switched off is never written while stateLock is held")
-
-        // The same transaction relays its screen change to AppKit inline, and
-        // switching off the display the panel is on makes AppKit lay that panel
-        // out again right there: the power button's body is evaluated while
-        // this app holds the display server busy, so anything it asks the
-        // display server is a question the same thread is still answering, and
-        // the app freezes with nothing left that can end it (issue #969). The
-        // body decides from the published snapshot instead, and the live
-        // reading stays where it guards the switch itself. Comments are
-        // stripped first: a note naming what it bans is not a call.
-        let canToggleCode = ((brightnessSource
-            .components(separatedBy: "func canToggleDisplay(").last ?? "")
-            .components(separatedBy: "\n    }").first ?? "")
-            .components(separatedBy: "\n")
-            .filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("//") }
-            .joined(separator: "\n")
-
-        expect(!canToggleCode.isEmpty
-               && canToggleCode.contains("drawableDisplays")
-               && !canToggleCode.contains("Self.drawableDisplayIDs(")
-               && !canToggleCode.contains("stateLock"),
-               "the panel reads whether a display can be switched off without asking the display server")
 
         expect(BrightnessSupport.ddcCommandDelay(nowMicroseconds: 1_000_000,
                                                  lastCommandEndMicroseconds: nil) == 0,

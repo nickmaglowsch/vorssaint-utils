@@ -37,11 +37,6 @@ final class GeneratedAFailedRemovalExplainsItselfWhereItFailedTests: XCTestCase 
             GeneratedSupport.formatSpecifiers(in: format)
         }
 
-        // The permission note has to be true when it appears: only sandboxed
-        // container data is gated by Full Disk Access, so a failure list made
-        // of ownership or identity refusals must not offer it.
-        let fdaHome = "/Users/someone"
-
         // Both done states have to route through that decision and name what
         // survived; neither may spell a tick of its own.
         for path in ["Sources/Vorssaint/UI/Uninstall/UninstallerView.swift",
@@ -52,12 +47,6 @@ final class GeneratedAFailedRemovalExplainsItselfWhereItFailedTests: XCTestCase 
             expect(!source.contains("\"checkmark.circle.fill\""),
                    "\(path) takes its done symbol from UninstallerSupport")
         }
-
-        let sharedUISource = (try? String(contentsOfFile: "Sources/Vorssaint/UI/SharedUI.swift",
-                                          encoding: .utf8)) ?? ""
-
-        expect(sharedUISource.contains("uninstallerFailedNeedsFDA"),
-               "the failure note explains the permission the removal needed")
 
         print("[generated-checks] AFailedRemovalExplainsItselfWhereItFailed \(checks)")
     }

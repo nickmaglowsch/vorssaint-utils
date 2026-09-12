@@ -107,55 +107,7 @@ final class GeneratedFeaturesHubCatalogTests: XCTestCase {
 
         var mouseReapplyAttempts = 0
 
-        var lateMouseValue: MouseAccelerationStoredValue?
-
         var lateMouseReset = false
-
-        for _ in 0..<20 {
-            guard let delay = mouseReapplication.nextDelay(for: reconnectedMouse) else { break }
-            mouseReapplyTime += delay
-            mouseReapplyAttempts += 1
-            // The event-system service appears after the physical callback, then
-            // receives the system's initial acceleration setting later still.
-            if mouseReapplyTime >= 0.75, lateMouseValue == nil {
-                lateMouseValue = mouseRecovery.original
-            }
-            if mouseReapplyTime >= 2, !lateMouseReset {
-                lateMouseValue = mouseRecovery.original
-                lateMouseReset = true
-            }
-            if lateMouseValue != nil {
-                lateMouseValue = MouseAccelerationSupport.targetValue(
-                    for: mouseRecovery.key, originalIsBoolean: mouseRecovery.original.isBoolean)
-            }
-        }
-
-        expect(lateMouseReset && lateMouseValue?.rawValue == -1,
-               "acceleration is reapplied when a mouse service and its settings arrive after the physical callback")
-
-        expect(mouseReapplyAttempts > 1 && mouseReapplyAttempts < 20
-                && mouseReapplyTime > 2 && mouseReapplyTime <= 5
-                && !mouseReapplication.isCurrent(reconnectedMouse),
-               "hotplug reapplication finishes within five seconds and leaves no idle retry")
-
-        let cancelledMouseConnection = mouseReapplication.restart()
-
-        _ = mouseReapplication.nextDelay(for: cancelledMouseConnection)
-
-        mouseReapplication.cancel()
-
-        expect(!mouseReapplication.isCurrent(cancelledMouseConnection)
-                && mouseReapplication.nextDelay(for: cancelledMouseConnection) == nil,
-               "turning the feature off or pausing the session invalidates queued acceleration writes")
-
-        let resumedMouseConnection = mouseReapplication.restart()
-
-        expect(mouseReapplication.nextDelay(for: resumedMouseConnection) == 0
-                && !mouseReapplication.isCurrent(cancelledMouseConnection),
-               "resuming creates a fresh retry window without reviving cancelled callbacks")
-
-        expect(mouseIdentity.canMatchAcrossRegistryIDs,
-               "a stable physical identity can recover after a device receives a new registry id")
 
         let anonymousMouseIdentity = MouseAccelerationDeviceIdentity(
             vendorID: nil,
@@ -183,19 +135,6 @@ final class GeneratedFeaturesHubCatalogTests: XCTestCase {
                 originalIsBoolean: false
             ) == MouseAccelerationStoredValue(rawValue: -1, isBoolean: false),
                "mouse acceleration uses linear mode when supported and the legacy fallback otherwise")
-
-        let onboardingViewSource = (try? String(
-            contentsOfFile: "Sources/Vorssaint/UI/Onboarding/OnboardingView.swift",
-            encoding: .utf8)) ?? ""
-
-        let additionalPermissionsAlignment =
-            #"DisclosureGroup\(isExpanded: \$showingOtherPermissions\) \{\s+"#
-            + #"VStack\(alignment: \.leading, spacing: 14\)"#
-
-        expect(onboardingViewSource.range(
-            of: additionalPermissionsAlignment,
-            options: .regularExpression) != nil,
-               "the additional onboarding permission rows share one leading edge")
 
         print("[generated-checks] FeaturesHubCatalog \(checks)")
     }

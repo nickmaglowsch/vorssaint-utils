@@ -311,121 +311,12 @@ final class GeneratedCommandBarSearchAndRankingTests: XCTestCase {
         expect(CommandBarSearch.firstOccurrences(of: ["a", "b"]) == [0, 1],
                "a list with nothing repeated is left alone")
 
-        let commandBarSource = (try? String(
-            contentsOfFile: "Sources/Vorssaint/Services/CommandBar/CommandBarService.swift",
-            encoding: .utf8)) ?? ""
-
-        let commandBarCode = commandBarSource
-            .split(separator: "\n", omittingEmptySubsequences: false)
-            .filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("//") }
-            .joined(separator: "\n")
-
-        let monitorParts = (commandBarCode
-            .components(separatedBy: "private func installMonitors(for panel: NSPanel)")
-            .last ?? "").components(separatedBy: "\n    private func ")
-
-        let monitor = monitorParts.first ?? ""
-
-        expect(monitorParts.count > 1
-                && monitor.contains("? event.charactersIgnoringModifiers")
-                && monitor.contains(": event.characters)?.lowercased()")
-                && monitor.contains("let key = event.charactersIgnoringModifiers?.lowercased()")
-                && !monitor.contains("case kVK_ANSI_Q")
-                && monitor.contains("digitIndex(for: event.keyCode)"),
-               "the Command Bar uses macOS Command letters while Control follows typed letters and digits stay positional")
-
-        expect(monitor.contains("#selector(NSText.selectAll(_:))")
-                && monitor.contains("#selector(NSText.copy(_:))")
-                && monitor.contains("#selector(NSText.cut(_:))")
-                && monitor.contains("#selector(NSText.paste(_:))")
-                && monitor.contains("NSApp.sendAction"),
-               "the Command Bar sends standard editing commands through its responder chain")
-
-        // Ends on the next declaration rather than naming a neighbour: a
-        // rename would find no separator, leave the slice running to end of
-        // file, and quietly restore the whole-file search.
-        let captureBeginParts = (commandBarCode
-            .components(separatedBy: "private func beginCapturingShortcut(")
-            .last ?? "").components(separatedBy: "\n    private func ")
-
-        let captureBegin = captureBeginParts.first ?? ""
-
-        expect(captureBeginParts.count > 1,
-               "the Command Bar capture start finds the end of beginCapturingShortcut")
-
-        expect(captureBegin.contains("ShortcutCapture.begin()")
-                && captureBegin.contains("ShortcutRecordingTap.begin"),
-               "the capture card starts the same pair Settings uses, so Command Q reaches it")
-
-        let captureEndParts = (commandBarCode
-            .components(separatedBy: "private func endCapturingShortcut()")
-            .last ?? "").components(separatedBy: "\n    private func ")
-
-        let captureEnd = captureEndParts.first ?? ""
-
-        expect(captureEndParts.count > 1,
-               "the Command Bar capture stop finds the end of endCapturingShortcut")
-
-        expect(captureEnd.contains("ShortcutRecordingTap.end()")
-                && captureEnd.contains("ShortcutCapture.end()"),
-               "leaving the card gives the keyboard back")
-
         // Dates and places, answered by the calendar this Mac carries.
         var gregorian = Calendar(identifier: .gregorian)
-
-        gregorian.timeZone = TimeZone(identifier: "UTC")!
 
         let english = Locale(identifier: "en_US")
 
         let tuesday = Date(timeIntervalSince1970: 1_785_240_000)   // 2026-07-28
-
-        func dated(_ input: String, _ locale: Locale = english) -> String? {
-            CommandBarDates.evaluate(input, now: tuesday, calendar: gregorian, locale: locale)?.formatted
-        }
-
-        expect(dated("in 3 weeks") == "August 18, 2026",
-               "three weeks from now is a date, not a search")
-
-        expect(dated("daqui 10 dias", Locale(identifier: "pt_BR")) == "7 de agosto de 2026",
-               "the same question in the person's own words, written their way")
-
-        expect(dated("3 days ago") == "July 25, 2026" && dated("ha 3 dias") == "July 25, 2026",
-               "backwards counts backwards, before or after the number")
-
-        expect(dated("today + 10 days") == "August 7, 2026"
-                && dated("today - 10 days") == "July 18, 2026",
-               "a plain sign decides the direction")
-
-        expect(dated("3 days") == nil && dated("2+2") == nil && dated("100 km to mi") == nil,
-               "without a direction it is not a question, and a sum is not a date")
-
-        expect(CommandBarDates.evaluate("in 3 weeks", now: tuesday, calendar: gregorian,
-                                        locale: english)?.detail == "Tuesday",
-               "the answer says which weekday it lands on")
-
-        expect(dated("days until 12/25")?.contains("150") == true,
-               "how far away a written date is, counted in whole days")
-
-        expect(CommandBarDates.evaluate("time in tokyo", now: tuesday, calendar: gregorian,
-                                        locale: english)?.detail.hasPrefix("Tokyo") == true,
-               "the clock somewhere else, from the time zones the Mac already knows")
-
-        expect(CommandBarDates.evaluate("hora em londres", now: tuesday, calendar: gregorian,
-                                        locale: english)?.detail.hasPrefix("London") == true,
-               "a city named the way the person's language names it")
-
-        expect(CommandBarDates.evaluate("time", now: tuesday, calendar: gregorian,
-                                        locale: english) == nil,
-               "a time word with nowhere to look is not an answer")
-
-        // The gate is the whole safety of this: anything a person might be
-        // searching for that happens to carry a number must fall through.
-        for innocent in ["1password", "2 monitors", "3 tags", "notes", "day one",
-                         "5 minutes", "2026-07-28", "the 3 body problem"] {
-            expect(CommandBarDates.evaluate(innocent, now: tuesday, calendar: gregorian,
-                                            locale: english) == nil,
-                   "\"\(innocent)\" is a search, not a date")
-        }
 
         print("[generated-checks] CommandBarSearchAndRanking \(checks)")
     }

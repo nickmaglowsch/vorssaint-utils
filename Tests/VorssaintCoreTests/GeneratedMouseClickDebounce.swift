@@ -37,60 +37,6 @@ final class GeneratedMouseClickDebounceTests: XCTestCase {
             GeneratedSupport.formatSpecifiers(in: format)
         }
 
-        let clickDebounceServiceSource = (try? String(
-            contentsOfFile: "Sources/Vorssaint/Services/MouseClickDebounce/MouseClickDebounceService.swift",
-            encoding: .utf8)) ?? ""
-
-        let clickDebounceServiceCode = clickDebounceServiceSource.components(separatedBy: "\n")
-            .filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("//") }
-            .joined(separator: "\n")
-
-        expect(clickDebounceServiceCode.contains("SessionActivity.shared.onChange")
-                && clickDebounceServiceCode.contains("willSleepNotification")
-                && clickDebounceServiceCode.contains("didWakeNotification"),
-               "click debounce wires session, sleep and tap teardown lifecycle hooks")
-
-        let clickDebounceStop = clickDebounceServiceCode.components(separatedBy: "private func stop()")
-            .dropFirst().first?.components(separatedBy: "private func runEventTap").first ?? ""
-
-        expect(clickDebounceStop.contains("state.reset()")
-                && clickDebounceStop.contains("CFMachPortInvalidate")
-                && !clickDebounceStop.contains("tapThread = nil"),
-               "click debounce resets ownership without erasing a newer tap thread")
-
-        let clickDebounceFinish = clickDebounceServiceCode.components(
-            separatedBy: "private func finishEventTapThread"
-        ).dropFirst().first?.components(separatedBy: "private func clearEventTapThread").first ?? ""
-
-        expect(clickDebounceFinish.contains("DispatchQueue.main.async")
-                && clickDebounceFinish.contains("restart.generation == self.lifecycleGeneration")
-                && clickDebounceFinish.contains("self.syncWithPreferences()")
-                && !clickDebounceFinish.contains("start("),
-               "click debounce serializes current restarts on main and drops stale ones")
-
-        let clickDebounceRearm = clickDebounceServiceCode.components(separatedBy: "tapDisabledByTimeout")
-            .dropFirst().first?.components(separatedBy: "return").first ?? ""
-
-        expect(clickDebounceRearm.contains("state.reset()")
-                && clickDebounceRearm.contains("SessionActivity.shared.isActive"),
-               "click debounce resets before any safe tap re-arm")
-
-        expect(clickDebounceServiceCode.contains(
-            "recoveryGeneration == self.lifecycleGeneration"
-        ), "click debounce drops disabled-tap recovery after a newer lifecycle change")
-
-        expect(!clickDebounceServiceCode.contains("Timer(")
-                && !clickDebounceServiceCode.contains("asyncAfter"),
-               "legacy click filtering adds no timer or delayed release to healthy clicks")
-
-        let featureRuntimeSource = (try? String(
-            contentsOfFile: "Sources/Vorssaint/App/FeatureRuntime.swift",
-            encoding: .utf8)) ?? ""
-
-        expect(featureRuntimeSource.contains(
-            ".mouseClickDebounce: { MouseClickDebounceService.shared.syncWithPreferences() }"
-        ), "the Features hub owns the click debounce runtime lifecycle")
-
         expect(ScrollWheelSupport.isMouseWheel(
             ScrollWheelEventTraits(isContinuous: false, momentumPhase: 0, scrollPhase: 0, scrollCount: 0),
             secondsSinceLastGesturePhase: nil

@@ -9,7 +9,6 @@ import PackageDescription
 //   VorssaintCore    Foundation-only, builds on Darwin and Linux.
 //   VorssaintMac     macOS platform module; body guarded by `#if os(macOS)`.
 //   VorssaintLinux   Linux executable; body guarded by `#if os(Linux)`.
-//   VorssaintCombine Combine on Darwin, OpenCombine 0.14 on Linux (WP-13).
 //   Vorssaint        the existing macOS app executable, unchanged in content.
 //
 // SwiftPM has no Linux platform declaration and `platforms:` only constrains
@@ -20,9 +19,17 @@ import PackageDescription
 // `--target VorssaintLinux`) rather than the whole package, because the
 // `Vorssaint` app target is AppKit/IOKit code that will never compile there.
 //
+// The `VorssaintCombine` re-export target WP-10 scaffolded is gone (WP-12, on
+// the decision recorded in docs/linux-port/COMBINE.md § 7): nothing could
+// import it. `build.sh` compiles Sources/Vorssaint, Sources/VorssaintCore and
+// Sources/VorssaintMac into one swiftc invocation, where that module does not
+// exist, so every file needing Combine writes the per-file guard of
+// COMBINE.md § 1 instead. The OpenCombine products stay, Linux-conditional, on
+// VorssaintCore — they are what make the guard's `#else` branch resolve.
+//
 // No target may be named `Combine`: Swift 6.1 rejects
 // `circular dependency between modules 'VorssaintCombine' and 'Combine'`
-// (docs/linux-port/spikes/00-swift-core.md § 6).
+// (docs/linux-port/spikes/00-swift-core.md § 6). That rule outlives the target.
 
 // The macOS half of the package, spliced in only when the manifest itself is
 // compiled on a Mac (WP-16). `swift test` builds *every* target in the package,
@@ -65,7 +72,7 @@ let package = Package(
     platforms: [.macOS(.v14)],
     products: [
         .library(name: "VorssaintCore", targets: ["VorssaintCore"]),
-        .library(name: "VorssaintCombine", targets: ["VorssaintCombine"]),
+        .library(name: "VorssaintCoreTestSupport", targets: ["VorssaintCoreTestSupport"]),
         .executable(name: "VorssaintLinux", targets: ["VorssaintLinux"])
     ] + macOSProducts,
     dependencies: [
@@ -79,20 +86,6 @@ let package = Package(
         .systemLibrary(
             name: "VMStatisticsCompat",
             path: "Sources/VMStatisticsCompat"
-        ),
-
-        // Combine on Darwin, OpenCombine on Linux. WP-13 owns the contents.
-        .target(
-            name: "VorssaintCombine",
-            dependencies: [
-                .product(name: "OpenCombine", package: "OpenCombine",
-                         condition: .when(platforms: [.linux])),
-                .product(name: "OpenCombineDispatch", package: "OpenCombine",
-                         condition: .when(platforms: [.linux])),
-                .product(name: "OpenCombineFoundation", package: "OpenCombine",
-                         condition: .when(platforms: [.linux]))
-            ],
-            path: "Sources/VorssaintCombine"
         ),
 
         // Platform-free core. WP-11 moves the real Foundation-only files here.
@@ -117,6 +110,20 @@ let package = Package(
             path: "Sources/VorssaintCore"
         ),
 
+        // Fake implementations of the Platform protocols (WP-12), for tests and
+        // for the Linux shell's own harnesses.
+        //
+        // Not compiled into the macOS app: `build.sh` globs only
+        // Sources/Vorssaint, Sources/VorssaintCore and Sources/VorssaintMac, so
+        // nothing here can reach the product. Building it on Linux CI is what
+        // proves the Platform protocols are usable across a real module
+        // boundary, which the single-module Mac build cannot show.
+        .target(
+            name: "VorssaintCoreTestSupport",
+            dependencies: ["VorssaintCore"],
+            path: "Sources/VorssaintCoreTestSupport"
+        ),
+
         // Linux executable. Body is `#if os(Linux)`; a no-op binary on macOS.
         .executableTarget(
             name: "VorssaintLinux",
@@ -137,6 +144,7 @@ let package = Package(
             name: "VorssaintCoreTests",
             dependencies: [
                 "VorssaintCore",
+                "VorssaintCoreTestSupport",
                 .product(name: "OpenCombine", package: "OpenCombine",
                          condition: .when(platforms: [.linux]))
             ],

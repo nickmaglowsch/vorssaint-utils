@@ -140,16 +140,6 @@ final class GeneratedNetworkSpeedMathTests: XCTestCase {
 
         let expectedDownTotals: [UInt64] = [0, 0, 200, 200, 200, 800, 800, 800, 1_000, 1_000, 1_200]
 
-        let nettopCSV = """
-        time,,bytes_in,bytes_out,
-        08:31:45.865507,Codex (Service).78844,78288,477660,
-        08:31:45.865507,codex.78880,3154372,13193590,
-        time,,bytes_in,bytes_out,
-        08:31:46.871245,Codex (Service).78844,416,98,
-        08:31:46.871246,codex.78880,16245,20641,
-        08:31:46.871247,launchd.1,0,0,
-        """
-
         let streamLines = [
             "time,,bytes_in,bytes_out,",
             "08:31:45.865507,Codex.78844,78288,477660,",
