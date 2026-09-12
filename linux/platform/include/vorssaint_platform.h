@@ -6,11 +6,11 @@
  * of function pointers per concern; Sources/VorssaintLinux wraps this table and
  * nothing else.
  *
- * The window (WP-C1), capture (WP-B1) and audio (WP-A5) sections exist so
- * far. Clipboard, sensors, power, input and session sections are added by
- * their own work packages, each as another `vs_<concern>_system` vtable in
- * this header. Sections are independent: a consumer that needs one links one
- * library (`vs_window`, `vs_capture`, `vs_audio`).
+ * The window (WP-C1), capture (WP-B1), audio (WP-A5) and sensors (WP-A1..A4)
+ * sections exist so far. Clipboard, power, input and session sections are
+ * added by their own work packages, each as another `vs_<concern>_system`
+ * vtable in this header. Sections are independent: a consumer that needs one
+ * links one library (`vs_window`, `vs_capture`, `vs_audio`, `vs_sensors`).
  *
  * Conventions every section follows:
  *   - Every call returns `int`: 0 (VS_OK) or a negative `vs_result`.
@@ -1050,6 +1050,562 @@ const char *const *vs_audio_backend_names(void);
 float vs_audio_linear_to_cubic(float linear);
 /** The inverse: a cubic slider position to the linear volume used here. */
 float vs_audio_cubic_to_linear(float cubic);
+
+/* ----------------------------------------------------------------- sensors */
+
+/*
+ * Mirrors `SystemSensors` in Sources/VorssaintCore/Platform/SystemSensors.swift
+ * (WP-12). Shaped by what the macOS services actually consume:
+ *
+ *   Sources/Vorssaint/Services/SystemMonitor/SystemMonitor.swift `SystemSnapshot`
+ *     cpuUsage, gpuUsage, memoryUsed/AppUsed/Total/Compressed/Cached/SwapUsed,
+ *     memoryPressure, cpuTemperature, gpuTemperature, batteryTemperature,
+ *     fanSpeeds, netDown/UpBytesPerSec, disk, power, peripheralBatteries
+ *   Sources/Vorssaint/Services/Metrics/PowerSampler.swift `PowerReading`
+ *     systemWatts, adapterWatts, adapterMaxWatts, batteryWatts, chargePercent,
+ *     timeRemainingSeconds, healthPercent, cycleCount, isCharging,
+ *     externalConnected, hasBattery
+ *   Sources/Vorssaint/Services/SystemMonitor/ProcessUsageService.swift
+ *     per-process CPU as a delta over the monitor interval, per-process memory,
+ *     helper processes consolidated under the app responsible for them
+ *   Sources/Vorssaint/Services/Metrics/TemperatureSensorSelector.swift
+ *     which sensor is "the" CPU temperature, and the plausibility window
+ *
+ * This layer returns raw samples, never formatted strings and never derived
+ * display values: `MetricFormat`, `MonitorSamplingPolicy`, `SustainedAlertGate`
+ * and `BatteryTimeSupport` are pure Swift in `Sources/VorssaintCore` and are
+ * reused unchanged above it.
+ *
+ * Every reader is rooted at `vs_sensors_options.root` (default "/"), so a
+ * fixture tree captured from a real machine can be replayed in a test on a
+ * container that has no hwmon, no battery and no GPU. The only call that
+ * escapes the root is `statvfs` on a mount point, and under a non-"/" root it
+ * is applied to the rooted path so that it still measures something real.
+ */
+
+typedef enum vs_sensors_capability {
+    /** `/sys/class/hwmon` exists and has at least one device: `temperatures`
+     *  and `fans` can answer. */
+    VS_SENSORS_HAS_HWMON = 1u << 0,
+    /** `org.freedesktop.UPower` is on the system bus: `power` and
+     *  `peripheral_batteries` come from it. */
+    VS_SENSORS_HAS_UPOWER = 1u << 1,
+    /** `/sys/class/power_supply` has a battery or a mains supply: the fallback
+     *  path for `power` is usable. */
+    VS_SENSORS_HAS_POWER_SUPPLY = 1u << 2,
+    /** At least one amdgpu card exposes `gpu_busy_percent`. */
+    VS_SENSORS_HAS_AMDGPU = 1u << 3,
+    /** `libnvidia-ml.so.1` loaded and `nvmlInit` succeeded. */
+    VS_SENSORS_HAS_NVML = 1u << 4,
+    /** An i915/xe card exposes a `gt` (or `gt/gt0`) frequency tree. */
+    VS_SENSORS_HAS_INTEL_GPU = 1u << 5,
+    /** `/proc/pressure/memory` exists: `vs_memory_sample.pressure` is real PSI
+     *  rather than the MemAvailable estimate. */
+    VS_SENSORS_HAS_PSI = 1u << 6,
+    /** `/proc/<pid>/io` is readable: a per-process disk breakdown is possible.
+     *  Probed and reported; the rows themselves are panel work, not read here. */
+    VS_SENSORS_HAS_PROCFS_IO = 1u << 7,
+} vs_sensors_capability;
+
+/** How a temperature or fan reading is classified, replacing the SMC-key
+ *  prefix rules in `TemperatureSensorSelector`. The driver name decides first;
+ *  multi-sensor platform chips (thinkpad, dell_smm, asus, nct6775) fall through
+ *  to their per-sensor label. */
+typedef enum vs_sensor_kind {
+    VS_SENSOR_OTHER = 0,
+    VS_SENSOR_CPU,
+    VS_SENSOR_GPU,
+    VS_SENSOR_BATTERY,
+    VS_SENSOR_DRIVE,
+    /** Ambient / chassis / chipset: acpitz, pch, SYSTIN. */
+    VS_SENSOR_SYSTEM,
+} vs_sensor_kind;
+
+/** The `ProcessInfo.ThermalState` replacement (`ThermalPressure` in Swift),
+ *  derived from hwmon `temp*_crit` / `temp*_max` trip points. */
+typedef enum vs_thermal_pressure {
+    VS_THERMAL_NOMINAL = 0,
+    VS_THERMAL_FAIR,
+    VS_THERMAL_SERIOUS,
+    VS_THERMAL_CRITICAL,
+} vs_thermal_pressure;
+
+#define VS_SENSORS_NAME_MAX 64
+#define VS_SENSORS_LABEL_MAX 96
+#define VS_SENSORS_ID_MAX 128
+#define VS_SENSORS_PATH_MAX 256
+#define VS_SENSORS_MAX_CORES 512
+
+/* --- CPU */
+
+typedef struct vs_cpu_core_sample {
+    /** Kernel cpu index, as in `/proc/stat`'s `cpuN`. */
+    int32_t index;
+    /** 0...1 over the interval since the previous `cpu()` on this instance;
+     *  0 when `has_rates` is false. */
+    double usage;
+    /** `scaling_cur_freq`, else the `/proc/cpuinfo` "cpu MHz" line, else 0. */
+    double frequency_mhz;
+    /** `topology/physical_package_id` and `topology/core_id`, or -1. */
+    int32_t package_id;
+    int32_t core_id;
+} vs_cpu_core_sample;
+
+typedef struct vs_cpu_sample {
+    /** 0...1 over all cores, the `SystemSnapshot.cpuUsage` value. */
+    double total_usage;
+    /** Busy split, each 0...1: user includes nice, system includes irq and
+     *  softirq, as `host_statistics`'s CPU_LOAD_INFO buckets do. */
+    double user_usage;
+    double system_usage;
+    double idle_usage;
+    /** `iowait`, which macOS has no counterpart for; the panel may ignore it. */
+    double iowait_usage;
+    /** False on the first call of an instance, and after a counter reset: there
+     *  is no previous sample to subtract, so every usage is 0. The macOS side
+     *  returns nil in exactly that case. */
+    bool has_rates;
+    /** Seconds of wall clock covered by the deltas, 0 when `has_rates` is
+     *  false. */
+    double interval_seconds;
+    /** `/proc/loadavg`. */
+    double load_average[3];
+    /** Online CPUs seen in `/proc/stat`, capped at VS_SENSORS_MAX_CORES. */
+    size_t core_count;
+    /** Distinct (package, core) pairs, i.e. physical cores; 0 when the
+     *  topology tree is absent. */
+    size_t physical_core_count;
+    size_t package_count;
+    vs_cpu_core_sample cores[VS_SENSORS_MAX_CORES];
+} vs_cpu_sample;
+
+/* --- memory */
+
+typedef struct vs_memory_sample {
+    /** `MemTotal`. */
+    uint64_t total_bytes;
+    /** "Memory in use": `MemTotal - MemAvailable`. The analogue of Activity
+     *  Monitor's Memory Used, which is app + wired + compressed and excludes
+     *  reclaimable file cache; `MemAvailable` is the kernel's own estimate of
+     *  what a new allocation could take without swapping. */
+    uint64_t used_bytes;
+    /** "App memory": `AnonPages`, the anonymous memory of processes. macOS
+     *  computes internal minus purgeable pages for the same quantity. */
+    uint64_t app_bytes;
+    /** Droppable file-backed memory: `Buffers + Cached + SReclaimable - Shmem`,
+     *  floored at 0. macOS's "Cached Files". */
+    uint64_t cached_bytes;
+    /** `Zswapped` when the kernel compresses swap pages in RAM, else 0 with
+     *  `has_compressed` false. macOS always has a compressor; Linux usually
+     *  does not, and the row is hidden rather than shown as zero. */
+    uint64_t compressed_bytes;
+    bool has_compressed;
+    uint64_t swap_total_bytes;
+    uint64_t swap_used_bytes;
+    /** `MemAvailable`, kept because it is the number the mapping above is
+     *  built on and the panel's tooltip explains it. */
+    uint64_t available_bytes;
+    /** 0...1. PSI `some avg10 / 100` from `/proc/pressure/memory` when
+     *  VS_SENSORS_HAS_PSI is set: the closest analogue of macOS's
+     *  `kern.memorystatus_vm_pressure_level`, being the share of the last ten
+     *  seconds in which some task stalled on memory. Without PSI it is the
+     *  MemAvailable shortfall `1 - MemAvailable/MemTotal` clamped to 0...1,
+     *  which is a level rather than a stall and is marked as such. */
+    double pressure;
+    bool pressure_is_psi;
+    /** PSI `full avg10 / 100`, 0 without PSI. */
+    double pressure_full;
+} vs_memory_sample;
+
+/* --- network */
+
+typedef enum vs_network_kind {
+    VS_NETWORK_UNKNOWN = 0,
+    VS_NETWORK_ETHERNET,
+    VS_NETWORK_WIFI,
+    VS_NETWORK_LOOPBACK,
+    /** No `device` symlink under `/sys/class/net/<if>`: bridges, tun/tap, veth,
+     *  VPN tunnels. `MetricFormat.includeNetworkInterface` excludes the same
+     *  class of interface on macOS so a VPN does not double-count. */
+    VS_NETWORK_VIRTUAL,
+} vs_network_kind;
+
+typedef struct vs_network_sample {
+    char name[VS_SENSORS_NAME_MAX];
+    vs_network_kind kind;
+    /** The interface carrying the IPv4 or IPv6 default route. */
+    bool is_default_route;
+    /** `operstate` is "up". */
+    bool is_up;
+    uint64_t rx_bytes;
+    uint64_t tx_bytes;
+    uint64_t rx_packets;
+    uint64_t tx_packets;
+    uint64_t rx_errors;
+    uint64_t tx_errors;
+    uint64_t rx_dropped;
+    uint64_t tx_dropped;
+    /** Bytes per second since the previous `network()` on this instance; 0 when
+     *  `has_rates` is false. Identical arithmetic to `MetricFormat.netSpeed`,
+     *  including its rule that a non-increasing counter yields 0 rather than a
+     *  spike. */
+    double rx_bytes_per_second;
+    double tx_bytes_per_second;
+    bool has_rates;
+} vs_network_sample;
+
+/* --- disk */
+
+typedef struct vs_disk_device_sample {
+    /** Kernel name: "nvme0n1", "sda", "sda1". */
+    char name[VS_SENSORS_NAME_MAX];
+    bool is_partition;
+    /** `/proc/diskstats` cumulative counters, converted with the fixed 512-byte
+     *  stat sector the kernel documents for these fields. */
+    uint64_t read_bytes;
+    uint64_t write_bytes;
+    uint64_t read_ios;
+    uint64_t write_ios;
+    /** Milliseconds spent doing I/O (field 13), for a future busy-percent. */
+    uint64_t io_ticks;
+    double read_bytes_per_second;
+    double write_bytes_per_second;
+    bool has_rates;
+} vs_disk_device_sample;
+
+typedef struct vs_disk_mount_sample {
+    /** Mount point, the identity the panel shows. */
+    char mount_point[VS_SENSORS_PATH_MAX];
+    /** Backing source as `/proc/self/mounts` spells it. */
+    char source[VS_SENSORS_PATH_MAX];
+    char filesystem[VS_SENSORS_NAME_MAX];
+    /** Kernel device name behind `source`, "" when it is not a block device;
+     *  this is the join to `vs_disk_device_sample.name`. */
+    char device[VS_SENSORS_NAME_MAX];
+    bool is_read_only;
+    /** `statvfs`: `f_blocks * f_frsize` and `f_bavail * f_frsize` (the
+     *  unprivileged free figure, as Finder reports). */
+    uint64_t total_bytes;
+    uint64_t free_bytes;
+} vs_disk_mount_sample;
+
+/* --- temperatures and fans */
+
+typedef struct vs_temperature_sample {
+    /** Stable across reboots as far as sysfs is: "<driver>/<sensor>", e.g.
+     *  "coretemp/temp1_input". `TemperatureSensorSelector` persists the user's
+     *  chosen sensor by the equivalent SMC key. */
+    char id[VS_SENSORS_ID_MAX];
+    /** `temp*_label` when the driver supplies one, else "<driver> tempN". */
+    char label[VS_SENSORS_LABEL_MAX];
+    /** hwmon `name`: "coretemp", "k10temp", "nvme", "amdgpu"... */
+    char driver[VS_SENSORS_NAME_MAX];
+    vs_sensor_kind kind;
+    double celsius;
+    /** `temp*_max` / `temp*_crit`, 0 when the driver does not publish one. */
+    double high_celsius;
+    double critical_celsius;
+    /** The reading the badge shows by default for its kind: the package sensor
+     *  (`Package id N`, `Tctl`, `Tdie`) or, failing that, the hottest plausible
+     *  reading of that kind, which is the same fallback
+     *  `TemperatureSensorSelector.displayedCPUTemperature` makes. */
+    bool is_primary;
+} vs_temperature_sample;
+
+typedef struct vs_fan_sample {
+    char id[VS_SENSORS_ID_MAX];
+    char label[VS_SENSORS_LABEL_MAX];
+    char driver[VS_SENSORS_NAME_MAX];
+    int32_t rpm;
+    /** `fan*_min` / `fan*_max`, -1 when absent. */
+    int32_t min_rpm;
+    int32_t max_rpm;
+    /** A `pwm<N>` file exists next to this fan. Writing it is a privileged path
+     *  and belongs to the helper (WP-C6, `docs/linux-port/PRIVILEGES.md`);
+     *  nothing here ever writes. */
+    bool is_controllable;
+    /** Current `pwm<N>` value 0...255, -1 when there is none. */
+    int32_t pwm;
+    /** Path of the `pwm<N>` file as seen under the configured root, "" when
+     *  there is none, so the helper is asked about a file this layer saw. */
+    char pwm_path[VS_SENSORS_PATH_MAX];
+} vs_fan_sample;
+
+/* --- power */
+
+typedef enum vs_battery_state {
+    VS_BATTERY_UNKNOWN = 0,
+    VS_BATTERY_CHARGING,
+    VS_BATTERY_DISCHARGING,
+    VS_BATTERY_EMPTY,
+    VS_BATTERY_FULL,
+    VS_BATTERY_PENDING_CHARGE,
+    VS_BATTERY_PENDING_DISCHARGE,
+} vs_battery_state;
+
+/** UPower's `Type`, so a peripheral row can show the right icon.
+ *  `PeripheralBatteryKind` in `PeripheralBatterySupport` is the Swift side. */
+typedef enum vs_battery_kind {
+    VS_BATTERY_KIND_UNKNOWN = 0,
+    VS_BATTERY_KIND_BATTERY,
+    VS_BATTERY_KIND_UPS,
+    VS_BATTERY_KIND_MOUSE,
+    VS_BATTERY_KIND_KEYBOARD,
+    VS_BATTERY_KIND_HEADSET,
+    VS_BATTERY_KIND_PHONE,
+    VS_BATTERY_KIND_TOUCHPAD,
+    VS_BATTERY_KIND_GAMEPAD,
+    VS_BATTERY_KIND_PEN,
+    VS_BATTERY_KIND_OTHER,
+} vs_battery_kind;
+
+typedef struct vs_battery_sample {
+    /** UPower object path tail, or the `/sys/class/power_supply` directory
+     *  name. */
+    char id[VS_SENSORS_ID_MAX];
+    char label[VS_SENSORS_LABEL_MAX];
+    char vendor[VS_SENSORS_NAME_MAX];
+    vs_battery_kind kind;
+    vs_battery_state state;
+    /** 0...100. */
+    double percentage;
+    bool has_percentage;
+    /** Watts. Positive while charging, negative while discharging, the sign
+     *  convention `PowerReading.batteryWatts` already uses. UPower's
+     *  `EnergyRate` is unsigned, so the sign comes from `State`. */
+    double watts;
+    bool has_watts;
+    double time_to_empty_seconds;
+    double time_to_full_seconds;
+    bool has_time_to_empty;
+    bool has_time_to_full;
+    /** Present full capacity over design capacity, 0...1
+     *  (`PowerReading.healthPercent / 100`). */
+    double health;
+    bool has_health;
+    int32_t cycle_count;
+    bool has_cycle_count;
+    double temperature_celsius;
+    bool has_temperature;
+    /** Energy in watt-hours, when the source reports charge in energy units. */
+    double energy_wh;
+    double energy_full_wh;
+    double energy_full_design_wh;
+    double voltage_v;
+} vs_battery_sample;
+
+typedef struct vs_power_sample {
+    /** A battery was found at all (`PowerReading.hasBattery`). */
+    bool has_battery;
+    vs_battery_sample battery;
+    /** A mains/USB-PD supply is online (`PowerReading.externalConnected`). */
+    bool external_connected;
+    /** Real-time draw from the adapter, watts (`PowerReading.adapterWatts`):
+     *  the mains supply's `power_now`, else `voltage_now * current_now`. */
+    double adapter_watts;
+    bool has_adapter_watts;
+    /** The charger's rating, watts (`PowerReading.adapterMaxWatts`): a USB-PD
+     *  supply's `voltage_max_design * current_max`, else `input_power_limit`. */
+    double adapter_max_watts;
+    bool has_adapter_max_watts;
+    /** Whole-machine draw, watts (`PowerReading.systemWatts`). Linux has no
+     *  SMC `PSTR`: on a laptop running on battery this is the battery's own
+     *  discharge rate, and it is absent while plugged in. Never synthesised. */
+    double system_watts;
+    bool has_system_watts;
+} vs_power_sample;
+
+/* --- GPU */
+
+typedef enum vs_gpu_vendor {
+    VS_GPU_VENDOR_UNKNOWN = 0,
+    VS_GPU_VENDOR_AMD,
+    VS_GPU_VENDOR_INTEL,
+    VS_GPU_VENDOR_NVIDIA,
+} vs_gpu_vendor;
+
+typedef struct vs_gpu_sample {
+    /** "card0", or "nvml0" for an NVML device with no sysfs sibling. */
+    char id[VS_SENSORS_ID_MAX];
+    char name[VS_SENSORS_LABEL_MAX];
+    /** The kernel driver, "amdgpu" / "i915" / "xe" / "nvidia". */
+    char driver[VS_SENSORS_NAME_MAX];
+    vs_gpu_vendor vendor;
+    /** 0...1 (`SystemSnapshot.gpuUsage`). amdgpu `gpu_busy_percent`, NVML
+     *  utilization.gpu; Intel publishes no equivalent (see the vendor matrix in
+     *  docs/linux-port/SENSORS_BACKEND.md) and leaves `has_busy` false. */
+    double busy;
+    bool has_busy;
+    uint64_t vram_used_bytes;
+    uint64_t vram_total_bytes;
+    bool has_vram;
+    double temperature_celsius;
+    bool has_temperature;
+    double watts;
+    bool has_watts;
+    double clock_mhz;
+    bool has_clock;
+} vs_gpu_sample;
+
+/* --- processes */
+
+typedef struct vs_process_sample {
+    int32_t pid;
+    /** `/proc/<pid>/comm`. */
+    char comm[VS_SENSORS_NAME_MAX];
+    /** Display name: the matching `.desktop` file's `Name`, else `argv[0]`'s
+     *  basename, else `comm`. `ProcessUsage.name` on the Swift side. */
+    char name[VS_SENSORS_LABEL_MAX];
+    /** What rows are summed under when `group_by_app` is set: the desktop file
+     *  id when one matched, else `comm`. The Linux stand-in for macOS's
+     *  responsible process. */
+    char group_key[VS_SENSORS_ID_MAX];
+    /** Cumulative `utime + stime` converted with `sysconf(_SC_CLK_TCK)`. */
+    uint64_t cpu_time_ns;
+    /** Percentage 0...100 of the whole machine over the interval, by the same
+     *  arithmetic as `MetricFormat.processCPUPercentage`; 0 when `has_rate` is
+     *  false. */
+    double cpu_percent;
+    bool has_rate;
+    /** `VmRSS`. */
+    uint64_t rss_bytes;
+    /** `RssAnon`: the closest thing to macOS's physical footprint, which also
+     *  excludes file-backed pages. */
+    uint64_t anon_bytes;
+    uint64_t swap_bytes;
+    /** Number of pids summed into this row; 1 unless grouped. */
+    uint32_t member_count;
+} vs_process_sample;
+
+typedef enum vs_process_sort {
+    VS_PROCESS_SORT_CPU = 0,
+    VS_PROCESS_SORT_MEMORY,
+} vs_process_sort;
+
+typedef struct vs_process_query {
+    vs_process_sort sort;
+    /** Rows to return. 0 means every row. */
+    size_t limit;
+    /** Sum rows under `group_key`, as `ProcessUsageService.groupedByApp` does. */
+    bool group_by_app;
+    /** Drop rows below this CPU percentage when sorting by CPU. The macOS side
+     *  uses 0.01. */
+    double minimum_cpu_percent;
+} vs_process_query;
+
+/* --- events */
+
+typedef enum vs_sensors_event_type {
+    /** `thermal_pressure` changed. `ThermalPressure`'s Swift observer is this
+     *  event and nothing else. */
+    VS_SENSORS_EVENT_THERMAL_PRESSURE = 1,
+    /** UPower went away or came back; `capabilities` has already changed. */
+    VS_SENSORS_EVENT_BACKEND_LOST,
+} vs_sensors_event_type;
+
+typedef struct vs_sensors_event {
+    vs_sensors_event_type type;
+    vs_thermal_pressure thermal_pressure;
+} vs_sensors_event;
+
+typedef void (*vs_sensors_event_cb)(const vs_sensors_event *event, void *user_data);
+
+typedef struct vs_sensors_options {
+    /** Prefix every `/proc` and `/sys` path with this. NULL or "" means "/".
+     *  A fixture tree captured from a real machine is replayed by passing its
+     *  directory here, which is how this backend is tested on a container with
+     *  no hwmon, no battery and no GPU. */
+    const char *root;
+    /** "upower", "sysfs" or NULL to probe (UPower first, sysfs when it is not
+     *  on the bus). A non-"/" root forces "sysfs": a fixture tree has no bus. */
+    const char *power_backend;
+    /** Skip NVML entirely. The default loads it if it is there, so this exists
+     *  to prove the no-driver path in a test. */
+    bool disable_nvml;
+} vs_sensors_options;
+
+typedef struct vs_sensors_system vs_sensors_system;
+
+struct vs_sensors_system {
+    /** "procfs" always; the power and GPU sources it found are in
+     *  `capabilities` and in `power_backend_name`. */
+    const char *name;
+    /** "upower", "power_supply", or "none". */
+    const char *power_backend_name;
+    /** Bitmask of `vs_sensors_capability`. A member whose capability bit is
+     *  clear still exists; it returns VS_OK with an empty list, or
+     *  VS_ERR_UNSUPPORTED for the single-value calls. Capabilities shrink only
+     *  when a channel goes away (UPower leaving the bus), announced as
+     *  VS_SENSORS_EVENT_BACKEND_LOST. */
+    uint32_t capabilities;
+    void *impl;
+
+    /** Whole-machine CPU. Deltas are against this instance's previous call, so
+     *  the caller's sampling interval is the interval. Budget: 5 ms. */
+    int (*cpu)(vs_sensors_system *self, vs_cpu_sample *out);
+    int (*memory)(vs_sensors_system *self, vs_memory_sample *out);
+
+    /** Every interface `/proc/net/dev` lists, filtered by nothing: the panel
+     *  decides what to show, and `kind` gives it the same answer
+     *  `MetricFormat.includeNetworkInterface` gives on macOS. */
+    int (*network)(vs_sensors_system *self, vs_network_sample **out, size_t *count_out);
+    void (*free_network)(vs_sensors_system *self, vs_network_sample *samples, size_t count);
+
+    int (*disk_devices)(vs_sensors_system *self, vs_disk_device_sample **out, size_t *count_out);
+    void (*free_disk_devices)(vs_sensors_system *self, vs_disk_device_sample *samples, size_t count);
+    /** Mounted real filesystems only; pseudo filesystems (proc, sysfs, cgroup,
+     *  tmpfs, ...) are skipped. */
+    int (*disk_mounts)(vs_sensors_system *self, vs_disk_mount_sample **out, size_t *count_out);
+    void (*free_disk_mounts)(vs_sensors_system *self, vs_disk_mount_sample *samples, size_t count);
+
+    int (*temperatures)(vs_sensors_system *self, vs_temperature_sample **out, size_t *count_out);
+    void (*free_temperatures)(vs_sensors_system *self, vs_temperature_sample *samples, size_t count);
+    int (*fans)(vs_sensors_system *self, vs_fan_sample **out, size_t *count_out);
+    void (*free_fans)(vs_sensors_system *self, vs_fan_sample *samples, size_t count);
+
+    /** The machine's own power: internal battery and adapter. Returns
+     *  VS_ERR_UNSUPPORTED when neither UPower nor power_supply is there. */
+    int (*power)(vs_sensors_system *self, vs_power_sample *out);
+    /** Batteries that are not the machine's own: mouse, keyboard, headset.
+     *  UPower only; an empty list without it. */
+    int (*peripheral_batteries)(vs_sensors_system *self, vs_battery_sample **out, size_t *count_out);
+    void (*free_batteries)(vs_sensors_system *self, vs_battery_sample *samples, size_t count);
+
+    int (*gpus)(vs_sensors_system *self, vs_gpu_sample **out, size_t *count_out);
+    void (*free_gpus)(vs_sensors_system *self, vs_gpu_sample *samples, size_t count);
+
+    /** Top processes by the query's sort key. Deltas are against this
+     *  instance's previous `processes` call. */
+    int (*processes)(vs_sensors_system *self, const vs_process_query *query,
+                     vs_process_sample **out, size_t *count_out);
+    void (*free_processes)(vs_sensors_system *self, vs_process_sample *samples, size_t count);
+
+    /** Recomputed by `temperatures`; reading it does no I/O. */
+    int (*thermal_pressure)(vs_sensors_system *self, vs_thermal_pressure *out);
+
+    int (*set_event_callback)(vs_sensors_system *self, vs_sensors_event_cb callback, void *user_data);
+    /** -1: this backend polls, so there is nothing to poll on. Events are
+     *  produced by `dispatch` comparing the last computed state. */
+    int (*event_fd)(vs_sensors_system *self);
+    /** Deliver whatever changed since the last dispatch. Never blocks, starts
+     *  no thread, and is the only place the callback runs. */
+    int (*dispatch)(vs_sensors_system *self);
+
+    void (*destroy)(vs_sensors_system *self);
+};
+
+/** Probe what this machine has and build the backend. `options` may be NULL
+ *  for the defaults. Never fails on a machine with a `/proc`: a missing sensor
+ *  is a clear capability bit, not a missing backend. Returns NULL only when
+ *  `/proc/stat` cannot be read under `root`, with `*result_out` saying why. */
+vs_sensors_system *vs_sensors_system_create(const vs_sensors_options *options, int *result_out);
+
+const char *vs_sensor_kind_string(vs_sensor_kind kind);
+const char *vs_battery_state_string(vs_battery_state state);
+const char *vs_battery_kind_string(vs_battery_kind kind);
+const char *vs_network_kind_string(vs_network_kind kind);
+const char *vs_thermal_pressure_string(vs_thermal_pressure pressure);
+const char *vs_gpu_vendor_string(vs_gpu_vendor vendor);
 
 #ifdef __cplusplus
 }

@@ -267,10 +267,10 @@ the triage matrix update for its feature(s).
 
 | ID | Feature(s) | Size | after | Status |
 |---|---|---|---|---|
-| WP-A1 | monitorCPU, monitorMemory, monitorNetwork (+ speed test), monitorDisk from `/proc`, `/sys`, `statvfs` | M | WP-22 | todo |
-| WP-A2 | monitorPower via UPower, peripheral batteries, alerts | M | WP-22 | todo |
-| WP-A3 | monitorGPU: amdgpu/i915 sysfs + NVML when present, vendor matrix | M | WP-A1 | todo |
-| WP-A4 | Temperatures via hwmon, sensor selection rules reused; `--sensors` dump | S | WP-A1 | todo |
+| WP-A1 | monitorCPU, monitorMemory, monitorNetwork (+ speed test), monitorDisk from `/proc`, `/sys`, `statvfs` | M | WP-22 (UI); none (backend) | review (backend) |
+| WP-A2 | monitorPower via UPower, peripheral batteries, alerts | M | WP-22 (UI); none (backend) | review (backend) |
+| WP-A3 | monitorGPU: amdgpu/i915 sysfs + NVML when present, vendor matrix | M | WP-A1 | review (backend) |
+| WP-A4 | Temperatures via hwmon, sensor selection rules reused; `--sensors` dump | S | WP-A1 | review (backend) |
 | WP-A5 | mixer, soundOutputSwitcher, micMute over PipeWire (libpipewire) with libpulse fallback; backend half in C under linux/platform/audio can start before the shell | L | WP-22 (UI); none (backend) | review (backend) |
 | WP-A6 | keepAwake via logind inhibitors, automations, menu bar icon states | M | WP-21, WP-26 | todo |
 | WP-A7 | bluetoothSleep via BlueZ + logind | S | WP-26 | todo |

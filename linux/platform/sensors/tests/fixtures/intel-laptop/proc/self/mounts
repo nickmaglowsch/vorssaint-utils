@@ -1,0 +1,5 @@
+sysfs /sys sysfs rw 0 0
+/dev/nvme0n1p2 / btrfs rw,relatime,compress=zstd:1 0 0
+/dev/nvme0n1p1 /boot ext4 rw,relatime 0 0
+tmpfs /dev/shm tmpfs rw 0 0
+gvfsd-fuse /run/user/1000/gvfs fuse.gvfsd-fuse rw,nosuid 0 0

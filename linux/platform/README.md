@@ -162,3 +162,9 @@ because it is not ours to fix.
   percentage means on each scale, and measured behaviour:
   [`audio/README.md`](audio/README.md) and
   `docs/linux-port/AUDIO_BACKEND.md`.
+- [`sensors/`](sensors/) — CPU, memory, network, disk, power, GPU,
+  temperatures, fans and per-process usage; every reader is rooted so a
+  captured machine can be replayed on a container with no hwmon, battery or
+  GPU. The exact macOS-metric-to-Linux-source mapping is in
+  [`sensors/README.md`](sensors/README.md), the measured evidence and the GPU
+  vendor matrix in `docs/linux-port/SENSORS_BACKEND.md`.

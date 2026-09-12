@@ -1,0 +1,2 @@
+DRIVER=iwlwifi
+PCI_SLOT_NAME=0000:00:14.3
