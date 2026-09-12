@@ -360,9 +360,14 @@ void vs_portal_session_close(vs_capture_engine *engine, vs_portal_session *sessi
         session->pw_fd = -1;
     }
     if (session->session_handle) {
-        g_dbus_connection_call_sync(engine->bus, PORTAL_BUS, session->session_handle,
-                                    "org.freedesktop.portal.Session", "Close", NULL,
-                                    NULL, G_DBUS_CALL_FLAGS_NONE, 5000, NULL, NULL);
+        /* The reply is an empty tuple and of no interest, but it is still a
+         * GVariant this call owns a reference to: dropping it on the floor
+         * leaks 64 bytes per recording. */
+        GVariant *reply = g_dbus_connection_call_sync(
+            engine->bus, PORTAL_BUS, session->session_handle,
+            "org.freedesktop.portal.Session", "Close", NULL, NULL,
+            G_DBUS_CALL_FLAGS_NONE, 5000, NULL, NULL);
+        if (reply) g_variant_unref(reply);
         g_free(session->session_handle);
         session->session_handle = NULL;
     }

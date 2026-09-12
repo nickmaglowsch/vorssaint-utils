@@ -15,7 +15,7 @@ capture/
   vs_capture_png.c      a PNG writer in zlib alone, so no image library is needed
   vs_capture_png_read.c the decoder for what the Screenshot portal hands back
   tools/vs_capture_cli.c  the `vs-capture` harness
-  scripts/              the headless portal stack, and the four-build-type matrix
+  scripts/              the headless portal stack, and the five-leg build matrix
   tests/                ctest: pure checks everywhere, stack checks where there is one
 ```
 
@@ -102,32 +102,67 @@ sources a token belongs to and should not guess.
 
 ## How WP-12's `ScreenCapturer` mirrors it
 
-Same two rules as the window section: the C side owns the names and semantics,
-and the Swift wrapper adds no behaviour.
+`Sources/VorssaintCore/Platform/ScreenCapturer.swift` is the Swift side, and it
+landed while this package was being written. Same two rules as the window
+section: the C side owns the names and semantics, and the Swift wrapper adds no
+behaviour.
 
-| C | Swift |
+| `ScreenCapturer` (Swift) | this header (C) |
 |---|---|
-| `vs_capture_engine` | `protocol ScreenCapturer` |
-| `vs_capture_engine_capabilities` | `var capabilities: ScreenCaptureCapabilities` (`OptionSet`) |
-| `vs_capture_source` | `struct CaptureSource` |
-| `vs_capture_source_type` | `CaptureSource.Kind` |
-| `vs_capture_enumerate_sources` + `vs_capture_free_sources` | one call returning `[CaptureSource]` |
-| `vs_capture_screenshot` + `vs_capture_image` | `func image(of:) async throws -> CaptureImage` |
-| `vs_capture_stream_config` | `struct CaptureStreamOptions` |
-| `vs_capture_stream` | `protocol CaptureStream` |
-| `vs_capture_frame` | `struct CaptureFrame` (a borrowed buffer, copied by `withUnsafeBytes` or `vs_capture_image_from_frame`) |
-| `vs_capture_audio_buffer` | `struct CaptureAudioBuffer` |
-| `event_fd` + `dispatch` + the two callbacks | one `AsyncStream<CaptureBuffer>`, pumped from the fd |
-| `pause` / `resume` | `func pause()` / `func resume()` |
-| `vs_capture_clock` | `RecorderSampleTiming`'s Linux half, unchanged in behaviour |
+| `displays()` → `[PlatformDisplay]` | `vs_capture_enumerate_sources(engine, VS_CAPTURE_SOURCE_MONITOR, …)` — name, bounds, scale and refresh come from `wl_output` |
+| `captureFrame(_:)` → `CapturedFrame` | `vs_capture_screenshot` + `vs_capture_image` |
+| `startStream(_:options:onFrame:)` | `vs_capture_stream_start` + `vs_capture_stream_set_frame_callback` + `vs_capture_stream_dispatch` |
+| `stop(_:)` | `vs_capture_stream_stop` |
+| `CaptureSession` | `vs_capture_stream *` |
+| `CaptureTarget.area(display:pixelRect:)` | `config.region` + `region_enabled` |
+| `CaptureStreamOptions.framesPerSecond` | `config.max_fps` — a **ceiling** here, not a rate |
+| `CaptureStreamOptions.includesCursor` | `config.cursor_mode` |
+| `CaptureStreamOptions.capturesAudio` | `config.capture_system_audio` |
+| `pickTargetInteractively()` | the portal's own chooser, which `vs_capture_stream_start` runs; the granted source comes back from `vs_capture_stream_source_type` |
+| `restoreToken` / `restore(with:)` | `vs_capture_stream_restore_token` / `config.restore_token` |
+| `capture.display` / `.area` / `.stream` | always available where the engine builds at all |
+| `capture.window` | `VS_CAPTURE_HAS_WINDOW_SOURCE` |
+| `capture.cursor` | `VS_CAPTURE_HAS_CURSOR_EMBEDDED` |
+| `capture.systemAudio` | `VS_CAPTURE_HAS_AUDIO_MONITOR` |
+| `capture.restoreToken` | `VS_CAPTURE_HAS_RESTORE_TOKEN` |
+| `capture.ownPicker` | never set on a portal session — the portal insists on picking |
 
 The macOS adapter implements the same Swift protocol over ScreenCaptureKit and
 AVFoundation, so `ScreenshotService`, `RecorderService` and `ScreenOCRService`
-never learn which platform they are on. Two capabilities exist only because
-Linux needs them and are simply always set on macOS:
-`VS_CAPTURE_HAS_SCREENSHOT_PORTAL` and `VS_CAPTURE_HAS_RESTORE_TOKEN`;
-`VS_CAPTURE_HAS_REGION` is the mirror image, always set on macOS
-(`SCStreamConfiguration.sourceRect`) and never on Linux.
+never learn which platform they are on.
+
+### Five places the two do not line up yet
+
+These are for WP-12 and WP-B5 to settle; none is a defect in either side, and
+each is a real difference between ScreenCaptureKit and a portal.
+
+1. **`CapturedFrame.pixels` is premultiplied BGRA; a portal frame is usually
+   BGRx.** `xdg-desktop-portal-wlr` negotiates `SPA_VIDEO_FORMAT_BGRx` on the
+   SHM path, and the fourth byte of a BGRx buffer is undefined rather than
+   opaque — a wrapper that relabels it BGRA can hand the editor a fully
+   transparent screenshot. The engine reports the real format in
+   `frame.format`; the wrapper must either fill alpha (which is what
+   `vs_capture_image_write_png` does) or carry the format through.
+2. **`CapturedFrame` owns its bytes; `vs_capture_frame` borrows them.** The
+   copy into `Data` is the same copy the dispatch mode already makes, so the
+   wrapper should use `direct_callbacks` and copy once into `Data` rather than
+   copy twice.
+3. **`capturedAt` is seconds since the reference date; `timeline_ns` is a
+   recording timeline.** They are not the same quantity: `timeline_ns` has the
+   stream start and every pause gap removed, which is exactly what the recorder
+   needs and what a wall-clock stamp cannot express. Either `CapturedFrame`
+   grows a second field or the recorder reads the timeline through the stream.
+4. **`CaptureTarget.window(PlatformWindowID)` is not expressible on a portal.**
+   The portal chooses the window; an application cannot name one. The Linux
+   wrapper can only honour `.window` by running the portal's chooser and then
+   checking what came back, which is what `require_source_type` is for. On a
+   session whose `capture.window` is clear it must refuse rather than widen the
+   capture to the whole screen.
+5. **`CaptureStreamOptions.excludedWindows` has no portal equivalent.** There is
+   no `capture.windowExclusion` on any portal: the compositor composites the
+   output and we receive it. The recorder's own overlay will appear in a Linux
+   recording unless the recorder hides it for the duration — a behaviour
+   difference WP-B5 has to design for rather than a flag it can set.
 
 ## `vs_result_string` moved
 
@@ -164,8 +199,20 @@ compositor. Test dependencies: `sway`, `foot`, `pipewire`, `wireplumber`,
 `python3-gi`, and `meson` for the patched backend below.
 
 ```sh
-linux/platform/capture/scripts/build-matrix.sh    # all four build types, -Werror, ctest
+linux/platform/capture/scripts/build-matrix.sh    # five legs; see below
 ```
+
+The matrix configures the whole of `linux/platform`, so a warning or a leak any
+concern introduces is caught here. Five legs: the four CMake build types, which
+are four different configurations and not one (GCC inlines more at `-O2` and so
+proves different things about `-Wmaybe-uninitialized` and
+`-Wformat-truncation`), plus an AddressSanitizer/UndefinedBehaviorSanitizer/
+LeakSanitizer build whose tests must pass. The fifth leg is not decoration: it
+found a 64-byte leak per recording in this package on its first run — the reply
+`GVariant` from `Session.Close`, dropped on the floor — that all four clean
+builds were happy with. It carries **no suppression file**: GLib and PipeWire
+keep process-global state until exit, but it stays reachable and LeakSanitizer
+reports lost memory rather than unfreed memory, so every report is ours.
 
 ### The stack, and the two things it has to patch
 

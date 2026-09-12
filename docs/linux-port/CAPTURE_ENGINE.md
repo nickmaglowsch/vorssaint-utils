@@ -228,24 +228,27 @@ The Linux form of `RecorderSampleTiming`: both kinds of buffer already timestamp
 on `CLOCK_MONOTONIC`, so there is nothing to convert between, and the only thing
 that can pull them apart is a pause. One gap, subtracted from both.
 
+Verbatim from the `capture_stack_pause` run, which is where the assertions
+below are checked:
+
 ```
 $ ... vs-capture stream -d 8 --max-fps 30 --audio-sink vorssaint-null-sink \
-      --mic vorssaint-virtual-mic --pause-at 3 --pause-for 2
-STAT paused_at_ms=3002.2  resumed_at_ms=5018.7 gap_ms=2013.1
-STAT frames=162 frames_with_pts=162
-STAT frames_dropped rate=15 paused=59 queue=0 buffers_missed=0
-STAT audio_buffers=280 system=140 microphone=140 dropped_paused=94
-STAT paused_total_ms=2013.1
-STAT video_timeline_ms first=39.1 last=5971.2 span=5932.1
-STAT audio_timeline_ms first=53.0 last=5975.7 span=5922.8
-STAT alignment_start_skew_ms=13.9
-STAT alignment_end_skew_ms=4.6 alignment_span_skew_ms=9.3
+      --pause-at 3 --pause-for 2
+STAT resumed_at_ms=5003.5 gap_ms=1986.8
+STAT frames=172 frames_with_pts=172
+STAT frames_dropped rate=4 paused=58 queue=0 buffers_missed=0
+STAT paused_total_ms=1986.8
+STAT video_timeline_ms first=39.7 last=6017.5 span=5977.7
+STAT audio_timeline_ms first=50.5 last=5999.5 span=5949.0
+STAT alignment_start_skew_ms=10.8
+STAT alignment_end_skew_ms=18.0 alignment_span_skew_ms=28.7
 ```
 
-Eight seconds of wall clock, 2.013 s of it paused, and both timelines span
-~5.93 s: the recording is as long as it was recording. A regression that forgot
-to subtract the gap from one clock would put that span near 8000 and the skew
-near 2000, so the test is decisive rather than decorative.
+Eight seconds of wall clock, 1.987 s of it paused, and both timelines span
+~5.96 s: the recording is as long as it was recording. The 58 frames that
+arrived during the pause were dropped rather than timestamped. A regression that
+forgot to subtract the gap from one clock would put that span near 8000 and the
+skew near 2000, so the test is decisive rather than decorative.
 
 `capture_stack_pause` asserts the start and end skews at **one frame period**
 (33.3 ms) each and the span skew at **two**. That is where the quantity is
@@ -257,14 +260,17 @@ simultaneously, which they never do.
 
 ### 3.8 Restore tokens
 
+From the `capture_stack_token` run:
+
 ```
 ### first run
 STAT restore_token_sent=(none)
-STAT restore_token_received=8a93b8eb-2518-4d4a-ac56-d959d93856aa
-### second run, the stored token handed back
-STAT restore_token_sent=8a93b8eb-2518-4d4a-ac56-d959d93856aa
-STAT restore_token_received=8a93b8eb-2518-4d4a-ac56-d959d93856aa
-STAT frames=27
+STAT restore_token_received=c983a79c-caee-4d2a-8377-c9f87afbb5fb
+STAT frames=29 frames_with_pts=29
+### second run, the token the consumer stored handed back
+STAT restore_token_sent=c983a79c-caee-4d2a-8377-c9f87afbb5fb
+STAT restore_token_received=c983a79c-caee-4d2a-8377-c9f87afbb5fb
+STAT frames=29 frames_with_pts=29
 ```
 
 The engine returns the token and accepts one; it stores nothing itself, because
@@ -281,13 +287,49 @@ same packed buffer, with the frame's original stride, which costs nothing.
 ```
 $ ... vs-capture stream -d 3 --max-fps 30 --region 100,50,320,240 \
       --save-frame region.png
+STAT negotiated=1280x720 format=BGRx
 STAT saved_frame_size=320x240 stride=1280 format=BGRx bytes=307200
-STAT saved_frame_unique_colours=414 mean_luma=53.7 blank=no
+STAT saved_frame_unique_colours=1284 mean_luma=73.7 blank=no
 ```
+
+The stream negotiated the full 1280x720 and the delivered frame is 320x240: the
+crop is the engine's, not the portal's. The saved image is packed to its own
+width (`stride=1280` = 320 x 4) while the frame the callback saw kept the
+source's 5120-byte stride, which is why the API says never to assume the two
+are equal.
 
 The clamp is unit-tested against partly-outside, negative-origin and
 entirely-outside rectangles in `capture_support`; a region with nothing left is
 refused rather than silently emptied.
+
+### 3.10 Built and tested in five configurations
+
+`linux/platform/capture/scripts/build-matrix.sh` configures the whole platform
+tree four times over the CMake build types and once more under
+AddressSanitizer, UndefinedBehaviorSanitizer and LeakSanitizer. All five build
+warning-free under `-Werror`, and the capture suites pass in all five.
+
+The sanitizer leg paid for itself on its first run, which is the argument for
+having it:
+
+```
+Direct leak of 64 byte(s) in 1 object(s) allocated from:
+    #8 g_dbus_connection_call_sync
+    #9 vs_portal_session_close  linux/platform/capture/vs_capture_portal.c:363
+    #10 vs_capture_stream_stop  linux/platform/capture/vs_capture_stream.c:667
+SUMMARY: AddressSanitizer: 64 byte(s) leaked in 1 allocation(s).
+```
+
+`Session.Close` returns an empty tuple that is of no interest and is still a
+`GVariant` the caller owns — 64 bytes per recording, invisible to four clean
+`-Werror` builds. Fixed, and the leg is now silent.
+
+The leg ships **no suppression file**. One was written for GLib and PipeWire
+and then deleted, because it proved to suppress nothing: those libraries keep
+process-global state until exit, but it stays *reachable*, and LeakSanitizer
+reports lost memory rather than unfreed memory. A suppression list that
+suppresses nothing today would quietly cover a real leak in the same libraries
+tomorrow.
 
 ---
 
@@ -350,7 +392,16 @@ work package if the triage matrix wants one.
    `xdg-desktop-portal-wlr` as-is. Either bundle the patch (the test driver
    builds it once and caches it), give the runner a DRM device, or let the
    suites skip — they return ctest's 77 with the reason rather than failing.
-6. **A decision for the lead.** `vs_result_string` moved to
+6. **WP-12 (`ScreenCapturer`).** The Swift protocol landed while this was
+   being written and lines up on almost everything. Five places it does not,
+   each a real difference between ScreenCaptureKit and a portal rather than a
+   defect on either side, are listed in `linux/platform/capture/README.md`. The
+   two that change behaviour a user can see: `CaptureTarget.window(id)` is not
+   expressible on a portal at all (the portal picks, the app cannot name a
+   window), and `CaptureStreamOptions.excludedWindows` has no portal
+   equivalent — the recorder's own overlay will appear in a Linux recording
+   unless the recorder hides it while recording.
+7. **A decision for the lead.** `vs_result_string` moved to
    `linux/platform/vs_result.c` so two backend libraries can link into one
    binary; its `VS_ERR_NOT_FOUND` and `VS_ERR_NO_BACKEND` strings still say
    "window", which four window suites match on. Rewording them is a

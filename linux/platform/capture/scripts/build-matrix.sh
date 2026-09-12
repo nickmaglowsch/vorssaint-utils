@@ -2,6 +2,13 @@
 # Build and test under every configuration the helper is expected to compile
 # in, because they are not the same configuration.
 #
+# There is a fifth leg that is not a build type at all: an
+# AddressSanitizer/UndefinedBehaviorSanitizer/LeakSanitizer build whose tests
+# must pass. The four clean builds prove what the compiler can see by reading
+# the code; the sanitizers prove what actually happens when it runs, which is a
+# different question -- WP-D2 shipped a leaking CLI exit path that every one of
+# the four missed.
+#
 # -Wformat-truncation, -Wmaybe-uninitialized and _FORTIFY_SOURCE all reason
 # differently at each optimisation level: GCC inlines more at -O2, so it knows
 # more about what a buffer can hold and warns about cases it cannot see at
@@ -25,7 +32,7 @@ command -v ninja >/dev/null 2>&1 || GEN="Unix Makefiles"
 mkdir -p "$ROOT"
 
 rc=0
-for cfg in default Debug Release RelWithDebInfo; do
+for cfg in default Debug Release RelWithDebInfo asan; do
     dir="$ROOT/$cfg"
     rm -rf "$dir"
     printf '\n===== %s =====\n' "$cfg"
@@ -34,6 +41,16 @@ for cfg in default Debug Release RelWithDebInfo; do
         # Deliberately no -DCMAKE_BUILD_TYPE: this is the bare configure a
         # person types, and CMakeLists.txt must make it match what ships.
         cmake -S "$HERE" -B "$dir" -G "$GEN" > "$dir.configure.log" 2>&1
+    elif [ "$cfg" = asan ]; then
+        # Debug, because a sanitizer report is only as useful as its stack
+        # trace. -fno-sanitize-recover makes undefined behaviour abort at the
+        # point it happens instead of printing and carrying on, so a test that
+        # trips it fails rather than passing with a warning nobody reads.
+        cmake -S "$HERE" -B "$dir" -G "$GEN" -DCMAKE_BUILD_TYPE=Debug \
+            -DCMAKE_C_FLAGS="-fsanitize=address,undefined -fno-sanitize-recover=undefined -fno-omit-frame-pointer -g" \
+            -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=address,undefined" \
+            -DCMAKE_SHARED_LINKER_FLAGS="-fsanitize=address,undefined" \
+            > "$dir.configure.log" 2>&1
     else
         cmake -S "$HERE" -B "$dir" -G "$GEN" -DCMAKE_BUILD_TYPE="$cfg" \
             > "$dir.configure.log" 2>&1
@@ -68,6 +85,18 @@ for cfg in default Debug Release RelWithDebInfo; do
     # run concurrently with each other; ctest's RUN_SERIAL handles that. Tests
     # that need a compositor this machine has not got return 77 and are
     # reported as "not run" rather than failing.
+    # No suppression file, deliberately. GLib and PipeWire keep process-global
+    # state until exit, but it stays reachable, and LeakSanitizer reports lost
+    # memory rather than unfreed memory -- so there is nothing here to excuse,
+    # and every report is ours. A suppression list was written and then deleted
+    # once it proved to suppress nothing: carrying one would quietly cover a
+    # future real leak in the same libraries.
+    if [ "$cfg" = asan ]; then
+        export ASAN_OPTIONS="detect_leaks=1:abort_on_error=0:detect_stack_use_after_return=1"
+        export UBSAN_OPTIONS="print_stacktrace=1:halt_on_error=1"
+    else
+        unset ASAN_OPTIONS LSAN_OPTIONS UBSAN_OPTIONS
+    fi
     if (cd "$dir" && ctest --output-on-failure > "$dir.ctest.log" 2>&1); then
         echo "  ctest: $(grep -E '^[0-9]+% tests passed' "$dir.ctest.log")"
         skipped=$(grep -c 'Skipped' "$dir.ctest.log" || true)
@@ -77,12 +106,23 @@ for cfg in default Debug Release RelWithDebInfo; do
         tail -25 "$dir.ctest.log" | sed 's/^/    /'
         rc=1
     fi
+    # A sanitizer report does not always fail the test that produced it -- a
+    # leak is reported at exit, after the process has already decided its
+    # status -- so the log is searched as well as the exit code.
+    if [ "$cfg" = asan ] && grep -qE "ERROR: (Address|Leak)Sanitizer|runtime error:" \
+            "$dir.ctest.log"; then
+        echo "  SANITIZER REPORTS:"
+        grep -E "ERROR: (Address|Leak)Sanitizer|runtime error:|SUMMARY:" \
+            "$dir.ctest.log" | sort -u | head -20 | sed 's/^/    /'
+        rc=1
+    fi
 done
 
 printf '\n===== summary =====\n'
 if [ "$rc" -eq 0 ]; then
-    echo "all four configurations build clean under -Werror and pass ctest"
+    echo "all four build types are clean under -Werror and pass ctest, and the"
+    echo "sanitizer leg reports no leak, no undefined behaviour and no bad access"
 else
-    echo "at least one configuration failed; see above"
+    echo "at least one leg failed; see above"
 fi
 exit "$rc"
