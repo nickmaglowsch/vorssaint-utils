@@ -80,7 +80,7 @@ or a local clone.
 | WP-D1/D2 | in progress | worktree | relay rule set in linux/helper mirroring the Swift Support state machines |
 | WP-C1 | merged | plan branch | five backends; QA found a no-op Wayland global_remove and an unverified set_minimized, both fixed and tested with a real output unplug; Hyprland/KWin/GNOME rows still need a live session |
 | WP-D1/D2 | merged | plan branch | 198 assertions, 147 ported from the macOS Swift vectors; QA running |
-| WP-18 | in progress | worktree → plan branch (CI) | CoreBridge: @_cdecl surface matching the WP-01 stub header, three services adopted, C-client CI leg |
+| WP-18 | review | plan branch | CoreBridge with the full-snapshot diff, four `@_cdecl` exports whose header declares byte-for-byte what the WP-01 stub did, three services adopted (featureRuntime, l10n, metrics), 19 bridge tests, and a new `bridge-abi` CI leg that archives VorssaintLinux and runs a C client against the header: run 34715155527, "OK: 0 check(s) failed". Also carried the WP-B1 `CapturedFrame` BGRx defect and unblocked the shared Linux gate (two pre-existing failures) |
 | WP-14/WP-15 | in progress | worktree → plan branch (CI) | settings store (JSON on Linux) and per-platform capability-driven feature flags |
 | WP-C2 | merged | plan branch | 6/6 including the interop test where a real gjs process running the shipped service answers WP-C1's C backend; everything in `lib/mutter.js` is asserted to exist against GNOME 46 introspection but has never executed |
 | WP-A1..A4 | in progress (backend) | worktree | sensors library in C: /proc, /sys, hwmon, UPower, GPU vendors |

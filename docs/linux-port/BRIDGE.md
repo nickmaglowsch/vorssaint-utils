@@ -397,27 +397,74 @@ compiler and this leg is the only thing that proves something about the
 4. **`ar` it into `libvorssaintbridge.a`** from the objects SwiftPM produced
    for `VorssaintCore`, `VorssaintLinux` (minus `main.swift.o`, whose `main`
    the C client brings its own of) and the OpenCombine products the core needs
-   on Linux — SwiftPM builds executables, not archives. Then `nm` must find all
-   four symbols exported and undecorated:
-
-   ```
-   0000000000000000 T vs_command
-   0000000000000000 T vs_free
-   0000000000000000 T vs_snapshot
-   0000000000000000 T vs_subscribe
-   ```
-
+   on Linux — SwiftPM builds executables, not archives. `nm --defined-only -g`
+   must then find all four symbols as `T`, undecorated, in the archive itself;
+   the step fails by name if any is missing.
 5. **Compile `linux/shell/tests/abi_client.c`** with
-   `cc -std=c11 -Wall -Wextra -Werror -I linux/shell/include`, and nothing
+   `$CC -std=c11 -Wall -Wextra -Werror -I linux/shell/include`, and nothing
    else on the include path. A signature the header gets wrong is a compile
    error here; a symbol it names wrongly is a link error in the next step.
    It is C and not C++ deliberately: `extern "C"` would paper over a name
    mismatch that plain C catches.
-6. **Link it with `swiftc`** — the Swift runtime's autolink entries live in
-   those objects and `swift-autolink-extract` is what turns them into `-l`
-   flags — and **run it**. It calls all four functions against all three
-   services, checks every status code, prints the snapshot JSON, and does a
-   thousand `vs_snapshot`/`vs_free` round trips.
+6. **Link it with `swiftc`** and **run it**. `swiftc` is the linker driver
+   because the Swift runtime's autolink entries live in those objects;
+   `swift-autolink-extract` turns them into the `-l` flags, and `-lstdc++`
+   is added by hand because OpenCombine's lock is a C++ translation unit.
+   The client calls all four functions against all three services, checks
+   every status code, and does a thousand `vs_snapshot`/`vs_free` round
+   trips.
+
+Run 34715155527, job "Bridge C ABI (static library + C client)", verbatim:
+
+```
+=== running the C client ===
+CoreBridge: vs_snapshot("nosuchservice") = NULL: unknownService("nosuchservice")
+CoreBridge: vs_command("metrics") = -3: malformedCommand(service: "metrics", reason: "dataCorrupted(…\"The given data was not valid JSON.\"…)")
+CoreBridge: vs_command("l10n") = -2: rejected(service: "l10n", reason: "no language \"kl\"")
+metrics snapshot: {"capacity":60,"cpu":0,"history":[],"source":"placeholder"}
+[ ok ] metrics snapshot has cpu
+[ ok ] metrics snapshot has history
+[ ok ] metrics capacity is 60
+[ ok ] metrics snapshot keys are sorted
+l10n snapshot: 54388 bytes
+[ ok ] l10n snapshot has language
+[ ok ] l10n snapshot carries the catalog
+[ ok ] the catalog is the whole catalog
+featureRuntime snapshot: {"features":[{"id":"switcher","installable":true,"installed":false}, … ],"installableCount":12,"installedCount":0,"needsRestartToUnload":false,"revision":0}
+[ ok ] featureRuntime snapshot lists features
+[ ok ] vs_snapshot of an unknown service is NULL
+[ ok ] 1000 vs_snapshot/vs_free round trips
+[ ok ] vs_subscribe returns a token >= 1
+[ ok ] vs_subscribe fires once immediately
+[ ok ] vs_subscribe of an unknown service is -1
+[ ok ] a NULL callback is refused, not dereferenced
+[ ok ] vs_command accepted
+[ ok ] the accepted command pushed a snapshot
+after sample: {"capacity":60,"cpu":42.5,"history":[42.5],"source":"placeholder"}
+[ ok ] the new sample is in the snapshot
+[ ok ] the same sample again is accepted
+[ ok ] …and appending it is a real change, so it is delivered
+[ ok ] unknown service is -1
+[ ok ] malformed JSON is -3
+[ ok ] an unknown command is -3
+[ ok ] a command the service refuses is -2
+[ ok ] l10n accepts a language
+[ ok ] the language really changed
+[ ok ] featureRuntime accepts an install
+[ ok ] …and refuses one it does not have
+[ ok ] metrics accepts a reset
+[ ok ] the reset changed the snapshot, so it was delivered
+[ ok ] a second reset is accepted
+[ ok ] …and delivers nothing, because the snapshot did not change
+OK: 0 check(s) failed
+```
+
+Two things worth noticing in that output. The `CoreBridge:` lines are the
+`diagnostic` hook: every status the C boundary flattens into an `int` is also
+written out with the reason, which is what makes `-2` and `-3` actionable for
+whoever reads the shell's log. And the last two checks are the diff, observed
+from C: a second `{"reset":true}` is accepted and produces no callback,
+because the snapshot it would have produced is the one the subscriber holds.
 
 The Swift-side memory test lives in `VorssaintCoreTests`
 (`testEveryVsSnapshotIsMatchedByAVsFree`, 200 outstanding allocations counted
