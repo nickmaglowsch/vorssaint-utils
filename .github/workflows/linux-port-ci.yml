@@ -74,8 +74,20 @@ jobs:
           # Tests/VorssaintCoreTests (WP-16, docs/linux-port/TESTS.md).
           # pipefail, or `| tee` would swallow a failing exit status and the
           # grep below would happily match one green suite line out of many.
+          # -suppress-warnings: the generated cases carry the original
+          # harness's unused bindings, and 24 000 warning lines bury the one
+          # message that matters in a log that can only be read from the end.
           set -o pipefail
-          swift test --filter VorssaintCoreTests 2>&1 | tee /tmp/swift-test.out
+          status=0
+          swift test --filter VorssaintCoreTests -Xswiftc -suppress-warnings \
+            2>&1 | tee /tmp/swift-test.out || status=$?
+          echo "=== errors, if any ==============================="
+          grep -E "error:" /tmp/swift-test.out | head -40 || true
+          echo "=== per-case check counts ========================"
+          grep -F "[generated-checks]" /tmp/swift-test.out | tail -100 || true
+          echo "=== totals ======================================="
+          grep -E "^Executed [0-9]+ tests?" /tmp/swift-test.out | tail -5 || true
+          test "$status" -eq 0
           grep -E "^Executed [0-9]+ tests?, with 0 failures" /tmp/swift-test.out
           ! grep -qE "with [1-9][0-9]* failures?" /tmp/swift-test.out
 
