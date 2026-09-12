@@ -2,6 +2,16 @@
 // Copyright (C) 2026 Vorssaint
 
 import Foundation
+// `XMLParser` and `XMLParserDelegate` are in FoundationXML on Linux, not in
+// Foundation; on Darwin that module does not exist and Foundation carries
+// them. The guard is the import, not the code (WP-12, PLAN.md § 4.1's third
+// Foundation gap). This file cannot move into VorssaintCore yet — it is still
+// blocked by JunkCleaner, InstalledApps, ShelfService and a UI file
+// (CORE_MOVES.md § 4.2) — so the guard is here ahead of the move rather than
+// as part of it, because it costs nothing and is one fewer thing to remember.
+#if canImport(FoundationXML)
+import FoundationXML
+#endif
 
 /// Reads update metadata only. Installation stays with the app that owns
 /// the feed, including its signature, license and rollout checks.
