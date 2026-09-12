@@ -254,38 +254,38 @@ if (( TEST )); then
     swiftc -Onone -target "$TARGET" -sdk "$SDK" "${SDK_COMPAT_FLAGS[@]}" \
         "${VM_STATISTICS_COMPAT_FLAGS[@]}" \
         Sources/Vorssaint/Services/Media/MediaSupport.swift \
-        Sources/Vorssaint/Core/QuitProtectionSupport.swift \
-        Sources/Vorssaint/Core/QuitProtectionStrings.swift \
+        Sources/VorssaintCore/Core/QuitProtectionSupport.swift \
+        Sources/VorssaintCore/Core/QuitProtectionStrings.swift \
         Sources/Vorssaint/Core/Defaults.swift \
         Sources/VorssaintCore/Core/DefaultsKeys.swift \
         Sources/Vorssaint/Core/FeatureCatalog.swift \
         Sources/Vorssaint/Core/FeaturePresets.swift \
-        Sources/Vorssaint/Core/FeatureHubStrings.swift \
-        Sources/Vorssaint/Core/ShortcutSettingsStrings.swift \
+        Sources/VorssaintCore/Core/FeatureHubStrings.swift \
+        Sources/VorssaintCore/Core/ShortcutSettingsStrings.swift \
         Sources/Vorssaint/Core/SettingsBackupSupport.swift \
-        Sources/Vorssaint/Core/BackupStrings.swift \
-        Sources/Vorssaint/Core/SnippetStrings.swift \
-        Sources/Vorssaint/Core/BrightnessStrings.swift \
-        Sources/Vorssaint/Core/MediaImageStrings.swift \
-        Sources/Vorssaint/Core/QuickToggleStrings.swift \
-        Sources/Vorssaint/Core/ScreenshotStrings.swift \
-        Sources/Vorssaint/Core/RecentCaptureStrings.swift \
-        Sources/Vorssaint/Core/RecorderStrings.swift \
-        Sources/Vorssaint/Core/RecorderShareStrings.swift \
-        Sources/Vorssaint/Core/CameraPreviewStrings.swift \
-        Sources/Vorssaint/Core/ScratchpadStrings.swift \
-        Sources/Vorssaint/Core/FinderRenameStrings.swift \
-        Sources/Vorssaint/Core/CommandBarStrings.swift \
-        Sources/Vorssaint/Core/FeedbackStrings.swift \
-        Sources/Vorssaint/Core/RadialMenuStrings.swift \
-        Sources/Vorssaint/Core/MenuBarAppearanceStrings.swift \
-        Sources/Vorssaint/Core/AppAppearance.swift \
-        Sources/Vorssaint/Core/AppearanceStrings.swift \
-        Sources/Vorssaint/Core/BatteryTimeStrings.swift \
-        Sources/Vorssaint/Core/KeepAwakeStrings.swift \
-        Sources/Vorssaint/Core/BluetoothSleepStrings.swift \
-        Sources/Vorssaint/Core/PermissionGuideStrings.swift \
-        Sources/Vorssaint/Core/FanControlStrings.swift \
+        Sources/VorssaintCore/Core/BackupStrings.swift \
+        Sources/VorssaintCore/Core/SnippetStrings.swift \
+        Sources/VorssaintCore/Core/BrightnessStrings.swift \
+        Sources/VorssaintCore/Core/MediaImageStrings.swift \
+        Sources/VorssaintCore/Core/QuickToggleStrings.swift \
+        Sources/VorssaintCore/Core/ScreenshotStrings.swift \
+        Sources/VorssaintCore/Core/RecentCaptureStrings.swift \
+        Sources/VorssaintCore/Core/RecorderStrings.swift \
+        Sources/VorssaintCore/Core/RecorderShareStrings.swift \
+        Sources/VorssaintCore/Core/CameraPreviewStrings.swift \
+        Sources/VorssaintCore/Core/ScratchpadStrings.swift \
+        Sources/VorssaintCore/Core/FinderRenameStrings.swift \
+        Sources/VorssaintCore/Core/CommandBarStrings.swift \
+        Sources/VorssaintCore/Core/FeedbackStrings.swift \
+        Sources/VorssaintCore/Core/RadialMenuStrings.swift \
+        Sources/VorssaintCore/Core/MenuBarAppearanceStrings.swift \
+        Sources/VorssaintCore/Core/AppAppearance.swift \
+        Sources/VorssaintCore/Core/AppearanceStrings.swift \
+        Sources/VorssaintCore/Core/BatteryTimeStrings.swift \
+        Sources/VorssaintCore/Core/KeepAwakeStrings.swift \
+        Sources/VorssaintCore/Core/BluetoothSleepStrings.swift \
+        Sources/VorssaintCore/Core/PermissionGuideStrings.swift \
+        Sources/VorssaintCore/Core/FanControlStrings.swift \
         Sources/Vorssaint/Services/FanControl/FanControlSupport.swift \
         Sources/Vorssaint/Services/Snippets/TextSnippetSupport.swift \
         Sources/Vorssaint/Services/RadialMenu/RadialMenuSupport.swift \
@@ -315,12 +315,12 @@ if (( TEST )); then
         Sources/Vorssaint/Services/SystemShortcutTakeoverSupport.swift \
         Sources/VorssaintCore/Core/Localization.swift \
         Sources/Vorssaint/Core/Localizations/Strings+*.swift \
-        Sources/Vorssaint/Core/FeatureStrings.swift \
-        Sources/Vorssaint/Core/KillProcessStrings.swift \
-        Sources/Vorssaint/Core/WhatsAppDownloadStrings.swift \
-        Sources/Vorssaint/Core/WhatsAppOrganizerStrings.swift \
+        Sources/VorssaintCore/Core/FeatureStrings.swift \
+        Sources/VorssaintCore/Core/KillProcessStrings.swift \
+        Sources/VorssaintCore/Core/WhatsAppDownloadStrings.swift \
+        Sources/VorssaintCore/Core/WhatsAppOrganizerStrings.swift \
         Sources/Vorssaint/Core/ReleaseNotes.swift \
-        Sources/Vorssaint/Core/URLCleaning.swift \
+        Sources/VorssaintCore/Core/URLCleaning.swift \
         Sources/Vorssaint/Services/GeneralPasteboardAccess.swift \
         Sources/Vorssaint/Services/Audio/MixerRoutingSupport.swift \
         Sources/Vorssaint/Services/Audio/MusicLaunchSupport.swift \
@@ -333,8 +333,8 @@ if (( TEST )); then
         Sources/Vorssaint/Services/Homebrew/HomebrewSupport.swift \
         Sources/Vorssaint/Services/AppUpdates/AppUpdatesSupport.swift \
         Sources/Vorssaint/Services/AppUpdates/AppUpdateFeedSupport.swift \
-        Sources/Vorssaint/Core/AppUpdateStrings.swift \
-        Sources/Vorssaint/Core/DiskImageInstallerStrings.swift \
+        Sources/VorssaintCore/Core/AppUpdateStrings.swift \
+        Sources/VorssaintCore/Core/DiskImageInstallerStrings.swift \
         Sources/Vorssaint/Services/DiskImageInstaller/DiskImageInstallerSupport.swift \
         Sources/Vorssaint/Services/Clipboard/ClipboardHistorySupport.swift \
         Sources/Vorssaint/Services/Clipboard/ClipboardAutoClearSupport.swift \
@@ -361,13 +361,13 @@ if (( TEST )); then
         Sources/Vorssaint/Services/MouseExceptions/MouseAppExceptionSupport.swift \
         Sources/Vorssaint/Services/MouseExceptions/MouseAppExceptions.swift \
         Sources/Vorssaint/Services/WindowServerSupport.swift \
-        Sources/Vorssaint/Core/MouseButtonStrings.swift \
-        Sources/Vorssaint/Core/MouseClickDebounceStrings.swift \
+        Sources/VorssaintCore/Core/MouseButtonStrings.swift \
+        Sources/VorssaintCore/Core/MouseClickDebounceStrings.swift \
         Sources/Vorssaint/Core/MouseExceptionStrings.swift \
-        Sources/Vorssaint/Core/ClipboardIgnoredAppsStrings.swift \
-        Sources/Vorssaint/Core/WindowPreviewExclusionStrings.swift \
-        Sources/Vorssaint/Core/DiskExclusionStrings.swift \
-        Sources/Vorssaint/Core/SwitcherAppRulesStrings.swift \
+        Sources/VorssaintCore/Core/ClipboardIgnoredAppsStrings.swift \
+        Sources/VorssaintCore/Core/WindowPreviewExclusionStrings.swift \
+        Sources/VorssaintCore/Core/DiskExclusionStrings.swift \
+        Sources/VorssaintCore/Core/SwitcherAppRulesStrings.swift \
         Sources/Vorssaint/Services/QuickTools/QuickToolsSupport.swift \
         Sources/Vorssaint/Services/CommandBar/CommandBarSupport.swift \
         Sources/Vorssaint/Services/CommandBar/CommandBarPreferences.swift \
@@ -422,7 +422,7 @@ if (( TEST )); then
         Sources/Vorssaint/Services/Metrics/SustainedAlertGate.swift \
         Sources/Vorssaint/Services/WindowLayout/WindowLayoutSupport.swift \
         Sources/Vorssaint/Services/WindowLayout/WindowGestureSupport.swift \
-        Sources/Vorssaint/Core/WindowDirectionalStrings.swift \
+        Sources/VorssaintCore/Core/WindowDirectionalStrings.swift \
         Sources/Vorssaint/Services/CleaningMode/CleaningUnlockCounter.swift \
         Sources/Vorssaint/Services/Display/ExtraBrightnessSupport.swift \
         Sources/Vorssaint/Services/Display/BrightnessSupport.swift \
