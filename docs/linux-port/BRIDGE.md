@@ -473,3 +473,31 @@ inside `BridgeCSurface` and the C client cannot see it. That is also why
 `BridgeCSurface` is in `VorssaintCore` and `CoreBridgeC.swift` is four one-line
 `@_cdecl` wrappers: an `@_cdecl` function in an executable target cannot be
 imported by a test target, so anything left beside it has no test but a CI job.
+
+## Lead decisions on this package
+
+Three things the executor raised, settled here so they are not re-litigated.
+
+**`vs_command` returning `-3` for undecodable JSON stays.** It is a
+comment-only divergence from the WP-01 stub, and it earns itself: "I could
+not parse what you sent" and "the service considered it and refused" are
+different facts, and a shell that cannot tell them apart will report a bug in
+the wrong half of the port. The stub predates having any real service to
+refuse anything.
+
+**`featureRuntime` bridging the persisted half rather than `FeatureRuntime`
+itself is right for now.** That type imports AppKit, terminates `NSApp` and
+names thirty singletons; sharing its `featureAvailable.<id>` keys and its
+install gate is the honest subset. WP-15 closes the gap from the other end
+when `FeatureCatalog` stops being macOS-only.
+
+**The four out-of-scope fixes were correct to make.** Both gates were red at
+the base commit for reasons carrying none of WP-18: a Swift 6.1 type-checker
+timeout in a settings-store test, a French string using a plain space before
+its colon where the locale contract requires U+00A0, and `build.sh --test`'s
+explicit file list missing five files. A package that stops at "not mine"
+while the gate is red hands the next agent the same wall — and WP-16 already
+had to cut a side branch once for exactly that. Each fix is its own commit
+with the failing output quoted, which is what makes it reviewable rather than
+smuggled.
+
