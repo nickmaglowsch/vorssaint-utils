@@ -12,6 +12,19 @@ FIXTURES="$VS_SOURCE_DIR/fixtures"
 fail_count=0
 check_count=0
 
+# One temp file for every `run`, and exactly one EXIT trap in the whole suite.
+# A trap per `run` would silently replace whatever the test had installed --
+# which is how the fake-UPower suite came to leave a dbus-daemon behind on every
+# invocation. A test that needs its own teardown defines `test_cleanup`.
+OUTPUT=$(mktemp)
+vs_at_exit() {
+    if declare -f test_cleanup > /dev/null; then
+        test_cleanup
+    fi
+    rm -f "$OUTPUT"
+}
+trap vs_at_exit EXIT
+
 # ctest's "not run" code, for a dependency this machine does not have.
 SKIP_EXIT=77
 
@@ -40,8 +53,6 @@ refute() {
 
 run() {
     # run <args...>; captures stdout+stderr into $OUTPUT and records the status
-    OUTPUT=$(mktemp)
-    trap 'rm -f "$OUTPUT"' EXIT
     echo "+ vs-sensors $*"
     "$VS_SENSORS" "$@" > "$OUTPUT" 2>&1
     RUN_STATUS=$?

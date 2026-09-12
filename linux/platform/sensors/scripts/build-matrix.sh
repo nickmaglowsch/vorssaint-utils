@@ -105,16 +105,19 @@ for cfg in default Debug Release RelWithDebInfo sanitizers; do
     fi
 
     # The whole tree is *built* in every leg, which is what catches a warning
-    # this package introduces elsewhere. The whole tree is only *run* once: the
-    # other concerns' suites bring up a compositor, a portal or a PipeWire
-    # stack, they take minutes to skip when those are absent, and their result
-    # is reported here rather than owned.
+    # this package introduces elsewhere. Of the other concerns' suites, only the
+    # ones that need no session stack are run, and only in one leg: the capture
+    # and audio stack suites bring up sway, a portal and PipeWire, they take
+    # minutes to skip when those are absent, and on a shared container a
+    # half-dead stack from another agent's run can hang them outright. Their
+    # result belongs to their own package's matrix, not to this one.
     if [ "$cfg" = default ]; then
-        if (cd "$dir" && ctest --output-on-failure > "$dir.ctest.log" 2>&1); then
-            echo "  full ctest: $(grep -E '^[0-9]+% tests passed' "$dir.ctest.log")"
+        if (cd "$dir" && ctest -E 'capture_stack|audio_' --output-on-failure \
+                > "$dir.ctest.log" 2>&1); then
+            echo "  rest of the tree (no session stack): $(grep -E '^[0-9]+% tests passed' "$dir.ctest.log")"
         else
-            echo "  full ctest: $(grep -E '^[0-9]+% tests passed' "$dir.ctest.log")" \
-                 "(non-sensors failures are other packages' environments)"
+            echo "  rest of the tree (no session stack): $(grep -E '^[0-9]+% tests passed' "$dir.ctest.log")" \
+                 "(non-sensors failures are other packages')"
             grep -E "^\s+[0-9]+ - .*(Failed|Not Run)" "$dir.ctest.log" | sed 's/^/    /'
         fi
     fi

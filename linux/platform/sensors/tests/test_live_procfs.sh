@@ -63,7 +63,7 @@ echo "== processes: the sampling policy topCPU uses =="
 # that fails at random. So make it busy, deliberately, for the window.
 busy() { while :; do :; done; }
 busy & BUSY_PID=$!
-trap 'kill "$BUSY_PID" 2> /dev/null' EXIT
+test_cleanup() { [ -n "${BUSY_PID:-}" ] && kill "$BUSY_PID" 2> /dev/null; return 0; }
 run --no-nvml --count 2 --interval 0.4 --limit 5 procs
 expect_status "procs succeeded" 0
 expect_numeric "rows returned" row_count '$1 >= 1 && $1 <= 5'

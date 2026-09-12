@@ -20,12 +20,14 @@ command -v dbus-daemon > /dev/null || { echo "no dbus-daemon; skipping"; exit "$
 }
 
 WORK=$(mktemp -d)
-cleanup() {
+# The harness owns the single EXIT trap; this is the hook it calls. Killing the
+# private bus matters: a leaked dbus-daemon per run adds up on a shared machine.
+test_cleanup() {
     [ -n "${FAKE_PID:-}" ] && kill "$FAKE_PID" 2> /dev/null
     [ -n "${BUS_PID:-}" ] && kill "$BUS_PID" 2> /dev/null
     rm -rf "$WORK"
+    return 0
 }
-trap cleanup EXIT
 
 cat > "$WORK/bus.conf" <<'CONF'
 <!DOCTYPE busconfig PUBLIC "-//freedesktop//DTD D-Bus Bus Configuration 1.0//EN"
