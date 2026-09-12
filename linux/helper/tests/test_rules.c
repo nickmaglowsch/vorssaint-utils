@@ -708,7 +708,7 @@ static void test_mouse_button_vectors(void)
                     !rules_mbs_can_map(BTN_LEFT) && !rules_mbs_can_map(BTN_RIGHT) &&
                     !rules_mbs_can_map(BTN_MIDDLE) && !rules_mbs_can_map(BTN_TASK + 1) &&
                     !rules_mbs_can_map(-3),
-                "only the extra buttons and the two side-wheel directions can carry a shortcut");
+                "only extra buttons and both side-wheel directions can carry a shortcut");
 
     {
         rules_tilt_gate g;

@@ -23,15 +23,34 @@ if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
   message(STATUS "No CMAKE_BUILD_TYPE given, defaulting to RelWithDebInfo")
 endif()
 
-# _FORTIFY_SOURCE needs an optimising build to do anything; saying so beats
-# silently shipping a hardening flag that is a no-op. Debug is still a
-# supported configuration -- the warning set must be clean there too -- it just
-# is not one to install.
-if(CMAKE_BUILD_TYPE STREQUAL "Debug")
-  message(WARNING "_FORTIFY_SOURCE has no effect in a Debug build; "
-                  "use RelWithDebInfo for a build that hardens")
+# The sanitizers are a *fifth* configuration, not an option on one of the four:
+# a leak and a use-after-free are a class of defect -Werror cannot see, because
+# they are missing statements rather than wrong ones. scripts/build-matrix.sh
+# runs this leg, which is how the WP-D1/D2 review found vorssaint-relay leaking
+# its whole device backend on every --replay and --bench run.
+#
+# It is never installed, and it deliberately drops _FORTIFY_SOURCE: fortify and
+# ASan instrument the same libc calls, and defining both is a compile error
+# here (-Werror on the redefinition), not a hardening decision. The four
+# shipping configurations keep it.
+option(WITH_SANITIZERS "Build with ASan/UBSan/LSan in place of _FORTIFY_SOURCE" OFF)
+
+if(WITH_SANITIZERS)
+  message(STATUS "Sanitizer build: ASan + UBSan + LSan, _FORTIFY_SOURCE off, not installable")
+  add_compile_options(-fsanitize=address,undefined -fno-sanitize-recover=all
+                      -fno-omit-frame-pointer -fstack-protector-strong)
+  add_link_options(-fsanitize=address,undefined)
+else()
+  # _FORTIFY_SOURCE needs an optimising build to do anything; saying so beats
+  # silently shipping a hardening flag that is a no-op. Debug is still a
+  # supported configuration -- the warning set must be clean there too -- it
+  # just is not one to install.
+  if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+    message(WARNING "_FORTIFY_SOURCE has no effect in a Debug build; "
+                    "use RelWithDebInfo for a build that hardens")
+  endif()
+  add_compile_options(-D_FORTIFY_SOURCE=2 -fstack-protector-strong)
 endif()
-add_compile_options(-D_FORTIFY_SOURCE=2 -fstack-protector-strong)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 add_compile_options(-fPIE)
 add_link_options(-pie -Wl,-z,relro -Wl,-z,now -Wl,-z,noexecstack)

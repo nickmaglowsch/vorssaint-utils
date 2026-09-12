@@ -579,21 +579,34 @@ static int ev_write(input_backend *self, const rules_event *ev)
     /* An LED belongs to the keyboard the user is looking at, not to the
      * relay's synthetic output device, and a grabbed device still accepts
      * EV_LED writes. Written to every keyboard source, because the relay
-     * cannot know which one the hand is on. */
+     * cannot know which one the hand is on.
+     *
+     * The SYN_REPORT is written too, in the same write(2). evdev_write()
+     * hands each record to input_inject_event() and most LED handlers act on
+     * the EV_LED alone, so the terminator is redundant on those -- but it is
+     * what every other writer of an input device sends, a driver is entitled
+     * to batch until it sees one, and this is the one path in this file with
+     * no model in the test suite (PRIVILEGES.md § 8). Being conventional is
+     * cheaper than finding out which driver is not.
+     *
+     * One write(2) rather than two, so a driver that does batch cannot see a
+     * half-finished report if the second call were to fail. */
     if (ev->type == EV_LED) {
-        struct input_event ie;
+        struct input_event ie[2];
         int wrote = 0;
 
-        memset(&ie, 0, sizeof(ie));
-        ie.type = EV_LED;
-        ie.code = ev->code;
-        ie.value = ev->value;
+        memset(ie, 0, sizeof(ie));
+        ie[0].type = EV_LED;
+        ie[0].code = ev->code;
+        ie[0].value = ev->value;
+        ie[1].type = EV_SYN;
+        ie[1].code = SYN_REPORT;
         for (int i = 0; i < p->n_src; i++) {
             if (p->src[i].dev_class != RULES_DEV_KEYBOARD)
                 continue;
             if (!libevdev_has_event_code(p->src[i].dev, EV_LED, ev->code))
                 continue;
-            if (write(p->src[i].fd, &ie, sizeof(ie)) == (ssize_t)sizeof(ie))
+            if (write(p->src[i].fd, ie, sizeof(ie)) == (ssize_t)sizeof(ie))
                 wrote++;
         }
         return wrote > 0 ? 0 : -ENODEV;

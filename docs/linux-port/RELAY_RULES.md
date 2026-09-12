@@ -22,27 +22,58 @@ vectors below run at all on a kernel with no `/dev/input` (see
 | `scroll_invert` | `VorssaintCore/Services/ScrollWheelSupport.swift` (`inversionPlan`) | `ScrollInverterService.swift` | 6 verbatim |
 | `smooth_scroll` | `VorssaintCore/Services/SmoothScrollSupport.swift` (all of it) | `SmoothScrollService.swift` | 48 verbatim |
 | `super_key` | `Services/SuperKey/SuperKeySupport.swift` (`State`, `soloEffect`), `SuperKeyMappingGuard.swift` | `SuperKeyService.swift` | 14 verbatim + 1 adapted + 5 new |
-| `mouse_button_shortcut` | `Services/MouseButtons/MouseButtonShortcutSupport.swift`, `MouseSpacesGestureSupport.swift` | `MouseButtonShortcutService.swift` | 12 verbatim + 5 adapted |
+| `mouse_button_shortcut` | `Services/MouseButtons/MouseButtonShortcutSupport.swift`, `MouseSpacesGestureSupport.swift` | `MouseButtonShortcutService.swift` | 13 verbatim + 4 adapted |
 | `quit_protection` | `VorssaintCore/Core/QuitProtectionSupport.swift` | `Services/QuitProtection/QuitProtectionService.swift` | 13 verbatim + 5 adapted + 1 new |
 
 "Verbatim" means the assertion's text in `linux/helper/tests/test_rules.c` is
 character-for-character the message from `Tests/MetricsTests.swift`, so the two
-suites can be diffed. "Adapted" means the same assertion with a macOS name
-replaced by its Linux equivalent (Command → Control, Mission Control →
-overview, Space → workspace). "New" means a case the Swift does not have,
-because the Linux surface has a hazard the macOS one does not.
+suites can be diffed by eye and a rename on either side shows up. "Adapted"
+means the same assertion with a macOS name replaced by its Linux equivalent.
+"New" means a case the Swift does not have, because the Linux surface has a
+hazard or a shape the macOS one does not.
 
-Totals, from `test_rules`:
+**These numbers are produced, not asserted.**
+`Tools/linux-port/count_ported_vectors.py` classifies every assertion the
+suite prints: verbatim if its message is in `MetricsTests.swift`, adapted if
+one (or, for exactly one vector, two) of a short table of named platform
+renames turns it into a Swift message, new otherwise. Nothing is guessed at —
+a rule that does not produce an *exact* Swift message does not count, and
+`--verbose` prints the rule that matched and the reason it exists.
 
 ```
-136 verbatim + 11 adapted = 147 assertions carried over from MetricsTests.swift
- 51 Linux-specific assertions (the relay path, the documents, device lifecycle)
-198 assertions, 0 failed -- all rules tests passed
+$ Tools/linux-port/count_ported_vectors.py --test-output /tmp/tests.txt
+section                                                        verb adap  new
+------------------------------------------------------------------------------
+keyboard_debounce vectors (KeyboardDebounceState.shouldSuppres   29    0    3
+mouse_click_debounce vectors (MouseClickDebounceState.shouldSu   14    0    0
+scroll_invert vectors (ScrollWheelSupport.inversionPlan)          6    0    0
+smooth_scroll vectors (SmoothScrollSupport)                      48    0    0
+super_key vectors (SuperKeySupport.State.decide, .soloEffect)    14    1    5
+mouse_button_shortcut vectors (MouseButtonShortcutSupport, Mou   13    4    0
+quit_protection vectors (QuitProtectionSupport)                  13    5    1
+the relay path: the same rules through the fake device backend    0    0   18
+the SetRules and SetContext documents                             0    0   13
+device lifecycle: Enable(false) must actually release the devi    0    0    4
+device hot-plug: a keyboard plugged in after Enable(true) is g    0    0    7
+------------------------------------------------------------------------------
+TOTAL                                                           137   10   51
+
+147 assertions carried over from Tests/MetricsTests.swift (137 verbatim, 10 adapted)
+51 Linux-specific assertions
+198 assertions in linux/helper/tests/test_rules.c
 ```
+
+The ten renames, each with its reason, are the `ADAPTATIONS` table in that
+script: Command → Control, Mission Control → overview, App Exposé → per-app
+overview, Space → workspace, bundle identifier → app id, and input-source
+action → configured-key action. One vector needs two of them at once
+(`Alt-Ctrl+W` is `Control-Command-W` on the Mac, because macOS can spend
+Control on the extra modifier and Linux cannot — Control is the base).
 
 Add the replay comparison (`tests/replay_expected.txt`, 114 lines of relay
 output against a recorded evdev stream with all seven rules on) and the five
-other C suites, and `ctest` is eight suites, all green in all four build types.
+other C suites, and `ctest` is eight suites, all green in all four build types
+and under the sanitizers (`scripts/build-matrix.sh`, five legs).
 
 ---
 

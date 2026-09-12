@@ -406,7 +406,6 @@ static int run_live(input_backend *b, bool tap_mode, const char *record_path,
 
     if (rec)
         fclose(rec);
-    b->close(b);
     return 0;
 }
 
@@ -485,5 +484,16 @@ int main(int argc, char **argv)
         rc = run_replay(b, replay, verbose, &cfg);
     else
         rc = run_live(b, tap, record, &cfg);
+
+    /* The backend is main's, on every path out of every mode. It used to be
+     * closed by run_live() alone, which meant whether the process released
+     * its devices depended on which mode it had been asked to run -- and
+     * --replay and --bench simply leaked it. On this backend that is a
+     * sanitizer finding; on the evdev one it is a process exiting while still
+     * holding EVIOCGRAB on every keyboard in the session, which the kernel
+     * only undoes because the fds happen to be closed on exit. Owning it in
+     * one place is the fix; scripts/build-matrix.sh has a sanitizer leg so it
+     * stays fixed. */
+    b->close(b);
     return rc;
 }

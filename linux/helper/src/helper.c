@@ -896,16 +896,24 @@ int main(int argc, char **argv)
     /* sd_bus_open_system honours DBUS_SYSTEM_BUS_ADDRESS, which is how the
      * private-bus harness in scripts/ points the helper at a test bus without
      * changing a line of this code. */
+    /* The three failures below all take the same way out, because they are
+     * the same situation: the daemon has a bus connection it will not use.
+     * They used to `return 1` with the connection still held, which the
+     * sanitizer leg of scripts/build-matrix.sh reports as a leak on the one
+     * path a packaging mistake actually takes -- a second instance of the
+     * defect the WP-D1/D2 review found in vorssaint-relay, on an error path
+     * rather than a normal one, which is why running the scenario under the
+     * sanitizers was worth doing rather than only the suites. */
     r = session_bus ? sd_bus_open_user(&bus) : sd_bus_open_system(&bus);
     if (r < 0) {
         fprintf(stderr, "helper: cannot connect to bus: %s\n", strerror(-r));
-        return 1;
+        goto fail;
     }
 
     r = sd_bus_add_object_vtable(bus, &slot, BUS_PATH, IFACE, helper_vtable, NULL);
     if (r < 0) {
         fprintf(stderr, "helper: cannot export %s: %s\n", IFACE, strerror(-r));
-        return 1;
+        goto fail;
     }
 
     r = sd_bus_request_name(bus, BUS_NAME, 0);
@@ -913,7 +921,7 @@ int main(int argc, char **argv)
         /* The bus policy in dist/org.vorssaint.Helper1.conf allows only root
          * to own this name, so this is where an unprivileged impostor fails. */
         fprintf(stderr, "helper: cannot own %s: %s\n", BUS_NAME, strerror(-r));
-        return 1;
+        goto fail;
     }
     fprintf(stderr, "helper: owning %s on the %s bus, uid=%u, authorization=%s\n", BUS_NAME,
             session_bus ? "session" : "system", (unsigned)geteuid(), polkit_backend_name());
@@ -997,4 +1005,13 @@ int main(int argc, char **argv)
     sd_bus_unref(bus);
     fprintf(stderr, "helper: exiting, devices released\n");
     return 0;
+
+fail:
+    /* Nothing has been claimed at this point -- devices are claimed by
+     * Enable(true) and the bus is not yet serving -- so there is nothing to
+     * release but what was allocated. */
+    session_lookup_free(H.sessions);
+    sd_bus_slot_unref(slot);
+    sd_bus_unref(bus);
+    return 1;
 }

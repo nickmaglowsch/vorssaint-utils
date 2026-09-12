@@ -74,6 +74,25 @@ bash linux/helper/scripts/build-matrix.sh
 That configures, builds and runs `ctest` under no build type, Debug, Release
 and RelWithDebInfo, and fails if any of them warns.
 
+**And under the sanitizers**, which is the fifth leg of the same script.
+`-Werror` cannot see a leak or a use-after-free: they are missing statements,
+not wrong ones. The leg builds with `-DWITH_SANITIZERS=ON` (ASan + UBSan +
+LSan, `_FORTIFY_SOURCE` off because it and ASan instrument the same libc
+calls), runs every ctest entry, and then runs `vorssaint-relay --bench` and
+`--tap` directly, because the CLI is not covered by ctest and is where the
+WP-D1/D2 review found the tree's first leak. The sanitizer build is never
+installed.
+
+The daemon has no ctest entry either, so check it against the end-to-end
+scenario below, built the same way:
+
+```sh
+cmake -S linux/helper -B build-san -DCMAKE_BUILD_TYPE=Debug \
+      -DWITH_SANITIZERS=ON -DWITH_POLKIT=OFF -DCMAKE_C_FLAGS_DEBUG="-O1 -g"
+cmake --build build-san -j4
+bash linux/helper/scripts/private-bus.sh $PWD/build-san
+```
+
 ## The end-to-end scenario
 
 There is no systemd and no polkit in a plain container, so `private-bus.sh`
