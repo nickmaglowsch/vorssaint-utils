@@ -68,11 +68,15 @@ public enum NotificationAuthorization: Equatable {
 
 /// Posts notifications and reports what the user did with them.
 ///
-/// Named `PlatformNotifier`, not `Notifier`: `Services/Notifier.swift` already
-/// declares `enum Notifier`, and `build.sh` compiles `Sources/Vorssaint`,
-/// `Sources/VorssaintCore` and `Sources/VorssaintMac` into **one** module
-/// (`PLAN.md` § 5), so the two names would collide in the shipped macOS app.
-/// The file keeps the protocol's conceptual name.
+/// Named `PlatformNotifier`, in a file of the same name, because
+/// `Services/Notifier.swift` already declares `enum Notifier` and `build.sh`
+/// compiles `Sources/Vorssaint`, `Sources/VorssaintCore` and
+/// `Sources/VorssaintMac` into **one** `swiftc` invocation (`PLAN.md` § 5).
+/// The type name would collide — and so would the *file* name: a single
+/// invocation rejects two files with the same basename outright
+/// (`error: filename "Notifier.swift" used twice`, run 34693363900), because
+/// it uses filenames to tell private declarations apart. Any file added under
+/// these three directories must have a basename unique across all three.
 ///
 /// macOS is `UNUserNotificationCenter`, which needs an authorization request;
 /// Linux is the `org.freedesktop.Notifications` D-Bus interface, or the

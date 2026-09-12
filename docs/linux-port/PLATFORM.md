@@ -123,16 +123,30 @@ C implementation. Only `window/` exists today.
 | `PowerControl` | `PowerControl.swift` | `MacPowerControl.swift` | `power/` (logind, Inhibit portal, `/sys/class/backlight`, helper DDC) | keep awake, brightness, extra dimming, fan control |
 | `InputInterceptor` | `InputInterceptor.swift` | `MacInputInterceptor` (`MacPlatformAdapters.swift`) | `input/` (helper client → `org.vorssaint.Helper1`) | super key, keyboard/click debounce, smooth scroll, middle click, mouse navigation, button remaps |
 | `AppLauncher` | `AppLauncher.swift` | `MacAppLauncher.swift` | `launch/` (OpenURI portal, `.desktop` entries, `Process`) | command bar, uninstaller, kill process, auto-quit, Homebrew |
-| `PlatformNotifier` | `Notifier.swift` | `MacNotifier.swift` | `notify/` (`org.freedesktop.Notifications`, Notification portal) | cleaner, WhatsApp organizer, updates, monitor alerts |
+| `PlatformNotifier` | `PlatformNotifier.swift` | `MacNotifier.swift` | `notify/` (`org.freedesktop.Notifications`, Notification portal) | cleaner, WhatsApp organizer, updates, monitor alerts |
 | `TrashAndFiles` | `TrashAndFiles.swift` | `MacTrashAndFiles.swift` | `files/` (freedesktop trash spec, `org.freedesktop.FileManager1`) | junk cleaner, uninstaller, screenshots, managed downloads, disk-image installer, bundle migration |
 | `PackageManager` | `PackageManager.swift` | `MacPackageManager` (`MacPlatformAdapters.swift`) | `packages/` (apt, dnf, pacman, zypper, flatpak, snap) | Homebrew feature, app updates, cleaner |
 | `SessionEvents` | `SessionEvents.swift` | `MacSessionEvents.swift` | `session/` (logind, Settings portal, window layer) | keep awake, bluetooth sleep, appearance, auto-quit, clipboard |
 | `Capabilities` | `Capabilities.swift` | `MacCapabilities.swift` | none — aggregates the other thirteen | feature hub, Capabilities page, energy badges, `FeatureCatalog.requiredCapabilities` (WP-15) |
 
-`PlatformNotifier` is the protocol's name because `Services/Notifier.swift`
-already declares `enum Notifier`, and `build.sh` compiles `Sources/Vorssaint`,
-`Sources/VorssaintCore` and `Sources/VorssaintMac` into **one** module
-(`PLAN.md` § 5), where the two would collide.
+`PlatformNotifier` is the protocol's name, in a file of the same name, because
+`Services/Notifier.swift` already declares `enum Notifier` and `build.sh`
+compiles `Sources/Vorssaint`, `Sources/VorssaintCore` and
+`Sources/VorssaintMac` into **one** `swiftc` invocation (`PLAN.md` § 5). The
+type would collide, and so does the *file*: one invocation rejects two files
+with the same basename outright — `error: filename "Notifier.swift" used
+twice` on run 34693363900 — because it uses filenames to tell private
+declarations apart.
+
+**A rule for everyone working in these three directories:** a new file's
+basename must be unique across all of `Sources/Vorssaint`,
+`Sources/VorssaintCore` and `Sources/VorssaintMac`, not just within its own.
+
+```
+$ find Sources/Vorssaint Sources/VorssaintCore Sources/VorssaintMac \
+      -name '*.swift' -exec basename {} \; | sort | uniq -d
+(empty)
+```
 
 ## 3. The capability flags
 
