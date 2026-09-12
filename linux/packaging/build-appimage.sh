@@ -78,6 +78,12 @@ export QML_SOURCES_PATHS="${QML_SOURCES_PATHS:-$SHELL_DIR/qml}"
 # Wayland is the port's target session and its sub-plugins are dlopen()ed, so
 # ldd never sees them; platformthemes is what carries the portal file dialogs.
 export EXTRA_QT_PLUGINS="${EXTRA_QT_PLUGINS:-wayland-decoration-client;wayland-graphics-integration-client;wayland-shell-integration;platformthemes}"
+# Platform plugins are a separate list, and the plugin bundles only xcb unless
+# told otherwise: without `offscreen` the packaged app cannot run headlessly at
+# all ("Could not find the Qt platform plugin \"offscreen\"", run 34723081192),
+# and without the wayland ones it falls back to XWayland on the port's target
+# sessions.
+export EXTRA_PLATFORM_PLUGINS="${EXTRA_PLATFORM_PLUGINS:-libqoffscreen.so;libqminimal.so;libqwayland-generic.so;libqwayland-egl.so}"
 export QT_QPA_PLATFORM=offscreen
 
 echo "== linuxdeploy + plugin qt"
