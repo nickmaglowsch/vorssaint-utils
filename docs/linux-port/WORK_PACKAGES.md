@@ -108,8 +108,8 @@ app is behaviourally unchanged.
 | WP-13 | Combine abstraction (OpenCombine on Linux) | S | WP-10 | Core porter | merged (per-file guard convention in COMBINE.md; lead accepted deleting the VorssaintCombine target, done after WP-11 lands) |
 | WP-14 | Settings store abstraction (UserDefaults ↔ JSON/GSettings) | M | WP-12 | Core porter | todo |
 | WP-15 | Feature catalog: platform support flags and Linux presets | S | WP-12 | Core porter | todo |
-| WP-16 | Test harness: `swift test` on both platforms, port `Tests/*` pure checks | M | WP-11 | QA/reviewer | todo |
-| WP-17 | macOS CI job proves `main` unchanged (selftest + ui-smoke on the new layout) | S | WP-11 | Packaging/CI | todo |
+| WP-16 | Test harness: `swift test` on both platforms, port `Tests/*` pure checks | M | WP-11 | QA/reviewer | review (VorssaintCoreTests target + Tools/linux-port/port-tests.py; counts in TESTS.md) |
+| WP-17 | macOS CI job proves `main` unchanged (selftest + ui-smoke on the new layout) | S | WP-11 | Packaging/CI | merged (by WP-10) — the `macos` job of linux-port-ci.yml runs `./build.sh`, `--selftest` and `./build.sh --test` on every push; `Tools/ui-smoke.sh` is not run and cannot be (TESTS.md § 7) |
 | WP-18 | `CoreBridge`: `@_cdecl` subscribe/command/snapshot surface, `Codable` snapshots and commands per service, diffing, fake-service tests | M | WP-12, WP-13 | Core porter | todo |
 
 **WP-10.** `Package.swift` gains three targets. `Vorssaint` (macOS app)
@@ -244,7 +244,7 @@ uninstall features. No features yet beyond a CPU readout used as a probe.
 | WP-P2 | Flatpak manifest with the reduced permission set only (per WP-04 no Flatpak can run the input relay), AppStream/desktop metadata, and a first-launch notice listing the features the sandbox removes | M | WP-P1 | Packaging/CI | todo |
 | WP-P3 | Headless GUI smoke harness in CI (sway headless + Xvfb), smoke matrix runner across ubuntu 22.04/24.04, fedora, arch containers in FUSE and extract-and-run modes (build on oldest Qt, test on newest distro); capture smoke needs the WP-02 `xdpw-shm-only.patch` on the pixman renderer or a DRM-capable runner; re-run the WP-04 Flatpak sandbox probe on a real desktop | M | WP-P1 | Packaging/CI | todo |
 | WP-P4 | Self-update: AppImageUpdate zsync feed, reuse feed parser | S | WP-P1 | Packaging/CI | todo |
-| WP-S1 | `vorssaint-helper` privileged daemon in C under `linux/helper`, grown from `spikes/wp03-input-relay` (daemon side first; the in-app installer waits for WP-20): D-Bus API, polkit policy, systemd unit, udev rules, install/uninstall from the app, `PRIVILEGES.md`. Acceptance adds (per WP-03 review): `Enable(true)` bound to the caller's logind session; on real hardware `evtest` succeeds on a device immediately after `Enable(false)`; latency measured end to end on hardware; refused `EVIOCGRAB` names the holding process in the hub; hot-plug via `udev_monitor` | L | WP-03 (daemon); WP-20 (installer) | Systems squad | review (daemon) |
+| WP-S1 | `vorssaint-helper` privileged daemon in C under `linux/helper`, grown from `spikes/wp03-input-relay` (daemon side first; the in-app installer waits for WP-20): D-Bus API, polkit policy, systemd unit, udev rules, install/uninstall from the app, `PRIVILEGES.md`. Acceptance adds (per WP-03 review): `Enable(true)` bound to the caller's logind session; on real hardware `evtest` succeeds on a device immediately after `Enable(false)`; latency measured end to end on hardware; refused `EVIOCGRAB` names the holding process in the hub; hot-plug via `udev_monitor` | L | WP-03 (daemon); WP-20 (installer) | Systems squad | merged (daemon; installer UI waits for WP-20) |
 
 Notes for the shell squad: the SwiftUI views in `Sources/Vorssaint/UI` are
 the spec. Port screen by screen (one QML file per SwiftUI view, same
@@ -271,7 +271,7 @@ the triage matrix update for its feature(s).
 | WP-A2 | monitorPower via UPower, peripheral batteries, alerts | M | WP-22 | todo |
 | WP-A3 | monitorGPU: amdgpu/i915 sysfs + NVML when present, vendor matrix | M | WP-A1 | todo |
 | WP-A4 | Temperatures via hwmon, sensor selection rules reused; `--sensors` dump | S | WP-A1 | todo |
-| WP-A5 | mixer, soundOutputSwitcher, micMute over PipeWire (libpipewire) with libpulse fallback | L | WP-22 | todo |
+| WP-A5 | mixer, soundOutputSwitcher, micMute over PipeWire (libpipewire) with libpulse fallback; backend half in C under linux/platform/audio can start before the shell | L | WP-22 (UI); none (backend) | in progress (backend) |
 | WP-A6 | keepAwake via logind inhibitors, automations, menu bar icon states | M | WP-21, WP-26 | todo |
 | WP-A7 | bluetoothSleep via BlueZ + logind | S | WP-26 | todo |
 | WP-A8 | clipboardHistory, pastePlain, urlCleaner: data-control backend (KDE/wlroots/Hyprland), XFixes backend (X11), GNOME backend via the extension (WP-C2, may land later) or the portal Clipboard session, quick panel | L | WP-24, WP-29 | todo |
@@ -286,7 +286,7 @@ the triage matrix update for its feature(s).
 
 | ID | Feature(s) | Size | after | Status |
 |---|---|---|---|---|
-| WP-B1 | Capture engine: portal ScreenCast/Screenshot → PipeWire frames, restore tokens, output/window enumeration. Per WP-02: read `AvailableSourceTypes` and verify each stream's `source_type` (wlr serves WINDOW as MONITOR); screenshot via a ScreenCast frame where the Screenshot portal is absent (no `impl.portal.Access`); audio on a second ordinary `pw_context_connect`, never the portal fd | L | WP-02, WP-29 | todo |
+| WP-B1 | Capture engine: portal ScreenCast/Screenshot → PipeWire frames, restore tokens, output/window enumeration. Per WP-02: read `AvailableSourceTypes` and verify each stream's `source_type` (wlr serves WINDOW as MONITOR); screenshot via a ScreenCast frame where the Screenshot portal is absent (no `impl.portal.Access`); audio on a second ordinary `pw_context_connect`, never the portal fd | L | WP-02 (engine); WP-29 (overlay) | in progress (engine) |
 | WP-B2 | screenshot: selector overlay, frozen frame, window/area/screen, quick preview, save/copy, recent captures | L | WP-B1 | todo |
 | WP-B3 | screenshot editor (annotations, crop, redaction, backgrounds, pins) on cairo/GTK4 with `ScreenshotSupport` | L | WP-B2 | todo |
 | WP-B4 | screenOCR + QR (bundled Tesseract + tessdata, ZXing-C++) and colorPicker (portal PickColor + magnifier) | M | WP-B2 | todo |
@@ -307,7 +307,7 @@ the triage matrix update for its feature(s).
 
 | ID | Feature(s) | Size | after | Status |
 |---|---|---|---|---|
-| WP-C1 | `WindowSystem` backends in C under `linux/platform/window`: X11 EWMH, `ext-foreign-toplevel-list` + `wlr-foreign-toplevel-management`, KWin scripting D-Bus, Hyprland/Sway IPC; capability flags per backend; the C API in `vorssaint_platform.h` is the contract WP-12's Swift protocol mirrors | L | WP-10 (C side); WP-12, WP-20 (Swift wiring) | in progress |
+| WP-C1 | `WindowSystem` backends in C under `linux/platform/window`: X11 EWMH, `ext-foreign-toplevel-list` + `wlr-foreign-toplevel-management`, KWin scripting D-Bus, Hyprland/Sway IPC; capability flags per backend; the C API in `vorssaint_platform.h` is the contract WP-12's Swift protocol mirrors | L | WP-10 (C side); WP-12, WP-20 (Swift wiring) | review |
 | WP-C2 | GNOME Shell extension (`vorssaint-bridge`) exposing window list/activate/move-resize/workspace and clipboard change/read/write over D-Bus, installed and updated from the Capabilities page, CI against the two latest Shell versions | L | WP-C1 | todo |
 | WP-C3 | switcher: list, MRU order, search, simple mode, per-app rules, display filtering; previews from portal window streams where available | L | WP-C1, WP-B1, WP-24 | todo |
 | WP-C4 | windowLayout keyboard snapping + display move on backends that can move/resize; edge-drag on X11 | L | WP-C1, WP-24 | todo |
@@ -318,8 +318,8 @@ the triage matrix update for its feature(s).
 
 | ID | Feature(s) | Size | after | Status |
 |---|---|---|---|---|
-| WP-D1 | `InputRelay` in the helper: device discovery (udev), grab/re-emit, xkb mirroring, rule engine API over D-Bus, latency budget test | L | WP-S1, WP-03 | todo |
-| WP-D2 | keyboardDebounce, mouseClickDebounce, scrollInverter, smoothScroll rules | M | WP-D1 | todo |
+| WP-D1 | `InputRelay` in the helper: device discovery (udev), grab/re-emit, rule engine API over D-Bus, latency budget test (largely delivered by WP-S1; remaining: Event schema, SetContext, timer source) | L | WP-S1, WP-03 | in progress |
+| WP-D2 | keyboardDebounce, mouseClickDebounce, scrollInverter, smoothScroll rules (plus superKey, mouseButton and quitProtection rules pulled forward from D3/D5/D6 into the same helper package) | M | WP-D1 | in progress |
 | WP-D3 | superKey (tap/hold, LED, layout tap action) | M | WP-D1 | todo |
 | WP-D4 | textSnippets trigger + expansion (typing and paste paths) and snippet quick menu | L | WP-D1, WP-A8 | todo |
 | WP-D5 | mouseButtonShortcuts, mouseNavigation remaps, app exceptions via focused `app_id` | M | WP-D1, WP-C1 | todo |

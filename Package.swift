@@ -24,15 +24,50 @@ import PackageDescription
 // `circular dependency between modules 'VorssaintCombine' and 'Combine'`
 // (docs/linux-port/spikes/00-swift-core.md § 6).
 
+// The macOS half of the package, spliced in only when the manifest itself is
+// compiled on a Mac (WP-16). `swift test` builds *every* target in the package,
+// not just the test target and its dependencies, so on Linux the presence of
+// `VorssaintMac` and the `Vorssaint` app — AppKit/IOKit code that will never
+// compile there — would fail the run before a single test executed. `swift
+// build --target …` is unaffected either way, so nothing about the macOS
+// product changes: on macOS both lists are exactly what they were.
+#if os(macOS)
+let macOSProducts: [Product] = [
+    .library(name: "VorssaintMac", targets: ["VorssaintMac"])
+]
+let macOSTargets: [Target] = [
+    // macOS platform module. WP-12 moves the AppKit/IOKit services here.
+    .target(
+        name: "VorssaintMac",
+        dependencies: ["VorssaintCore", "VMStatisticsCompat", "HIDEventSystem"],
+        path: "Sources/VorssaintMac"
+    ),
+
+    // The macOS app. Its sources have not moved; build.sh still compiles
+    // Sources/Vorssaint, Sources/VorssaintCore and Sources/VorssaintMac
+    // into one module.
+    .executableTarget(
+        name: "Vorssaint",
+        dependencies: [
+            "VMStatisticsCompat", "HIDEventSystem",
+            "VorssaintCore", "VorssaintMac"
+        ],
+        path: "Sources/Vorssaint"
+    )
+]
+#else
+let macOSProducts: [Product] = []
+let macOSTargets: [Target] = []
+#endif
+
 let package = Package(
     name: "Vorssaint",
     platforms: [.macOS(.v14)],
     products: [
         .library(name: "VorssaintCore", targets: ["VorssaintCore"]),
         .library(name: "VorssaintCombine", targets: ["VorssaintCombine"]),
-        .library(name: "VorssaintMac", targets: ["VorssaintMac"]),
         .executable(name: "VorssaintLinux", targets: ["VorssaintLinux"])
-    ],
+    ] + macOSProducts,
     dependencies: [
         .package(url: "https://github.com/OpenCombine/OpenCombine.git", from: "0.14.0")
     ],
@@ -82,13 +117,6 @@ let package = Package(
             path: "Sources/VorssaintCore"
         ),
 
-        // macOS platform module. WP-12 moves the AppKit/IOKit services here.
-        .target(
-            name: "VorssaintMac",
-            dependencies: ["VorssaintCore", "VMStatisticsCompat", "HIDEventSystem"],
-            path: "Sources/VorssaintMac"
-        ),
-
         // Linux executable. Body is `#if os(Linux)`; a no-op binary on macOS.
         .executableTarget(
             name: "VorssaintLinux",
@@ -96,16 +124,23 @@ let package = Package(
             path: "Sources/VorssaintLinux"
         ),
 
-        // The macOS app. Its sources have not moved; build.sh still compiles
-        // Sources/Vorssaint, Sources/VorssaintCore and Sources/VorssaintMac
-        // into one module.
-        .executableTarget(
-            name: "Vorssaint",
+        // The pure checks of the `build.sh --test` harness, selected out of
+        // Tests/*.swift by Tools/linux-port/port-tests.py and committed as
+        // Tests/VorssaintCoreTests/Generated*.swift (docs/linux-port/TESTS.md).
+        // XCTest rather than swift-testing: it is the one test library that
+        // ships with both toolchains this package is built with.
+        //
+        // `build.sh --test` does not read this directory — it still compiles
+        // the original Tests/*.swift with swiftc — so the macOS check count is
+        // untouched by anything here.
+        .testTarget(
+            name: "VorssaintCoreTests",
             dependencies: [
-                "VMStatisticsCompat", "HIDEventSystem",
-                "VorssaintCore", "VorssaintMac"
+                "VorssaintCore",
+                .product(name: "OpenCombine", package: "OpenCombine",
+                         condition: .when(platforms: [.linux]))
             ],
-            path: "Sources/Vorssaint"
+            path: "Tests/VorssaintCoreTests"
         )
-    ]
+    ] + macOSTargets
 )

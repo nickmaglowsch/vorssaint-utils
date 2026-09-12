@@ -95,6 +95,12 @@ by serializing those changes through the core porter.
   writes report success without effect. Verify (query the state again) and
   log a tolerance where relevant, exactly as the upstream Accessibility code
   does.
+- **C/C++ under `linux/` builds warning-free under `-Werror` in all four
+  CMake build types** (none given, Debug, Release, RelWithDebInfo): the
+  optimisation level changes which warnings GCC can prove, and WP-S1 found
+  three real defects only at `-O3`. Every C package ships a
+  `scripts/build-matrix.sh` like `linux/helper/scripts/build-matrix.sh`
+  and the QA role runs it; a bare configure defaults to RelWithDebInfo.
 - **Comments explain why, rarely.** Match the file you are in.
 - **Tests:** pure logic gets `swift test` unit tests in `Tests/`; platform
   backends get a fake compositor or fake D-Bus test where feasible and a

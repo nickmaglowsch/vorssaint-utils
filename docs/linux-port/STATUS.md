@@ -55,5 +55,8 @@ downloads. Consequences for Phase 0:
 | WP-12 | in progress | worktree → plan branch (CI) | Platform protocols, fakes, the RadialMenuSupport seam and the other corners, trash shim, VorssaintCombine target removal |
 | WP-16 | in progress | worktree → plan branch (CI) | `swift test` target on Linux, generated from the pure checks in Tests/; fixes the two vacuous walks |
 | WP-S1 | in progress (daemon side) | worktree | production helper from the WP-03 spike: session binding, hot-plug, hwmon, DDC, systemd/polkit/udev files |
-| WP-C1 | in progress | worktree | C window backends: X11 EWMH, wlr foreign-toplevel + Sway IPC, Hyprland IPC, KWin script bridge; `vorssaint_platform.h` contract |
+| WP-B1 | in progress | worktree | capture engine library in C under linux/platform/capture (from the WP-02 chain) |
+| WP-A5 | in progress (backend) | worktree | PipeWire audio backend in C under linux/platform/audio, libpulse fallback |
+| WP-D1/D2 | in progress | worktree | relay rule set in linux/helper mirroring the Swift Support state machines |
+| WP-C1 | merged | plan branch | five backends; QA found a no-op Wayland global_remove and an unverified set_minimized, both fixed and tested with a real output unplug; Hyprland/KWin/GNOME rows still need a live session |
 | WP-13 | merged | plan branch | COMBINE.md + audit script (83 Combine-touching files, 35 only via AppKit/SwiftUI re-export); VorssaintCombine target to be deleted after WP-11 |
