@@ -37,16 +37,6 @@ final class GeneratedThePanelSurfaceReachesThePopoverArrowIssue1030Tests: XCTest
             GeneratedSupport.formatSpecifiers(in: format)
         }
 
-        let panelThemeSource = (try? String(
-            contentsOfFile: "Sources/Vorssaint/UI/Theme.swift",
-            encoding: .utf8)) ?? ""
-
-        let panelViewSource = (try? String(
-            contentsOfFile: "Sources/Vorssaint/UI/MenuPanel/MenuPanelView.swift",
-            encoding: .utf8)) ?? ""
-
-        let statusPlacementSuite = "com.vorssaint.tests.statusItemPlacement"
-
         let keyboardShortcutSettings: [String: Any] = [
             DefaultsKey.keyboardBrightnessShortcutsEnabled: true,
             DefaultsKey.keyboardBrightnessDecreaseShortcut: "control+command:27",
@@ -87,26 +77,6 @@ final class GeneratedThePanelSurfaceReachesThePopoverArrowIssue1030Tests: XCTest
         var coldCacheCaps: [String] = []
 
         let coldCacheDone = DispatchSemaphore(value: 0)
-
-        // Every assertion above compares labels the live input source produced,
-        // so on a Latin-layout Mac they all pass whichever source the keycaps
-        // are read from, and the one thing that made them wrong is invisible:
-        // an input method answers the current-layout call with the layout it
-        // types through, not the one printed on the keys. Pinned on the public
-        // symbols rather than on the private member holding them, so renaming
-        // it stays green and dropping the ASCII-capable lookup goes red.
-        let shortcutSource = (try? String(
-            contentsOfFile: "Sources/Vorssaint/Core/GlobalShortcut.swift",
-            encoding: .utf8)) ?? ""
-
-        let shortcutCode = shortcutSource.split(separator: "\n", omittingEmptySubsequences: false)
-            .filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("//") }
-            .joined(separator: "\n")
-
-        expect(shortcutCode.contains("TISCopyCurrentASCIICapableKeyboardLayoutInputSource")
-                && shortcutCode.contains("TISCopyCurrentKeyboardInputSource")
-                && shortcutCode.contains("kTISPropertyInputSourceType"),
-               "keycaps come from the ASCII-capable layout while an input method is active")
 
         for language in AppLanguage.allCases {
             let layoutStrings = FeatureStrings.windowLayout(language)

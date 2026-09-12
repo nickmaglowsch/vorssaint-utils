@@ -126,6 +126,9 @@ EXCLUDED = {
 
 IDENT = re.compile(r"\b([A-Za-z_][A-Za-z0-9_]*)\b")
 BARE = re.compile(r"(?<![.\w$])([a-z_][A-Za-z0-9_]*)\b(?!\s*:)")
+# `let x` with no `=` and no type after it: the Swift 5.7 shorthand binding.
+SHORTHAND = re.compile(r"\b(?:let|var)\s+([a-z_][A-Za-z0-9_]*)\s*(?=[,{)\]]|$)",
+                       re.MULTILINE)
 MARK = re.compile(r"^\s*// MARK:\s*(.+?)\s*$")
 STATIC_ASSIGN = re.compile(r"^([A-Z][A-Za-z0-9_]*)\.([a-z][A-Za-z0-9_]*)\s*=\s*\S")
 
@@ -283,6 +286,15 @@ class Unit:
         # helper from another Tests file, or a Darwin typealias such as
         # `pid_t` — and must not be emitted.
         self.bare = set(BARE.findall(self.stripped))
+        # `if let x, let y {` — the shorthand optional binding. It reads like a
+        # declaration and is really a *use* of an outer name: emitting it while
+        # the statement that declared `x` was dropped produced "cannot find
+        # 'regularBareApp' in scope" (run 34692708425).
+        self.shorthand = set(SHORTHAND.findall(self.stripped))
+        self.declared -= self.shorthand
+        self.complete = not (
+            (NEEDS_BRACE.match(self.stripped) and "{" not in self.stripped)
+            or DANGLING.search(self.stripped.rstrip()))
         self.checks = len(re.findall(r"(?<![.\w])expect(?:Equal|Close|Format)?\s*\(",
                                      self.stripped))
 
@@ -363,7 +375,22 @@ def declared_names(text):
     return names
 
 
-CONTINUATIONS = ("else", "while", ".", ")", "]", ",", "}", "catch", "+", "?")
+# Tokens that can open a line which continues the statement above it rather
+# than starting a new one, even at the statement indentation. `where` is the
+# one that cost a CI run: `for name in xs.sorted()` / `where NSImage(…) == nil {`
+# is one statement written on two lines, and splitting it emitted a for-each
+# with no body (run 34692708425, "expected '{' to start the body of for-each
+# loop").
+CONTINUATIONS = ("else", "while", "where", "catch", "in ",
+                 ".", ")", "]", ",", "}", "?", ":",
+                 "+", "-", "*", "/", "%", "&&", "||", "??",
+                 "==", "!=", "<", ">", "=")
+
+# A unit that opens one of these must contain a brace: otherwise the splitter
+# cut a statement in half and emitting it would not compile.
+NEEDS_BRACE = re.compile(r"^\s*(?:for|if|guard|while|switch|do|repeat|func|"
+                         r"struct|enum|class|actor|extension)\b")
+DANGLING = re.compile(r"(?:[=+\-*/%<>!&|^,?:.]|\b(?:where|in|try|return|else|case))\s*$")
 
 
 def split_units(lines, first, last, indent):
@@ -476,7 +503,12 @@ def classify(units, kind, boundaries=(), excluded=()):
         reason = None
         if unit.start in excluded:
             reason = "excluded:" + excluded[unit.start]
-        for name in sorted(unit.refs) if reason is None else []:
+        elif not unit.complete:
+            # The splitter cut this statement in half; emitting either half
+            # would not compile. Drop it (and, through the poisoning below,
+            # everything that depended on it).
+            reason = "incomplete:line%d" % unit.start
+        for name in sorted(unit.refs | unit.shorthand) if reason is None else []:
             if name in KEYWORDS or name in unit.declared or name in available:
                 continue
             if name in FREE_FUNCTIONS or name in ALLOWED_TYPES or name in COMBINE_TYPES:
@@ -740,7 +772,10 @@ def verify():
                     break
         if depth != 0:
             problems.append("%s: %d bracket(s) left open" % (name, depth))
-        declared = declared_names(body) | HARNESS_NAMES
+        # Shorthand `if let x` binds an outer name; it declares nothing new,
+        # so blank those occurrences before reading the declarations out (a
+        # name can be both: declared with `let x = …` and rebound later).
+        declared = declared_names(SHORTHAND.sub(" ", body)) | HARNESS_NAMES
         for ref in sorted(set(IDENT.findall(body))):
             if ref in KEYWORDS or ref in declared or ref in FREE_FUNCTIONS:
                 continue

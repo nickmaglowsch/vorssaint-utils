@@ -86,25 +86,6 @@ final class GeneratedScreenRecorderCanvasTests: XCTestCase {
                 == ["Área", "Ímã", "Zebra"],
                "the localized compare is what puts them where a reader expects")
 
-        let onboardingSource = (try? String(
-            contentsOfFile: "Sources/Vorssaint/UI/Onboarding/OnboardingView.swift",
-            encoding: .utf8)) ?? ""
-
-        expect(!onboardingSource.isEmpty, "the onboarding source reads back for its sorting check")
-
-        let onboardingCode = onboardingSource.components(separatedBy: "\n")
-            .filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("//") }
-            .joined(separator: "\n")
-
-        expect(!onboardingCode.contains(".sorted()\n"),
-               "onboarding sorts the names it shows by the rules of the language")
-
-        // Case folding that inherits the Mac's locale answers differently for
-        // a Turkish user: there the dotted I folds to a dotless one, so a
-        // search for "istanbul" stops finding "ISTANBUL". The app ships
-        // Turkish, so every search normalizer folds with no locale at all.
-        let dottedI = "ISTANBUL"
-
         for path in ["Sources/Vorssaint/Services/Clipboard/ClipboardHistorySupport.swift",
                      "Sources/Vorssaint/UI/Settings/SettingsSearchSupport.swift",
                      "Sources/Vorssaint/Services/Switcher/SwitcherSupport.swift",
@@ -117,39 +98,6 @@ final class GeneratedScreenRecorderCanvasTests: XCTestCase {
             expect(!code.contains("locale: .current"),
                    "search folding in \(path) does not follow the Mac's locale")
         }
-
-        // An example chip is a promise that typing it does something. The
-        // battery answer is titled with a localized string, so a fixed English
-        // "battery" matched nothing outside English and the chip led to an
-        // empty list, which teaches the opposite of what an example is for.
-        let commandBarViewSource = (try? String(
-            contentsOfFile: "Sources/Vorssaint/UI/CommandBar/CommandBarView.swift",
-            encoding: .utf8)) ?? ""
-
-        expect(!commandBarViewSource.isEmpty, "the command bar view source reads back for its shape check")
-
-        // Comments are stripped so prose naming the old literal cannot fail
-        // for code that no longer uses it.
-        let commandBarViewCode = commandBarViewSource.components(separatedBy: "\n")
-            .filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("//") }
-            .joined(separator: "\n")
-
-        expect(!commandBarViewCode.contains("\"battery\""),
-               "the command bar's battery example is the localized word, not a fixed English one")
-
-        // A key glyph in front of a button label reads as that button's
-        // shortcut, so neither command bar action button carries one.
-        let commandBarSettingsSource = (try? String(
-            contentsOfFile: "Sources/Vorssaint/UI/Settings/CommandBarSettings.swift",
-            encoding: .utf8)) ?? ""
-
-        expect(!commandBarSettingsSource.contains("Label(text.openButton, systemImage:")
-                && !commandBarSettingsSource.contains("Label(text.resetPositionButton, systemImage:"),
-               "neither command bar action button wears an icon")
-
-        expect(commandBarSettingsSource.contains("Toggle(text.shortcutToggle,")
-                && !commandBarSettingsSource.contains("l10n.s.quickToolShortcutToggle"),
-               "the command bar shortcut toggle says what the shortcut opens")
 
         for language in AppLanguage.allCases {
             let recordingShareValues = Mirror(

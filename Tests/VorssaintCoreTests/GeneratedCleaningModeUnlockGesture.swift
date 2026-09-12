@@ -150,73 +150,11 @@ final class GeneratedCleaningModeUnlockGestureTests: XCTestCase {
         expect(!smearedUnlock && smeared.progress == 1,
                "four Escapes with a modifier in between never unlock; the next Escape starts at 1")
 
-        // The counters above build their own windows, so nothing else here
-        // fails if the shipped constant regresses. Pin it at the source: the
-        // 2s window made the gesture impossible for anyone pressing Escape
-        // slower than once per two seconds (#697).
-        let cleaningSource = (try? String(
-            contentsOfFile: "Sources/Vorssaint/Services/CleaningMode/CleaningModeManager.swift",
-            encoding: .utf8)) ?? ""
-
-        let cleaningCode = cleaningSource
-            .components(separatedBy: "\n")
-            .filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("//") }
-            .joined(separator: "\n")
-
-        expect(!cleaningCode.isEmpty && cleaningCode.contains("pressWindow: 6.0"),
-               "the shipped unlock counter keeps the forgiving 6s press window")
-
-        // The counter above cannot see how events reach it, and the real HID
-        // gesture is not reproducible headlessly. Pin the two properties of the
-        // tap's handler the counter depends on: modifiers reach it (they arrive
-        // as .flagsChanged, never as key-downs, and are the keys nearest
-        // Escape), and every ordinary event is still swallowed. The sole
-        // fail-open return belongs to a disabled tap in an inactive or
-        // untrusted session, where keeping input locked would strand the user.
-        let cleaningLines = cleaningSource.components(separatedBy: "\n")
-
-        let handlerStart = cleaningLines.firstIndex { $0.contains("private func handle(type:") }
-
-        let handlerEnd = handlerStart.flatMap { start in
-            cleaningLines[(start + 1)...].firstIndex { $0.hasPrefix("    private func ") }
-        } ?? cleaningLines.count
-
         var modifiersReachCounter = false
 
         var leakedEvents: [String] = []
 
         var failOpenReturns = 0
-
-        for (index, line) in cleaningLines[(handlerStart ?? handlerEnd)..<handlerEnd].enumerated()
-
-        where !line.trimmingCharacters(in: .whitespaces).hasPrefix("//") {
-            let number = (handlerStart ?? 0) + index + 1
-            if line.contains("type == .flagsChanged") {
-                // Read to the end of that branch: the call has to be inside it.
-                var cursor = (handlerStart ?? 0) + index + 1
-                while cursor < handlerEnd, !cleaningLines[cursor].trimmingCharacters(in: .whitespaces).hasPrefix("}") {
-                    if cleaningLines[cursor].contains("registerUnlockKeyDown(") { modifiersReachCounter = true }
-                    cursor += 1
-                }
-            }
-            if line.contains("return Unmanaged.passUnretained(event)") {
-                failOpenReturns += 1
-            } else if line.contains("return"), !line.contains("return nil") {
-                leakedEvents.append("CleaningModeManager.swift:\(number)")
-            }
-        }
-
-        expect(modifiersReachCounter,
-               "flags-changed events feed the unlock counter, so modifiers reset the Escape count")
-
-        expect(handlerStart != nil && leakedEvents.isEmpty && failOpenReturns == 1,
-               "the cleaning tap swallows normal input and keeps one disabled-session fail-open path: \(leakedEvents)")
-
-        expect(cleaningCode.contains("self.deactivate(restoreSuspendedFeatures: false)")
-                && cleaningCode.contains("shouldRestoreSuspendedFeaturesOnSessionReturn = true")
-                && cleaningCode.contains("self.resumeSuspendedFeatures()")
-                && cleaningCode.contains("guard restoreSuspendedFeatures else {"),
-               "Cleaning Mode restores suspended taps only after its login session returns")
 
         func systemKeyData(keyCode: Int, state: Int, repeatFlag: Bool = false) -> Int {
             Int((UInt32(keyCode) << 16) | (UInt32(state) << 8) | (repeatFlag ? 1 : 0))

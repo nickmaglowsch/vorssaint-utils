@@ -101,31 +101,6 @@ final class GeneratedSpacesAndMissionControlDragIssue1012Tests: XCTestCase {
                    "\(constructor) excludes recycled process and window IDs from learning")
         }
 
-        let mouseButtonToggleCode = commandBarCatalogLines.firstIndex {
-            isCodeLine($0) && $0.contains("if feature == .mouseButtonShortcuts {")
-        }.map {
-            commandBarCatalogLines[$0...].prefix(18).filter(isCodeLine).joined(separator: "\n")
-        } ?? ""
-
-        let restartAppCode = commandBarCatalogLines.firstIndex {
-            isCodeLine($0) && $0.contains("id: \"action.restartApp\"")
-        }.map {
-            commandBarCatalogLines[$0...].prefix(8).filter(isCodeLine).joined(separator: "\n")
-        } ?? ""
-
-        expect(restartAppCode.contains("bar.restartAppFormat")
-                && restartAppCode.contains("AppInfo.name")
-                && restartAppCode.contains("FeatureRuntime.shared.relaunchApp()"),
-               "the Command Bar exposes its own localized relaunch action")
-
-        func appStorageProperty(_ key: String, in lines: [String]) -> String? {
-            guard let line = lines.first(where: {
-                isCodeLine($0) && $0.contains("@AppStorage(\(key))")
-            }), let declaration = line.range(of: "private var ") else { return nil }
-            return line[declaration.upperBound...].split(whereSeparator: { $0.isWhitespace || $0 == "=" }).first
-                .map(String.init)
-        }
-
         let mouseSettingsViewLines = ((try? String(
             contentsOfFile: "Sources/Vorssaint/UI/Settings/SettingsView.swift",
             encoding: .utf8)) ?? "").components(separatedBy: "\n")
@@ -134,99 +109,12 @@ final class GeneratedSpacesAndMissionControlDragIssue1012Tests: XCTestCase {
             contentsOfFile: "Sources/Vorssaint/UI/MenuPanel/MenuPanelView.swift",
             encoding: .utf8)) ?? "").components(separatedBy: "\n")
 
-        let shortcutKey = "DefaultsKey.mouseButtonShortcutsEnabled"
-
-        let spacesKey = "DefaultsKey.mouseSpacesGestureEnabled"
-
-        let settingsShortcutProperty = appStorageProperty(shortcutKey, in: mouseSettingsViewLines) ?? ""
-
-        let settingsSpacesProperty = appStorageProperty(spacesKey, in: mouseSettingsViewLines) ?? ""
-
-        let settingsCode = mouseSettingsViewLines.filter(isCodeLine).joined()
-            .filter { !$0.isWhitespace }
-
-        expect(!settingsShortcutProperty.isEmpty && !settingsSpacesProperty.isEmpty
-                && settingsCode.contains("(\(settingsShortcutProperty)||\(settingsSpacesProperty))"
-                    + "&&AppFeature.mouseButtonShortcuts.isAvailable"),
-               "the Mouse permission section treats either mouse-button switch as engaged")
-
-        let panelShortcutProperty = appStorageProperty(shortcutKey, in: menuPanelLines) ?? ""
-
-        let panelSpacesProperty = appStorageProperty(spacesKey, in: menuPanelLines) ?? ""
-
-        let menuPanelCode = menuPanelLines.filter(isCodeLine).joined()
-            .filter { !$0.isWhitespace }
-
-        expect(!panelShortcutProperty.isEmpty && !panelSpacesProperty.isEmpty
-                && menuPanelCode.contains("case.mouseButtonShortcuts:return\(panelShortcutProperty)"
-                    + "||\(panelSpacesProperty)"),
-               "the panel category count treats either mouse-button switch as engaged")
-
-        // The defect this pins is not the operator, it is three arguments on
-        // one row disagreeing: widening `needsAttention` alone leaves the row
-        // asking for a grant while `permissionAction` returns nil and the
-        // caption stays silent. So assert the three read ONE name, and that
-        // the name is defined from both switches -- naming the expression is
-        // what makes disagreeing impossible, and pinning the spelling of
-        // `a || b` here would go red on a rename that broke nothing.
-        let panelButtonRow = menuPanelLines.firstIndex {
-            isCodeLine($0) && $0.contains("PanelToggleRow(title: buttonStrings.pageTitle,")
-        }.map {
-            menuPanelLines[$0...].prefix(24).filter(isCodeLine).joined().filter { !$0.isWhitespace }
-        } ?? ""
-
-        let engagedName = panelButtonRow.range(of: "needsAttention:").map {
-            String(panelButtonRow[$0.upperBound...].prefix { $0.isLetter || $0.isNumber || $0 == "_" })
-        } ?? ""
-
-        let engagedDefinition = menuPanelLines.first {
-            isCodeLine($0) && !engagedName.isEmpty && $0.contains("let \(engagedName)")
-        } ?? ""
-
-        expect(!engagedName.isEmpty
-                && panelButtonRow.contains("needsAccessibility:\(engagedName)")
-                && panelButtonRow.contains("permissionAction:accessibilityPermissionAction(\(engagedName))")
-                && panelButtonRow.contains("accessoryTitle:\(engagedName)?")
-                && !panelShortcutProperty.isEmpty && !panelSpacesProperty.isEmpty
-                && engagedDefinition.contains(panelShortcutProperty)
-                && engagedDefinition.contains(panelSpacesProperty),
-               "the panel mouse-button row's caption, attention state, grant button and "
-                   + "Manage link all read one engaged flag built from both switches")
-
         // Per call site, not the last one seen: a second one added later must
         // read the switch too, and a file that lost the call entirely has to
         // fail rather than pass on an empty search.
         var shortcutCallSites = 0
 
         var callSitesMissingShortcutSwitch: [String] = []
-
-        for (index, line) in spacesServiceLines.enumerated()
-
-        where isCodeLine(line)
-            && line.contains("guard let shortcut = MouseButtonShortcutSupport.firesShortcut(") {
-            shortcutCallSites += 1
-            let window = spacesServiceLines[index...].prefix(7)
-            let readsSwitch = window.contains {
-                isCodeLine($0) && $0.contains(
-                    "isEnabled: UserDefaults.standard.bool(forKey: DefaultsKey.mouseButtonShortcutsEnabled)")
-            }
-            let passesPressOn = window.contains {
-                isCodeLine($0) && $0.contains("else { return Unmanaged.passUnretained(event) }")
-            }
-            if !readsSwitch || !passesPressOn {
-                callSitesMissingShortcutSwitch.append("MouseButtonShortcutService.swift:\(index + 1)")
-            }
-        }
-
-        expect(shortcutCallSites > 0 && callSitesMissingShortcutSwitch.isEmpty,
-               "a tap kept up for the drag alone never fires a mapping the shortcut switch turned "
-                   + "off, and that button's click passes through whole: \(callSitesMissingShortcutSwitch)")
-
-        expect(spacesServiceLines.contains {
-            isCodeLine($0) && $0.contains(
-                "let wanted = (enabled && !mappings.isEmpty) || isCapturing || spacesButton != nil")
-        }, "a capture holds the tap up by itself: the press asked for may be the drag's, "
-            + "whose switch is not the shortcut switch")
 
         let mouseSettingsLines = ((try? String(
             contentsOfFile: "Sources/Vorssaint/UI/Settings/MouseButtonSettings.swift",
@@ -237,74 +125,14 @@ final class GeneratedSpacesAndMissionControlDragIssue1012Tests: XCTestCase {
         // shortcut switch alone.
         var exceptionsListCoversBothSwitches = false
 
-        for (index, line) in mouseSettingsLines.enumerated()
-
-        where line == "            if enabled || spacesEnabled {" {
-            var cursor = index + 1
-            while cursor < mouseSettingsLines.count, !isCodeLine(mouseSettingsLines[cursor]) {
-                cursor += 1
-            }
-            exceptionsListCoversBothSwitches = cursor < mouseSettingsLines.count
-                && mouseSettingsLines[cursor].contains("MouseExceptionsList(scope: .buttonShortcuts)")
-        }
-
-        expect(exceptionsListCoversBothSwitches,
-               "the exception list the tap consults for the drag stays on screen while either switch is on")
-
         var spacesSwitchOffDropsBinding = false
-
-        for (index, line) in mouseSettingsLines.enumerated()
-
-        where isCodeLine(line) && line.contains(".onChange(of: spacesEnabled)") {
-            let window = mouseSettingsLines[index...].prefix(12)
-            let stop = window.firstIndex {
-                $0.trimmingCharacters(in: .whitespaces) == "stopSpacesCapture()"
-            }
-            let clear = window.firstIndex {
-                $0.trimmingCharacters(in: .whitespaces) == "spacesButton = 0"
-            }
-            if let stop, let clear, stop < clear { spacesSwitchOffDropsBinding = true }
-        }
-
-        expect(spacesSwitchOffDropsBinding,
-               "the drag's own OFF branch drops its binding, so no hidden button ever refuses a shortcut")
 
         // The drag capture speaks its own strings: the shortcut capture's
         // prompt invites the side wheel the drag refuses, and its refusals
         // point at a list that is off screen with the shortcut switch off.
         var spacesPromptIsOwn = false
 
-        for (index, line) in mouseSettingsLines.enumerated()
-
-        where isCodeLine(line) && line.contains("private var spacesRow: some View {") {
-            let window = mouseSettingsLines[index...].prefix(10)
-            spacesPromptIsOwn = window.contains {
-                isCodeLine($0) && $0.contains("Text(text.spacesCaptureWaiting)")
-            } && !window.contains {
-                isCodeLine($0) && $0.contains("text.captureWaiting")
-            }
-        }
-
-        expect(spacesPromptIsOwn,
-               "the drag capture's waiting prompt never invites the side wheel the drag refuses")
-
         var spacesRefusalsAreOwn = false
-
-        for (index, line) in mouseSettingsLines.enumerated()
-
-        where isCodeLine(line) && line.contains("private func handleSpacesCapture") {
-            let window = mouseSettingsLines[index...].prefix(16)
-            spacesRefusalsAreOwn = window.contains {
-                isCodeLine($0) && $0.contains("text.spacesCaptureUnsupported")
-            } && window.contains {
-                isCodeLine($0) && $0.contains("text.spacesCaptureExists")
-            } && !window.contains {
-                isCodeLine($0) && ($0.contains("text.captureUnsupported") || $0.contains("text.captureExists"))
-            }
-        }
-
-        expect(spacesRefusalsAreOwn,
-               "the drag capture's refusals recommend only what the drag accepts and point at no list")
 
         // A button half-way through becoming a shortcut is still spoken for.
         // startSpacesCapture() calls stopCapture(), which clears `capturing`
@@ -313,18 +141,6 @@ final class GeneratedSpacesAndMissionControlDragIssue1012Tests: XCTestCase {
         // still holding — and finishing that shortcut then drives the binding
         // to nil while the drag's row goes on naming the button.
         var spacesCaptureRefusesPending = false
-
-        for (index, line) in mouseSettingsLines.enumerated()
-
-        where isCodeLine(line) && line.contains("private func handleSpacesCapture") {
-            let window = mouseSettingsLines[index...].prefix(16)
-            spacesCaptureRefusesPending = window.contains {
-                isCodeLine($0) && $0.contains("pendingButton == seen")
-            }
-        }
-
-        expect(spacesCaptureRefusesPending,
-               "the drag capture refuses a button that is mid-way through becoming a shortcut")
 
         print("[generated-checks] SpacesAndMissionControlDragIssue1012 \(checks)")
     }

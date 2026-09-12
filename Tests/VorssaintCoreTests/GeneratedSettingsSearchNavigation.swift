@@ -44,10 +44,6 @@ final class GeneratedSettingsSearchNavigationTests: XCTestCase {
 
         let encodedHistoryLimit = 5_000
 
-        let previewID = UUID(uuidString: "00000000-0000-0000-0000-000000000101")!
-
-        let nextPreviewID = UUID(uuidString: "00000000-0000-0000-0000-000000000102")!
-
         let legacyClipboardJSON = Data("""
         [{"text":"hello","copiedAt":700000000}]
         """.utf8)
@@ -67,8 +63,6 @@ final class GeneratedSettingsSearchNavigationTests: XCTestCase {
         // ask must return at once and the answer must arrive later, on main.
         let wedgeReleased = DispatchSemaphore(value: 0)
 
-        var laneAnswer: Int?
-
         var laneAnsweredOnMain = false
 
         let askedAt = Date()
@@ -78,13 +72,6 @@ final class GeneratedSettingsSearchNavigationTests: XCTestCase {
         expect(askDuration < 0.1,
                "asking the wedged pasteboard lane for work returns without waiting "
                    + "(took \(askDuration)s)")
-
-        let pastePlainSource = (try? String(
-            contentsOfFile: "Sources/Vorssaint/Services/QuickTools/PastePlainService.swift",
-            encoding: .utf8)) ?? ""
-
-        expect(pastePlainSource.contains("GeneralPasteboardAccess.shared.async"),
-               "paste as plain text reads the clipboard on the lane, not on the main thread")
 
         let maxCapacityStringJSON = Data(#"{"SPPowerDataType":[{"sppower_battery_health_info":{"sppower_battery_health_maximum_capacity":"93%"}}]}"#.utf8)
 

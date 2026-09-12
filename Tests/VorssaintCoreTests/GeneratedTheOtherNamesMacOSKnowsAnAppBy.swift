@@ -61,9 +61,6 @@ final class GeneratedTheOtherNamesMacOSKnowsAnAppByTests: XCTestCase {
                                                           fileName: "Reader.app") == ["Café"],
                "two aliases that differ only by accent or case are one alias")
 
-        let savedBeforeTheField = #"[{"id":"E621E1F8-C36C-495A-93FC-0C247A3E6E5F","name":"gh","#
-            + #""kind":"link","destination":"https://x"}]"#
-
         print("[generated-checks] TheOtherNamesMacOSKnowsAnAppBy \(checks)")
     }
 }
