@@ -69,13 +69,23 @@ jobs:
       - name: Unit tests
         shell: bash
         run: |
-          # `swift test` fails when the package declares no test target, so
-          # only run it once one exists (WP-16 adds it).
-          if grep -q 'testTarget' Package.swift; then
-            swift test
-          else
-            echo "no SwiftPM test target in Package.swift yet — skipping swift test"
-          fi
+          # The pure checks of the macOS `build.sh --test` harness, selected by
+          # Tools/linux-port/port-tests.py and committed under
+          # Tests/VorssaintCoreTests (WP-16, docs/linux-port/TESTS.md).
+          swift test --filter VorssaintCoreTests 2>&1 | tee /tmp/swift-test.out
+          grep -E "^Executed [0-9]+ tests?, with 0 failures" /tmp/swift-test.out
+
+      - name: The generated tests are what the generator produces
+        shell: bash
+        run: |
+          # The committed Generated*.swift must be exactly what the tool emits
+          # from the current Tests/ and Sources/: otherwise the suite has been
+          # hand-edited and the next regeneration silently reverts it.
+          command -v python3 >/dev/null \
+            || (apt-get update -qq && apt-get install -y -qq python3)
+          python3 Tools/linux-port/port-tests.py
+          python3 Tools/linux-port/port-tests.py --verify
+          git diff --exit-code -- Tests/VorssaintCoreTests
 
   macos:
     name: macOS app (build.sh)
