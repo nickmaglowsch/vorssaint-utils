@@ -118,6 +118,11 @@ public enum PlatformError: Error, Equatable {
     case backendFailure(String)
     /// `VS_ERR_TIMEOUT`. The backend answered too slowly; the caller may retry.
     case timedOut
+    /// `VS_ERR_NO_MEM`. The backend could not allocate. Distinct from
+    /// `backendFailure` because the caller may usefully retry a smaller
+    /// request (fewer windows, a lower capture resolution) rather than
+    /// conclude the backend is broken.
+    case outOfMemory
     /// `VS_ERR_INVALID`. Malformed arguments.
     case invalidArgument(String)
     /// `VS_ERR_NO_BACKEND`. No backend could be selected for this session.

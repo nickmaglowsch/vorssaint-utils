@@ -104,6 +104,7 @@ promises it.
 | `Event(t,q,q,i)` | `startRecordingTap(onEvent:)`, `RecordedInput` |
 | `Backend` property | `backendName` |
 | `Error.NotOwner` | `InterceptionLoss.takenByAnotherSession` |
+| `SetContext(s json)` | **no counterpart yet — WP-D6 adds it.** The helper's quit-protection rule is scoped by a `focused_app_id` the app pushes in, and nothing could push one until `WindowSystem` had a Linux backend delivering focus events. Named here so the gap is disclosed rather than silent (WP-12 review, defect 3). |
 
 The helper's central property is preserved rather than flattened: **rules go
 in, events do not come out.** Outside tap mode the helper emits nothing,

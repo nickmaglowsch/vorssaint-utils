@@ -68,8 +68,8 @@ this table and nothing else. The mapping is mechanical:
 | `vs_window_info` | `struct WindowInfo` |
 | `vs_window_flag` | `WindowInfo.Flags` (`OptionSet`) |
 | `vs_rect` | `CGRect`-shaped value with integer members |
-| `vs_result` | `enum WindowSystemError: Error`, `VS_OK` mapped to a normal return |
-| `vs_window_event` + callback | an `AsyncStream<WindowEvent>` or a Combine publisher |
+| `vs_result` | `enum PlatformError: Error` in `Sources/VorssaintCore/Platform/PlatformCapabilities.swift`, one case per error code, `VS_OK` mapped to a normal return |
+| `vs_window_event` + callback | a plain callback, drained only from `dispatch()`. **Not** an `AsyncStream` and **not** a Combine publisher: the port has no Combine on Linux (WP-13 deleted the shim target, see `docs/linux-port/COMBINE.md`), and the dispatch-only rule below is what keeps event delivery on the caller's thread |
 | `list` + `free_list` | one call returning `[WindowInfo]` |
 
 Two rules keep the mirror honest:
