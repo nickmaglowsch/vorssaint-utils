@@ -120,7 +120,7 @@ grep -q "did not change" "$WORK/refused.txt" \\
 if "$VS_WINDOW" --backend gnome close 999 2>"$WORK/close.txt"; then
     fail "closing an unknown window reported success"
 fi
-grep -q "no such window" "$WORK/close.txt" || fail "wrong error for an unknown window"
+grep -q "no such object" "$WORK/close.txt" || fail "wrong error for an unknown window"
 
 # --------------------------------------------------------------- events
 stop_bridge

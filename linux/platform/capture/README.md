@@ -169,7 +169,7 @@ each is a real difference between ScreenCaptureKit and a portal.
 ## `vs_result_string` moved
 
 It was in `window/vs_window.c` when the window section was the only one. It is
-now `../vs_result.c`, linked as `vorssaint_platform_common` into both libraries,
+now `../vs_result.c`, linked as `vs_platform_common` into each backend library,
 so a binary that uses two backends — which the Swift side will — has one
 definition rather than one per concern. The strings moved unchanged, including
 the two that still say "window" (`VS_ERR_NOT_FOUND`, `VS_ERR_NO_BACKEND`): four

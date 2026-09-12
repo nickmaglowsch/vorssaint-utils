@@ -6,11 +6,11 @@
  * of function pointers per concern; Sources/VorssaintLinux wraps this table and
  * nothing else.
  *
- * The window (WP-C1) and capture (WP-B1) sections exist so far. Clipboard,
- * audio, sensors, power, input and session sections are added by their own
- * work packages, each as another section in this header. Sections are
- * independent: a consumer that needs one links one library (`vs_window`,
- * `vs_capture`).
+ * The window (WP-C1), capture (WP-B1) and audio (WP-A5) sections exist so
+ * far. Clipboard, sensors, power, input and session sections are added by
+ * their own work packages, each as another `vs_<concern>_system` vtable in
+ * this header. Sections are independent: a consumer that needs one links one
+ * library (`vs_window`, `vs_capture`, `vs_audio`).
  *
  * Conventions every section follows:
  *   - Every call returns `int`: 0 (VS_OK) or a negative `vs_result`.
@@ -729,6 +729,327 @@ int64_t vs_capture_clock_timeline(const vs_capture_clock *clock, int64_t capture
  *  false when nothing is left, which is the caller's cue to refuse the crop
  *  rather than record a zero-sized file. */
 bool vs_capture_clamp_region(vs_rect *region, uint32_t width, uint32_t height);
+/* ------------------------------------------------------------------- audio */
+
+/*
+ * Mirrors `AudioGraph` in WP-12. Shaped by what the macOS services consume:
+ *
+ *   Sources/Vorssaint/Services/Audio/AppVolumeMixer.swift
+ *     `MixerOutputDevice` (uid, name, isDefault), `MixerApp` (name, ownerPid,
+ *     volume, selectedOutputDeviceUID, effectiveOutputDeviceUID), per-app
+ *     volume up to 200 %, per-app output routing, the device and default-device
+ *     listeners, and the headphone-disconnect detection that
+ *     `loweringOutputVolumeIfHeadphonesDisconnected` hangs on
+ *   Sources/Vorssaint/Services/Audio/SoundOutputSwitcher.swift
+ *     cycling the system output through a chosen set of devices
+ *   Sources/Vorssaint/Services/Audio/AudioInputDeviceManager.swift
+ *     `MixerInputDevice`, the default input, input add/remove
+ *   Sources/Vorssaint/Services/QuickTools/MicMuteService.swift
+ *     mute every input and restore exactly what this feature muted
+ *
+ * The Linux mechanisms are PipeWire's registry, the `Props` param, the
+ * `default` metadata object and the `Link` objects; the fallback is libpulse.
+ * `linux/platform/audio/README.md` documents both and the percentage mapping.
+ */
+
+/* --- volume scale ---------------------------------------------------------
+ *
+ * Every volume here is LINEAR AMPLITUDE with 1.0 at unity, which is what
+ * PipeWire's `channelVolumes` holds and what the macOS mixer means by 100 %
+ * (`AppVolumeMixer` runs 0...2, 1.0 being untouched passthrough).
+ *
+ * It is deliberately *not* the number `wpctl` and the GNOME/KDE sliders show.
+ * Those are cubic: `wpctl set-volume ID 0.5` writes a linear 0.125. Converting
+ * is the UI's job and goes through `vs_audio_linear_to_cubic` /
+ * `vs_audio_cubic_to_linear` so it is done in one place.
+ */
+
+/** Largest linear volume the mixer accepts: 200 %.
+ *
+ *  Inherited from the macOS mixer's `AppVolumeMixer.maxVolume`, not chosen
+ *  here. The scale is linear on both platforms, so a settings backup carries
+ *  a boosted row across unchanged — and a lower ceiling on Linux would
+ *  silently turn someone's 200 % into 150 % on import, which loses the
+ *  user's setting without telling them. WirePlumber's own tools stop at
+ *  150 %, so the panel owns warning about clipping above that. */
+#define VS_AUDIO_MAX_VOLUME 2.0f
+/** Where WirePlumber's tools stop; above this the panel warns about clipping. */
+#define VS_AUDIO_CLIPPING_HAZARD_VOLUME 1.5f
+/** What the panel shows as "100 %". */
+#define VS_AUDIO_UNITY_VOLUME 1.0f
+
+/** Capabilities of an audio backend. */
+typedef enum vs_audio_capability {
+    /** A pipewire daemon answered; the full backend is in use. */
+    VS_AUDIO_HAS_PIPEWIRE = 1u << 0,
+    /** The libpulse fallback is in use (a PulseAudio-only host). */
+    VS_AUDIO_HAS_PULSE_FALLBACK = 1u << 1,
+    /** `route_stream` can send one application's audio to a chosen sink. */
+    VS_AUDIO_CAN_ROUTE_PER_STREAM = 1u << 2,
+    /** Volumes above 1.0 are honoured rather than clamped. */
+    VS_AUDIO_CAN_BOOST_OVER_100 = 1u << 3,
+    /** The backend reports graph changes through `dispatch`. Without it the
+     *  caller must poll `list` itself. */
+    VS_AUDIO_HAS_EVENTS = 1u << 4,
+} vs_audio_capability;
+
+/**
+ * Identifies a device or stream for the life of the backend instance.
+ *
+ * PipeWire's `object.serial`, which is monotonic: a removed node's number is
+ * never handed to a later one, unlike the global id, which is recycled. In the
+ * libpulse fallback it is the sink/source/sink-input index with the object kind
+ * in its top byte, because PulseAudio numbers the four kinds separately. 0 is
+ * never a valid id.
+ */
+typedef uint32_t vs_audio_id;
+
+typedef enum vs_audio_node_kind {
+    /** `media.class` Audio/Sink: an output device. */
+    VS_AUDIO_NODE_SINK = 1u << 0,
+    /** Audio/Source: an input device. Monitor sources are excluded. */
+    VS_AUDIO_NODE_SOURCE = 1u << 1,
+    /** Stream/Output/Audio: an application playing. A mixer row. */
+    VS_AUDIO_NODE_STREAM_OUTPUT = 1u << 2,
+    /** Stream/Input/Audio: an application recording. */
+    VS_AUDIO_NODE_STREAM_INPUT = 1u << 3,
+} vs_audio_node_kind;
+
+#define VS_AUDIO_NODE_ANY_DEVICE (VS_AUDIO_NODE_SINK | VS_AUDIO_NODE_SOURCE)
+#define VS_AUDIO_NODE_ANY_STREAM \
+    (VS_AUDIO_NODE_STREAM_OUTPUT | VS_AUDIO_NODE_STREAM_INPUT)
+#define VS_AUDIO_NODE_ANY (VS_AUDIO_NODE_ANY_DEVICE | VS_AUDIO_NODE_ANY_STREAM)
+
+typedef enum vs_audio_node_flag {
+    /** The default sink (SINK) or default source (SOURCE). */
+    VS_AUDIO_NODE_IS_DEFAULT = 1u << 0,
+    /** The node is muted. */
+    VS_AUDIO_NODE_MUTED = 1u << 1,
+    /** `volume` is real. A node with no `Props` volume at all shows no slider
+     *  rather than a slider that does nothing. */
+    VS_AUDIO_NODE_HAS_VOLUME = 1u << 2,
+    /** `pid` is real rather than the -1 placeholder. */
+    VS_AUDIO_NODE_HAS_PID = 1u << 3,
+    /**
+     * Sound is actually moving through this node right now, as opposed to an
+     * application that holds a stream open while silent. `AudioStream.isActive`
+     * in WP-12, `MixerApp.isPlaying` on macOS: the mixer shows a live indicator
+     * for it and sorts silent rows down, but still lists them, because a row
+     * that vanished when the app paused would take its volume slider with it.
+     */
+    VS_AUDIO_NODE_ACTIVE = 1u << 4,
+} vs_audio_node_flag;
+
+#define VS_AUDIO_APP_ID_MAX 128
+#define VS_AUDIO_TRANSPORT_MAX 32
+#define VS_AUDIO_NAME_MAX 256
+#define VS_AUDIO_DESCRIPTION_MAX 256
+#define VS_AUDIO_APP_NAME_MAX 128
+#define VS_AUDIO_ICON_NAME_MAX 128
+#define VS_AUDIO_MEDIA_NAME_MAX 256
+
+typedef struct vs_audio_node {
+    vs_audio_id id;
+    vs_audio_node_kind kind;
+    /** `node.name`. Stable across restarts: this is what to persist a saved
+     *  volume or route against, the way the macOS mixer persists by bundle id. */
+    char name[VS_AUDIO_NAME_MAX];
+    /** `node.description`: what to show. Falls back to `name` when empty. */
+    char description[VS_AUDIO_DESCRIPTION_MAX];
+    /** `application.name` for streams (`MixerApp.name`). */
+    char app_name[VS_AUDIO_APP_NAME_MAX];
+    /**
+     * Streams only: a stable identity for the application, and the key a saved
+     * volume or route is persisted against. `AudioStream.applicationID` in
+     * WP-12, and the counterpart of the bundle id the macOS mixer saves under
+     * -- `name` cannot do that job, because every `pw-play` shares the
+     * `node.name` "pw-play".
+     *
+     * Taken from `application.id`, then `application.process.binary`, then
+     * `application.name`. The fall back to a display name is the same rule
+     * `MixerRoutingSupport.rowIdentity` applies on macOS for a process with no
+     * bundle id, and for the same reason: a game or a bare executable is still
+     * worth remembering a volume for, and its name is the only stable thing it
+     * has. Empty only when the client set none of the three, in which case the
+     * row is adjustable but saves nothing -- `MixerApp.persistenceID` being nil.
+     */
+    char app_id[VS_AUDIO_APP_ID_MAX];
+    /** `application.icon-name`: an XDG icon name, the Linux answer to the
+     *  macOS mixer's per-app icon. May be empty. */
+    char icon_name[VS_AUDIO_ICON_NAME_MAX];
+    /** `media.name`: what the app is playing right now, and it changes as the
+     *  track changes. May be empty. */
+    char media_name[VS_AUDIO_MEDIA_NAME_MAX];
+    /** Owning process (`MixerApp.ownerPid`), or -1 when the backend cannot say. */
+    int32_t pid;
+    /**
+     * Devices only: the bus, for the icon the mixer draws -- "bluetooth",
+     * "usb", "hdmi", "builtin", or "" when the backend cannot tell.
+     * `AudioSink.transport` in WP-12, deliberately free-form there because
+     * PipeWire's `device.bus` and CoreAudio's transport type do not enumerate
+     * the same set.
+     */
+    char transport[VS_AUDIO_TRANSPORT_MAX];
+    /** Linear amplitude; see the scale note above. Meaningful only with
+     *  `VS_AUDIO_NODE_HAS_VOLUME`. */
+    float volume;
+    /** Bitmask of `vs_audio_node_flag`. */
+    uint32_t flags;
+    /**
+     * Streams only: the sink this stream is pinned to, or 0 when it follows
+     * the default. `MixerApp.selectedOutputDeviceUID`.
+     */
+    vs_audio_id target_id;
+    /**
+     * Streams only: the node this stream's audio is actually reaching now, or
+     * 0 when it is not connected. `MixerApp.effectiveOutputDeviceUID`.
+     *
+     * The difference between this and `target_id` is the whole read-back:
+     * asking for a route is not the same as the audio arriving there. The
+     * PipeWire backend reads it from the `Link` objects; the libpulse fallback
+     * reads the sink the input sits on, which is the strongest answer that
+     * protocol has.
+     */
+    vs_audio_id effective_id;
+} vs_audio_node;
+
+typedef enum vs_audio_event_type {
+    /**
+     * The graph changed in a way worth re-reading. Debounced: a device
+     * appearing brings a burst of a dozen registry and param changes, and the
+     * mixer wants one refresh after the burst rather than twelve.
+     */
+    VS_AUDIO_EVENT_CHANGED = 1,
+    /** The default sink changed. `id` is the new one, 0 if there is none. */
+    VS_AUDIO_EVENT_DEFAULT_SINK_CHANGED,
+    VS_AUDIO_EVENT_DEFAULT_SOURCE_CHANGED,
+    /**
+     * A sink went away while it was the default: headphones unplugged, a USB
+     * DAC pulled, a Bluetooth headset dropped. `id` and `name` describe the
+     * sink that left, because by the time this is delivered it is gone from
+     * any listing. This is what the macOS "lower the volume when headphones
+     * disconnect" behaviour hangs on.
+     */
+    VS_AUDIO_EVENT_DEFAULT_SINK_DISCONNECTED,
+} vs_audio_event_type;
+
+typedef struct vs_audio_event {
+    vs_audio_event_type type;
+    /** The node the event is about, or 0. */
+    vs_audio_id id;
+    /** Its `node.name`, or "". Valid only for the duration of the callback. */
+    const char *name;
+} vs_audio_event;
+
+typedef void (*vs_audio_event_cb)(const vs_audio_event *event, void *user_data);
+
+typedef struct vs_audio_system vs_audio_system;
+
+struct vs_audio_system {
+    /** Backend identity, for logs and the capabilities page: "pipewire" or
+     *  "libpulse". */
+    const char *name;
+    /** Bitmask of `vs_audio_capability`. A member whose capability bit is clear
+     *  still exists and returns VS_ERR_UNSUPPORTED. These never change for the
+     *  life of the instance: losing the audio server means losing the
+     *  connection, and the caller recreates the backend. */
+    uint32_t capabilities;
+    void *impl;
+
+    /** Snapshot of every node whose kind is in `kind_mask` (a bitmask of
+     *  `vs_audio_node_kind`). The caller owns the array until it passes it to
+     *  `free_list`; a count of 0 comes with a NULL pointer.
+     *
+     *  Budget: 2 s, and nothing like it in practice. The PipeWire backend
+     *  answers from its own mirror of the graph and turns the loop once without
+     *  blocking, so it cannot wait at all; the libpulse fallback has no mirror
+     *  and asks the server, which is where the cap applies -- one round trip
+     *  per node kind plus one for the defaults.
+     *
+     *  Either way this may run the backend's connection, so events it uncovers
+     *  are delivered by a later `dispatch` rather than by this call. */
+    int (*list)(vs_audio_system *self, uint32_t kind_mask,
+                vs_audio_node **nodes_out, size_t *count_out);
+    void (*free_list)(vs_audio_system *self, vs_audio_node *nodes, size_t count);
+
+    /** Set a node's linear volume on every channel, clamped to
+     *  [0, VS_AUDIO_MAX_VOLUME], and read it back. VS_ERR_NOT_APPLIED when the
+     *  write was accepted and a different value came back, which is what a
+     *  server that clamps looks like. Budget: 2 s. */
+    int (*set_volume)(vs_audio_system *self, vs_audio_id id, float linear_volume);
+    /** Same read-back contract. Budget: 2 s. */
+    int (*set_mute)(vs_audio_system *self, vs_audio_id id, bool mute);
+
+    /** Send one stream's audio to one sink -- the per-app output routing the
+     *  macOS mixer does by re-rendering through an aggregate device. `sink_id`
+     *  of 0 clears the pin and the stream follows the default again.
+     *
+     *  Returns VS_OK only once the audio has actually arrived: the PipeWire
+     *  backend waits for the stream's links to land on that sink, and answers
+     *  VS_ERR_NOT_APPLIED if they never do. Budget: 3 s. */
+    int (*route_stream)(vs_audio_system *self, vs_audio_id stream_id,
+                        vs_audio_id sink_id);
+
+    /** Make a sink the default output, and read it back. The PipeWire backend
+     *  writes both `default.audio.sink` and `default.configured.audio.sink`, so
+     *  the choice is both in effect now and restored at the next login.
+     *  Budget: 3 s. */
+    int (*set_default_sink)(vs_audio_system *self, vs_audio_id sink_id);
+    /** The same for the default input, which is what AudioInputDeviceManager's
+     *  preferred-input setting writes. Budget: 3 s. */
+    int (*set_default_source)(vs_audio_system *self, vs_audio_id source_id);
+
+    /** Mute every input, or restore.
+     *
+     *  Turning it on records each source's mute state; turning it off restores
+     *  exactly the sources this feature muted, leaving alone any the user muted
+     *  themselves in the meantime -- the rule `MicMuteSupport.restoreTargets`
+     *  enforces on macOS. The record outlives the process (see
+     *  linux/platform/audio/README.md), so a crash with the mic muted is
+     *  recoverable. `changed_out` may be NULL. Budget: 2 s per source. */
+    int (*mute_all_inputs)(vs_audio_system *self, bool mute, size_t *changed_out);
+
+    /** Install the event sink. Pass NULL to remove it. The callback runs inside
+     *  `dispatch`, on the calling thread, and may call back into this same
+     *  instance only after `dispatch` returns. */
+    int (*set_event_callback)(vs_audio_system *self, vs_audio_event_cb callback,
+                              void *user_data);
+    /** Pollable descriptor that becomes readable when events are pending.
+     *
+     *  -1 means the backend has no single pollable descriptor and the caller
+     *  must call `dispatch` on a timer instead; the libpulse fallback is in
+     *  that position, because `pa_mainloop` polls a set of descriptors it does
+     *  not expose. VS_AUDIO_HAS_EVENTS says whether events arrive at all, which
+     *  is a separate question from whether there is an fd to wait on. */
+    int (*event_fd)(vs_audio_system *self);
+    /** Drain what is pending and deliver it to the callback. Never blocks. The
+     *  only place the callback runs. Returns the number of events delivered, or
+     *  a negative `vs_result`. */
+    int (*dispatch)(vs_audio_system *self);
+
+    void (*destroy)(vs_audio_system *self);
+};
+
+/** Connect to the audio server and build a backend.
+ *
+ *  `preferred` forces one backend by name ("pipewire", "libpulse") and fails
+ *  with VS_ERR_NO_BACKEND if it is not usable here; NULL tries PipeWire first
+ *  and falls back to libpulse when `pw_context_connect` finds nothing to
+ *  connect to, which is the whole of the PipeWire-absence detection -- anything
+ *  short of a real connection can be wrong, since a socket can exist with
+ *  nothing behind it.
+ *
+ *  Returns NULL when no audio server answered; `*result_out` (optional) says
+ *  why. */
+vs_audio_system *vs_audio_system_create(const char *preferred, int *result_out);
+
+/** Names of the backends compiled into this build, NULL-terminated. */
+const char *const *vs_audio_backend_names(void);
+
+/** Linear amplitude to the cubic number wpctl and the desktop sliders show. */
+float vs_audio_linear_to_cubic(float linear);
+/** The inverse: a cubic slider position to the linear volume used here. */
+float vs_audio_cubic_to_linear(float cubic);
 
 #ifdef __cplusplus
 }

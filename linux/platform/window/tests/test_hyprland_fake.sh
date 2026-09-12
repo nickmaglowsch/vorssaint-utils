@@ -114,7 +114,7 @@ grep -q "^event	removed	$DELTA	" "$WORK/events.txt" || fail "no removed event fo
 if "$VS_WINDOW" --backend hyprland close 0xdeadbeef 2>"$WORK/close.txt"; then
     fail "closing an unknown address reported success"
 fi
-grep -q "no such window" "$WORK/close.txt" || fail "wrong error for an unknown address"
+grep -q "no such object" "$WORK/close.txt" || fail "wrong error for an unknown address"
 
 # A tiled window only obeys an absolute position once it is floating, which is
 # why move_resize sends `setfloating` first. Whichever way this particular

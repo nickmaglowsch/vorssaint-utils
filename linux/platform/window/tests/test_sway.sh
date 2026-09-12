@@ -263,6 +263,6 @@ grep -q "^event	removed	$WATCH_DELTA	" "$WORK/events.txt" || fail "no removed ev
 if "$VS_WINDOW" --backend wlr activate 999999 2>"$WORK/activate2.txt"; then
     fail "activating an unknown window reported success"
 fi
-grep -q "no such window" "$WORK/activate2.txt" || fail "wrong error for an unknown window"
+grep -q "no such object" "$WORK/activate2.txt" || fail "wrong error for an unknown window"
 
 echo "PASS: sway"

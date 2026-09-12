@@ -62,7 +62,6 @@ target_compile_options(vs_window_protocols PRIVATE -Wno-missing-prototypes)
 # ------------------------------------------------------------------ library
 
 add_library(vs_window STATIC
-    $<TARGET_OBJECTS:vorssaint_platform_common>
     vs_window.c
     backend_x11.c
     backend_wlr.c
@@ -77,6 +76,7 @@ target_include_directories(vs_window
     PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${GENERATED_DIR})
 
 target_link_libraries(vs_window
+    PUBLIC vs_platform_common
     PRIVATE PkgConfig::XCB PkgConfig::WAYLAND PkgConfig::JSONC PkgConfig::SDBUS)
 
 add_dependencies(vs_window vs_window_protocols)

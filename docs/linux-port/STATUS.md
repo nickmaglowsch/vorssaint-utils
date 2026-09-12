@@ -76,7 +76,7 @@ or a local clone.
 | WP-16 | merged | plan branch | 73 generated XCTest cases from the macOS vectors, 90 tests green on Linux; both vacuous walks widened (2 files → 52 and 40); QA running |
 | WP-S1 | in progress (daemon side) | worktree | production helper from the WP-03 spike: session binding, hot-plug, hwmon, DDC, systemd/polkit/udev files |
 | WP-B1 | merged | plan branch | full chain: portal enumeration, both screenshot paths, 295-frame stream at 29.5 fps, 440 Hz audio round trip, pause/resume alignment, restore tokens; five green build legs; QA running |
-| WP-A5 | in progress (backend) | worktree | PipeWire audio backend in C under linux/platform/audio, libpulse fallback |
+| WP-A5 | merged (backend) | plan branch | PipeWire registry, per-stream volume with read-back, `target.object` routing, default-sink switching, mute-all, libpulse fallback; the lead raised the ceiling from 150 % to 200 % to match the macOS mixer so a settings backup does not lose a boosted row |
 | WP-D1/D2 | in progress | worktree | relay rule set in linux/helper mirroring the Swift Support state machines |
 | WP-C1 | merged | plan branch | five backends; QA found a no-op Wayland global_remove and an unverified set_minimized, both fixed and tested with a real output unplug; Hyprland/KWin/GNOME rows still need a live session |
 | WP-D1/D2 | merged | plan branch | 198 assertions, 147 ported from the macOS Swift vectors; QA running |

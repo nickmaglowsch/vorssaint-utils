@@ -20,8 +20,7 @@ add_library(vs_capture STATIC
     vs_capture_stream.c
     vs_capture_timing.c
     vs_capture_png.c
-    vs_capture_png_read.c
-    $<TARGET_OBJECTS:vorssaint_platform_common>)
+    vs_capture_png_read.c)
 
 target_include_directories(vs_capture
     PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/../include
@@ -32,7 +31,7 @@ target_include_directories(vs_capture
 # spa_pod_builder macros do shadow, so they are quarantined to this library's
 # own translation units rather than being allowed project-wide.
 target_link_libraries(vs_capture
-    PUBLIC PkgConfig::GLIB
+    PUBLIC PkgConfig::GLIB vs_platform_common
     PRIVATE PkgConfig::PIPEWIRE PkgConfig::WAYLAND_CLIENT PkgConfig::ZLIB
             Threads::Threads)
 

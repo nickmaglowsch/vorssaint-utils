@@ -8,6 +8,10 @@
 
 #include <stdarg.h>
 
+/* vs_result_string moved to linux/platform/vs_result.c when the audio
+ * section became its second caller; it belongs to every concern, not to this
+ * one. */
+
 void vs_window_log(const char *format, ...)
 {
     static int enabled = -1;

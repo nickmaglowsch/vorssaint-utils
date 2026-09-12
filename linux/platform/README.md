@@ -10,7 +10,10 @@ one-to-one by a C header rather than reimplemented in Swift.
 ```
 linux/platform/
   include/vorssaint_platform.h   the contract; one section per concern
-  vs_result.c                    the contract symbols that belong to no concern
+  vs_result.c                    the header's common section: vs_result_string
+                                 and the other contract symbols that belong to
+                                 every concern and to none of them
+  scripts/build-matrix.sh        builds all four CMake build types under -Werror
   window/                        WP-C1: X11, wlroots, Hyprland, KWin, GNOME
     kwin/vorssaint-window.js     the KWin bridge script
     protocols/                   vendored Wayland protocol XML
@@ -24,6 +27,14 @@ linux/platform/
 
 Concerns still to land add their own directory and their own section of the
 header: audio, sensors, power, input, portals, helper-client.
+  audio/                         WP-A5: PipeWire, with a libpulse fallback
+    tools/vs_audio_cli.c         the `vs-audio` harness
+    scripts/run-stack.sh         a private headless PipeWire stack for the tests
+    tests/                       one pure-C suite and eight live ones
+```
+
+Concerns still to land add their own directory and their own section of the
+header: capture (WP-B1), sensors, power, input, portals, helper-client.
 
 ## The contract
 
@@ -111,10 +122,21 @@ apt-get install -y cmake pkg-config libxcb1-dev libxcb-ewmh-dev libxcb-icccm4-de
                    libwayland-dev wayland-protocols libjson-c-dev libsystemd-dev
 ```
 
+Add for the audio section: `libpipewire-0.3-dev libpulse-dev`.
+
 Test dependencies (the suites skip with ctest's "not run" code 77 when one is
 missing): `xvfb`, `openbox`, `xterm`, `x11-utils` for X11; `sway`, `foot` for
 wlroots; `dbus-x11` (`dbus-run-session`), `python3-dbus`, `python3-gi` for the
-D-Bus fakes; `nodejs` to lint the KWin script.
+D-Bus fakes; `nodejs` to lint the KWin script; `pipewire`, `wireplumber`,
+`pipewire-pulse`, `dbus-daemon` and `ffmpeg` for audio.
+
+Every C package must build warning-free under `-Werror` in all four CMake build
+types, including the bare "no build type" configure, which is its own
+configuration and is pinned to RelWithDebInfo here so it matches what ships:
+
+```sh
+CTEST_ARGS="-R ^audio_" scripts/build-matrix.sh
+```
 
 `linux/platform/capture/scripts/build-matrix.sh` builds and tests the whole tree
 in all four CMake configurations -- no build type, Debug, Release,
@@ -136,3 +158,7 @@ because it is not ours to fix.
   `docs/linux-port/WINDOW_BACKENDS.md`.
 - [`capture/`](capture/) — the capture engine, its two delivery modes and the
   session defects it is built around: `docs/linux-port/CAPTURE_ENGINE.md`.
+- [`audio/`](audio/) — the mixer, output switching and mic mute, what a
+  percentage means on each scale, and measured behaviour:
+  [`audio/README.md`](audio/README.md) and
+  `docs/linux-port/AUDIO_BACKEND.md`.
