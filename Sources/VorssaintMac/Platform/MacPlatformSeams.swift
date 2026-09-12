@@ -13,6 +13,7 @@ enum MacPlatformSeams {
     static func install() {
         ImageDataValidation.current = AppKitImageDataValidator()
         Transliteration.current = CoreFoundationTransliterator()
+        MeasurementFormatters.current = FoundationMeasurementFormatter()
     }
 }
 #endif
