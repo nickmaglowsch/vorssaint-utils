@@ -457,3 +457,34 @@ files may not share a basename (run 34693363900).
 - **`FeatureCatalog.requiredCapabilities`** (WP-15) should be spelled in the
   `PlatformCapability` values of § 4, so the hub renders from what the session
   probed rather than from a per-OS table.
+
+  **Landed, in a shape this note did not anticipate.** `FeatureCatalog.swift`
+  could not move into the core (`CORE_MOVES.md` appendix A), so the table is
+  not a property on `AppFeature` — it is `FeatureSupportCatalog` in
+  `Sources/VorssaintCore/Core/FeatureSupportCatalog.swift`, keyed by
+  `AppFeature.rawValue`, which is the identity the availability key and every
+  settings backup already carry. It is spelled in the § 4 values as asked:
+  32 distinct capabilities across 57 features, listed row by row in the WP-15
+  section of `FEATURE_TRIAGE.md`, and
+  `FeatureSupportTests.testEveryLinuxCapabilityIsOneThePlatformLayerDeclares`
+  pins the set so a typo cannot make a feature permanently unsupported in
+  silence.
+
+  What a `Capabilities` implementation unlocks the moment one exists: the hub
+  gate is `FeatureSupportCatalog.isSupported(id, on: .linux, has: capabilities.has)`
+  and the row's explanation is `unsupportedReason(…)` in the viewer's
+  language. Nothing else has to be written. Until then the capability reader
+  defaults to "everything present", so a catalog with no probes behind it
+  offers the 48 Linux features rather than hiding them — the failure mode that
+  degrades to the truth once probing lands, instead of hiding features nobody
+  ever asked the session about.
+
+  This is also what `BRIDGE.md` § 6 needed from WP-15: the bridge's
+  `FeatureAvailabilityStore.isInstallable` can now be answered from the same
+  call, and `LinuxFeatureProbeSet` is checked against `featureIDs(on: .linux)`
+  inside the module rather than by a CI grep across one.
+
+  macOS is deliberately outside all of this: every feature is in the table on
+  macOS with **no** capability requirement, so `isSupportedOnThisPlatform`
+  there is the pre-existing hardware check and nothing else. That is what lets
+  the macOS leg's `TESTS OK (31565 checks)` mean what it says.

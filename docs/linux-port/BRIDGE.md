@@ -331,12 +331,36 @@ it and the Linux hub genuinely share is the persisted answer, so
 `featureAvailable.<id>` keys through `DefaultsKey.featureAvailable`. The
 install gate is `FeatureRuntime.mayFlip`'s, asymmetry included: an install the
 hardware refuses is refused out loud, an uninstall is never refused and an
-existing install is never revoked. WP-15 moves `FeatureCatalog` into the core
-and `LinuxFeatureProbeSet` — a twelve-id placeholder naming only features whose
-Linux backend has landed or is in flight — becomes
-`AppFeature.allCases.map(\.rawValue)`. Until then a CI grep proves every one of
-those twelve is a real `AppFeature` case, which is the only check that can
-cross the module boundary the list sits on the wrong side of.
+existing install is never revoked.
+
+**What WP-15 changed here, and what it did not.** WP-15 did *not* move
+`FeatureCatalog` into the core: `CORE_MOVES.md` appendix A proves it cannot go
+— it is in a cycle with `RadialMenuSupport` and behind `GlobalShortcut`, which
+§ 2 of that document proved cannot be split from Carbon. What did move is the
+part the bridge actually needs. `FeatureSupportCatalog` in
+`Sources/VorssaintCore/Core/FeatureSupportCatalog.swift` carries all 57 feature
+ids, the platforms each exists on, and the `PlatformCapability` values a Linux
+session needs for it. So three things are now available to this service that
+were not:
+
+- `FeatureSupportCatalog.featureIDs(on: .linux)` is the real 48-id catalog,
+  in the core, with the nine Drop features already absent — the list
+  `registerStandardServices` would pass once every backend has landed.
+- `isInstallable` can stop being "not in a hand-written unsupported set" and
+  become `FeatureSupportCatalog.isSupported(id, on: .linux, has: capabilities.has)`,
+  the moment a `Capabilities` implementation exists to ask.
+- `unsupportedReason` gives the hub the sentence for the row it greys out, in
+  all thirteen languages, instead of a bare `installable: false`.
+
+`LinuxFeatureProbeSet` stays a twelve-id list for now, and its *second* reason
+is the one that survives: a hub row for a feature whose backend has not landed
+is a row that lies, and which twelve have landed is the Linux hub's call, not
+this package's. Its *first* reason is gone: the CI grep that stood in for a
+compiler is now backed by
+`FeatureSupportTests.testTheBridgeProbeSetIsASubsetOfTheLinuxCatalog`, which
+checks the same thing inside the module the ids now live in — and checks the
+stronger statement, that each id is a *Linux* feature rather than merely an
+`AppFeature` case. The grep stays; it costs a second on the bridge leg.
 
 **`l10n` carries the whole catalog because the alternative is a second set of
 translations.** The playbook's rule is that every user-facing string goes

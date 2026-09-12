@@ -163,7 +163,13 @@ public enum FeatureSupportCatalog {
         entry("monitorGPU", .reduced),
         entry("monitorMemory", .port, [.sensorsMemory]),
         entry("monitorNetwork", .port, [.sensorsNetwork]),
-        entry("monitorDisk", .port, [.sensorsDiskActivity]),
+        // Reduced, not Port: rates and capacity are unprivileged and
+        // complete, but SMART and NVMe health need ioctls on the raw device
+        // (SENSORS_BACKEND.md, and the lead's decision recorded on the
+        // monitorDisk row of FEATURE_TRIAGE.md). The health rows are absent
+        // until the helper grows a path for them, so there is no capability
+        // to name for them yet.
+        entry("monitorDisk", .reduced, [.sensorsDiskActivity]),
         entry("monitorPower", .port, [.sensorsBattery]),
         entry("fanControl", .reduced, [.powerFanControl, .sensorsFanSpeed]),
     ]

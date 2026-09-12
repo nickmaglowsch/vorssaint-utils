@@ -43,18 +43,19 @@ public extension CoreBridge {
 
 /// The feature ids the Linux hub offers today.
 ///
-/// **This list is a placeholder and is meant to be deleted.** `AppFeature`
-/// lives in `Sources/Vorssaint/Core/FeatureCatalog.swift`, which is still
-/// macOS-only code; WP-15 moves it into the core and
-/// `registerStandardServices` then passes `AppFeature.allCases.map(\.rawValue)`
-/// instead of this.
+/// **This list is a placeholder and is meant to be deleted.** It names only
+/// features whose Linux backend has actually landed or is in flight, because
+/// a hub row for a feature with no backend is a row that lies.
 ///
-/// Until then it names only features whose Linux backend has actually landed
-/// or is in flight, because a hub row for a feature with no backend is a row
-/// that lies. Every entry is a real `AppFeature` raw value, and the
-/// `linux-port-ci` bridge leg proves it by grepping the catalog — the one
-/// check that can cross the module boundary this list sits on the wrong side
-/// of.
+/// WP-15 did not move `FeatureCatalog` into the core — `CORE_MOVES.md`
+/// appendix A proves it cannot go — but it did put the ids and their platform
+/// support there: `FeatureSupportCatalog.featureIDs(on: .linux)` is the real
+/// 48-id Linux catalog, and it is what `registerStandardServices` passes once
+/// every backend has landed. Until then
+/// `FeatureSupportTests.testTheBridgeProbeSetIsASubsetOfTheLinuxCatalog`
+/// checks every entry here is one of those 48, which is stronger than the
+/// `linux-port-ci` grep it replaces the need for (that grep only proved the id
+/// was an `AppFeature` case at all).
 public enum LinuxFeatureProbeSet {
     public static let ids = [
         "switcher",          // WP-C1 window backend landed

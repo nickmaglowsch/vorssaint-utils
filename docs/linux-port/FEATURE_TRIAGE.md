@@ -146,11 +146,177 @@ design is WP-S1. The listen-only features use the same relay in tap mode.
 
 | Verdict | Features |
 |---|---|
-| Port | 32 |
-| Reduced | 11 |
+| Port | 31 |
+| Reduced | 12 |
 | Re-imagine | 5 |
 | Drop | 9 (dockPreview, dockClick, windowMaximizer, middleClick, finderCutPaste, finderRename, diskImageInstaller, musicBlock, extraBrightness) |
+
+57 rows. The Port/Reduced split moved by one when the sensors backend landed
+and `monitorDisk` became Reduced (drive health needs ioctls on the raw
+device); these four numbers are asserted against the table in code by
+`FeatureSupportTests.testTheVerdictsMatchTheTriageTotals`, so the next verdict
+that changes here fails the Linux gate until the catalog changes with it.
 
 Dropped features stay in `AppFeature` so settings backups and the catalog keep
 their identity; `isHardwareSupported` (already present for fan control)
 becomes `isSupportedOnThisPlatform` and hides them.
+
+---
+
+## WP-15: what each feature needs from the running session
+
+The tables above are the research: what a feature stands on today and what it
+would stand on under Linux. This section is the same thing as *code*.
+`Sources/VorssaintCore/Core/FeatureSupportCatalog.swift` carries one row per
+feature with the platforms it exists on, the verdict above, and the
+`PlatformCapability` values (`PLATFORM.md` § 3) a Linux session must have
+before the hub offers it. `AppFeature.isSupportedOnThisPlatform` reads it, and
+the hub shows `unsupportedOnThisPlatformReason` on the row it greys out.
+
+Three gates, answered in this order:
+
+1. **Platform.** The nine Drop rows are `macOS` only. On Linux they are not
+   greyed out, they are absent: the hub never lists a feature that has no
+   counterpart. Their availability keys stay in the settings backup, so a
+   backup that crosses platforms and comes back is unchanged.
+2. **Capabilities.** Every capability listed below must be present. A session
+   missing one gets `unsupportedMissingCapabilitiesFormat` with the capability
+   named, not a blank greyed row: "This desktop session does not provide what
+   this feature needs: audio.streamVolume". The names are deliberately not
+   translated, because they are the identities the Capabilities page lists and
+   the ones a bug report should carry.
+3. **Hardware.** `hardwareUnsupportedReason`, unchanged, still macOS-only and
+   still just fan control. It stays in the Mac layer because its answer comes
+   from a service, not from a table.
+
+**macOS declares no capability requirement at all, on purpose.** WP-15 must
+not change what the macOS product offers, and the macOS gate is the only proof
+of that available; a table that could answer "no" on macOS for a new reason
+would make that proof worthless. `FeatureSupportTests.testMacOSSupportIsUnconditional`
+asserts it for all 57 rows, against a capability reader that answers `false` to
+everything.
+
+### The capability requirements
+
+| Feature | Verdict | Needs on Linux |
+|---|---|---|
+| `switcher` | Reduced | `window.list` + `window.focus` |
+| `dockPreview` | Drop | not on Linux |
+| `dockClick` | Drop | not on Linux |
+| `windowMaximizer` | Drop | not on Linux |
+| `windowLayout` | Reduced | `window.list` + `window.moveResize` |
+| `autoQuit` | Reduced | `window.list` + `launch.quitApplication` |
+| `scrollInverter` | Port | `input.swallow` + `input.synthesize` |
+| `focusFollowsMouse` | Re-imagine | none |
+| `smoothScroll` | Port | `input.swallow` + `input.synthesize` |
+| `mouseAcceleration` | Re-imagine | none |
+| `mouseNavigation` | Reduced | `input.swallow` + `input.synthesize` |
+| `mouseButtonShortcuts` | Port | `input.swallow` + `input.synthesize` |
+| `middleClick` | Drop | not on Linux |
+| `mouseClickDebounce` | Port | `input.swallow` |
+| `keyboardDebounce` | Port | `input.swallow` |
+| `textSnippets` | Port | `input.swallow` + `input.synthesize` |
+| `superKey` | Port | `input.swallow` + `input.synthesize` |
+| `quitWindowProtection` | Port | `input.swallow` |
+| `clipboardHistory` | Reduced | `clipboard.read` + `clipboard.watch` |
+| `pastePlain` | Reduced | `clipboard.read` + `clipboard.write` + `input.synthesize` |
+| `finderCutPaste` | Drop | not on Linux |
+| `finderRename` | Drop | not on Linux |
+| `shelf` | Reduced | none |
+| `urlCleaner` | Port | `clipboard.read` + `clipboard.write` + `clipboard.watch` |
+| `diskImageInstaller` | Drop | not on Linux |
+| `mixer` | Port | `audio.streamVolume` |
+| `soundOutputSwitcher` | Port | `audio.defaultDeviceSwitch` |
+| `micMute` | Port | `audio.sourceVolume` |
+| `musicBlock` | Drop | not on Linux |
+| `keepAwake` | Port | `power.inhibitSystemSleep` |
+| `brightness` | Port | `power.internalBrightness` |
+| `extraBrightness` | Drop | not on Linux |
+| `bluetoothSleep` | Port | `session.sleepWakeEvents` |
+| `quickLauncher` | Port | `launch.applications` + `launch.enumerateInstalled` |
+| `quickToggles` | Reduced | `power.lockSession` |
+| `colorPicker` | Port | `capture.area` |
+| `screenOCR` | Port | `capture.area` |
+| `cleaningMode` | Port | `input.swallow` |
+| `mediaTools` | Port | none |
+| `cleaner` | Port | `files.trash` |
+| `uninstaller` | Re-imagine | `packages.list` + `packages.uninstall` |
+| `homebrew` | Re-imagine | `packages.list` |
+| `appUpdates` | Re-imagine | `packages.list` + `packages.refresh` |
+| `screenshot` | Port | `capture.display` + `capture.area` |
+| `cameraPreview` | Port | none |
+| `radialMenu` | Port | none |
+| `scratchpad` | Port | none |
+| `commandBar` | Reduced | `launch.applications` + `launch.enumerateInstalled` |
+| `screenRecorder` | Port | `capture.stream` |
+| `killProcess` | Port | none |
+| `monitorCPU` | Port | `sensors.cpu` |
+| `monitorGPU` | Reduced | none |
+| `monitorMemory` | Port | `sensors.memory` |
+| `monitorNetwork` | Port | `sensors.network` |
+| `monitorDisk` | Reduced | `sensors.diskActivity` |
+| `monitorPower` | Port | `sensors.battery` |
+| `fanControl` | Reduced | `power.fanControl` + `sensors.fanSpeed` |
+
+Nine Linux features need nothing: `focusFollowsMouse` and `mouseAcceleration`
+are re-imagined as writes to the desktop's own setting, `shelf`, `mediaTools`,
+`cameraPreview`, `radialMenu`, `scratchpad` and `killProcess` stand on the file
+system, a portal that is always there, or a window of our own, and `monitorGPU`
+is Reduced for a reason no capability can carry — coverage depends on the
+vendor driver (amdgpu sysfs, NVML, i915), which the sensors backend reports per
+machine rather than per session. `SENSORS_BACKEND.md` is the vendor matrix.
+
+Two rows deserve their reasoning spelled out:
+
+- **`monitorDisk` names `sensors.diskActivity` and nothing for health.** Rates
+  and capacity are complete and unprivileged; SMART and NVMe health need
+  `SG_IO`/`NVME_IOCTL_ADMIN_CMD` on the raw device. There is no capability for
+  the health rows yet because there is no backend that could declare one, and
+  inventing the name before the path exists is the "plausible-looking second
+  implementation" `PLATFORM.md` § 4 warns about.
+- **Everything that modifies input names `input.swallow`.** Withholding an
+  event from the focused app is the whole mechanism (`InputRelay` in
+  `vorssaint-helper`), and it is exactly what a Flatpak sandbox without
+  `/dev/uinput` cannot do. A session where the helper is absent therefore
+  loses eleven features at once and says so once per row, which is the
+  behaviour `PRIVILEGES.md` § 6 describes.
+
+### The three Linux presets
+
+`FeaturePresetCatalog` holds them next to the three macOS ones, tagged by
+platform, so neither list can appear on the other's hub.
+
+| Preset | Features |
+|---|---|
+| **Essentials** (`linuxEssentials`) | the six monitor metrics, `mixer`, `keepAwake`, `clipboardHistory`, `textSnippets`, `screenshot` |
+| **Windows** (`linuxWindows`) | `switcher`, `windowLayout`, `autoQuit` |
+| **Battery and quiet** (`linuxBatteryQuiet`) | `monitorPower`, `keepAwake`, `bluetoothSleep`, `brightness` |
+
+A preset only offers itself when every feature in it resolves on the running
+session (`FeaturePresetDefinition.resolves(has:)`), so **Windows** does not
+appear on a GNOME session with no bridge rather than installing three rows that
+then explain themselves one by one.
+
+The macOS three are mirrored in the same catalog because
+`Sources/Vorssaint/Core/FeaturePresets.swift` stays the macOS hub's surface
+until the hub itself is ported — the macOS harness pins which three files may
+write an availability key, and moving the writer belongs to that work package,
+not to this one. `Tools/linux-port/check-feature-catalog.py` compares the copy
+against the original on every CI run, on both legs.
+
+### What the compiler cannot check, and what does
+
+`Core/FeatureCatalog.swift` did not move into the core, and per
+`CORE_MOVES.md` appendix A it cannot: it is in a cycle with `RadialMenuSupport`
+and behind `GlobalShortcut`, which § 2 of that document proved cannot be split
+from Carbon. So the table is keyed by `AppFeature.rawValue` — the stable
+identity the availability key and every settings backup are already written
+with — and nothing in Swift ties the two lists together.
+
+`Tools/linux-port/check-feature-catalog.py` is what does, on both CI legs: it
+parses `enum AppFeature` and the `entry(…)` rows and fails on a case missing
+from the table, an id in the table that is not a case, a different order, or a
+preset naming a feature that does not exist. A feature whose row is missing
+entirely falls back to "on macOS, needs nothing", so the worst a forgotten
+entry can do is leave a feature un-triaged for Linux — never change what the
+macOS product offers.

@@ -34,10 +34,11 @@ final class FeatureSupportTests: XCTestCase {
         for requirement in FeatureSupportCatalog.requirements {
             totals[requirement.verdict, default: 0] += 1
         }
-        // FEATURE_TRIAGE.md "Totals": Port 32, Reduced 11, Re-imagine 5,
-        // Drop 9.
-        XCTAssertEqual(totals[.port], 32)
-        XCTAssertEqual(totals[.reduced], 11)
+        // FEATURE_TRIAGE.md "Totals": Port 31, Reduced 12, Re-imagine 5,
+        // Drop 9. monitorDisk moved from Port to Reduced with the sensors
+        // backend (drive health needs ioctls on the raw device).
+        XCTAssertEqual(totals[.port], 31)
+        XCTAssertEqual(totals[.reduced], 12)
         XCTAssertEqual(totals[.reimagine], 5)
         XCTAssertEqual(totals[.drop], 9)
     }
@@ -199,6 +200,21 @@ final class FeatureSupportTests: XCTestCase {
                                "\(preset.id)/\(language.rawValue)")
             }
         }
+    }
+
+    /// WP-18's bridge offers a hand-written twelve-id subset, because a hub
+    /// row for a feature with no backend is a row that lies. The reason it had
+    /// to be hand-written — `AppFeature` being on the wrong side of a module
+    /// boundary — is gone now that the ids are in the core, so the CI grep
+    /// that stood in for a compiler is replaced by this.
+    func testTheBridgeProbeSetIsASubsetOfTheLinuxCatalog() {
+        let linux = Set(FeatureSupportCatalog.featureIDs(on: .linux))
+        for id in LinuxFeatureProbeSet.ids {
+            XCTAssertTrue(linux.contains(id),
+                          "\(id) is offered by the bridge but is not a Linux feature")
+        }
+        XCTAssertEqual(LinuxFeatureProbeSet.ids.count,
+                       Set(LinuxFeatureProbeSet.ids).count)
     }
 
     /// A preset whose features need a helper that is not installed is still a
