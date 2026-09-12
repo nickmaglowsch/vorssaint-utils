@@ -27,7 +27,7 @@ Spikes live under `spikes/` on their own branches and are never merged into
 | WP-01 | Shell toolkit bake-off | M | – | Shell squad | merged (Qt 6 Quick recommended; layer-shell needs vendoring) |
 | WP-02 | Portal ScreenCast + PipeWire capture proof | M | – | Feature squad | merged (GO on wlroots; 3 xdpw defects found) |
 | WP-03 | evdev/uinput input relay proof | M | – | Systems squad | merged (GO; uinput untestable here) |
-| WP-04 | Self-contained packaging proof | M | WP-01 | Packaging/CI | review |
+| WP-04 | Self-contained packaging proof | M | WP-01 | Packaging/CI | merged (AppImage primary, reduced Flatpak secondary) |
 
 **WP-00 Swift core on Linux.** Install the current Swift toolchain (6.x) on
 Ubuntu 24.04 and Fedora. Compile, unmodified, these twelve files (`FeatureCatalog.swift`,
@@ -240,9 +240,9 @@ uninstall features. No features yet beyond a CPU readout used as a probe.
 | WP-27 | Icon mapping: SF Symbols → symbolic icon set bundled with the app | M | WP-20 | Shell squad | todo |
 | WP-28 | Theming: light/dark follow portal Settings, app accent, compact density | S | WP-23 | Shell squad | todo |
 | WP-29 | Overlay surfaces: LayerShellQt vendored and built against Qt 6 (Ubuntu 24.04 only packages the Qt 5 build, per WP-01), fullscreen transparent window fallback on GNOME and where layer-shell is absent, override-redirect on X11, per-output; runtime check for a compositing manager on X11 (transparent overlays render black without one) | M | WP-20 | Shell squad | todo |
-| WP-P1 | Linux build script `build-linux.sh` + AppImage recipe | M | WP-04, WP-20 | Packaging/CI | todo |
-| WP-P2 | Flatpak manifest + Flathub-ready metadata (AppStream, desktop file) | M | WP-P1 | Packaging/CI | todo |
-| WP-P3 | Headless GUI smoke harness in CI (sway headless + Xvfb), smoke matrix runner; capture smoke needs the WP-02 `xdpw-shm-only.patch` on the pixman renderer or a DRM-capable runner | M | WP-P1 | Packaging/CI | todo |
+| WP-P1 | Linux build script `build-linux.sh` + AppImage recipe: linuxdeploy + plugin-qt on the oldest supported glibc with a pinned Qt, the hand-built AppDir from `spikes/wp04-packaging` kept as the audit implementation and diffed in CI, excludelist including libpipewire/libwayland-client/libglvnd, `platformthemes` bundled, launcher names the libglvnd package when `libEGL.so.1` is missing | M | WP-04, WP-20 | Packaging/CI | todo |
+| WP-P2 | Flatpak manifest with the reduced permission set only (per WP-04 no Flatpak can run the input relay), AppStream/desktop metadata, and a first-launch notice listing the features the sandbox removes | M | WP-P1 | Packaging/CI | todo |
+| WP-P3 | Headless GUI smoke harness in CI (sway headless + Xvfb), smoke matrix runner across ubuntu 22.04/24.04, fedora, arch containers in FUSE and extract-and-run modes (build on oldest Qt, test on newest distro); capture smoke needs the WP-02 `xdpw-shm-only.patch` on the pixman renderer or a DRM-capable runner; re-run the WP-04 Flatpak sandbox probe on a real desktop | M | WP-P1 | Packaging/CI | todo |
 | WP-P4 | Self-update: AppImageUpdate zsync feed, reuse feed parser | S | WP-P1 | Packaging/CI | todo |
 | WP-S1 | `vorssaint-helper` privileged daemon in C, grown from `spikes/wp03-input-relay`: D-Bus API, polkit policy, systemd unit, udev rules, install/uninstall from the app, `PRIVILEGES.md`. Acceptance adds (per WP-03 review): `Enable(true)` bound to the caller's logind session; on real hardware `evtest` succeeds on a device immediately after `Enable(false)`; latency measured end to end on hardware; refused `EVIOCGRAB` names the holding process in the hub; hot-plug via `udev_monitor` | L | WP-03, WP-20 | Systems squad | todo |
 

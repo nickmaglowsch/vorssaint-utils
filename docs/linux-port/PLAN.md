@@ -201,7 +201,7 @@ accessor, fixed in review); a StatusNotifierWatcher that omits properties
 from its introspection XML makes Qt report no tray, so WP-21's detection
 must not trust `IsStatusNotifierHostRegistered` alone.
 
-### 4.3 Packaging: AppImage primary, Flatpak secondary (to confirm in WP-04)
+### 4.3 Packaging: AppImage primary, Flatpak secondary (confirmed by WP-04)
 
 - AppImage: type2 runtime is static (no `libfuse2` requirement), the
   payload is built on the oldest supported glibc (Ubuntu 22.04, glibc
@@ -214,6 +214,31 @@ must not trust `IsStatusNotifierHostRegistered` alone.
   work in the sandbox. The Flatpak build therefore has a **reduced mode**
   with no input relay, no fan control, no DDC, and portal-only capture and
   shortcuts. The hub states this on first launch.
+
+**Phase 0 outcome (WP-04, `spikes/04-packaging.md`).** The Qt Quick spike
+was bundled two ways (linuxdeploy with the Qt plugin on ubuntu-22.04, glibc
+2.35, and an auditable hand-built AppDir with `RUNPATH`), and both
+AppImages ran green on Ubuntu 22.04/24.04, Fedora 42 and Arch in FUSE and
+extract-and-run modes. Self-containment was proven in a Qt-free
+debootstrap chroot. Findings that bind later packages: **libglvnd** (not
+Mesa) is the AppImage's hard host requirement; build on the oldest Qt and
+test on the newest distro (a `QtQml.WorkerScript` bundling bug was
+invisible on the build host and caught only by the matrix), and pin the
+Qt version rather than take whatever the oldest LTS has (6.2 vs 6.4 differ
+in closure, ICU major and scanner behaviour); do not trim ICU (3.8 MiB
+saved for wrong collation in every unshipped language; Qt 6 `QLocale`
+does not use ICU); `libQt6Network` drags ~15 MiB of TLS/krb5/ldap and is
+the largest size lever; `platformthemes` are separate packages and missing
+them silently costs portal file dialogs. Flatpak: with `--device=all`,
+`/dev/uinput` is visible but unopenable, so **no Flatpak build can ever
+run the input relay**; the reduced (Flathub-acceptable) set additionally
+hides `/dev/input`, `/dev/i2c-*`, hwmon, backlight and power_supply.
+Decision: AppImage via linuxdeploy is the product; the hand-built AppDir
+stays as a second implementation the CI diffs against; the Flatpak is
+published only with the reduced permission set and labelled a lesser
+build, not submitted to Flathub with the full set. Sandbox D-Bus probes
+(login1, UPower, BlueZ, PackageKit) were inconclusive on a runner and are
+re-run on a real desktop in WP-P3.
 
 ### 4.4 Privilege: one helper, `vorssaint-helper`
 
@@ -423,8 +448,9 @@ with what carries it and how it ships.
 |---|---|---|---|
 | Swift 6.3 toolchain (build time) | core | CI container | – |
 | OpenCombine | Combine on Linux | SwiftPM, static | – |
-| Qt 6 (Core, Gui, Quick, QuickControls2, DBus, Multimedia, WaylandClient), `layer-shell-qt` | shell | bundled in AppImage; KDE runtime in Flatpak | – |
-| libpipewire, libpulse | audio, capture frames | bundled; falls back to libpulse | audio features off |
+| Qt 6 (Core, Gui, Quick, QuickControls2, DBus, Multimedia, WaylandClient) pinned to one version, plus `platformthemes`; LayerShellQt vendored against Qt 6 | shell | bundled in AppImage by linuxdeploy-plugin-qt; KDE runtime in Flatpak | – |
+| libglvnd (`libEGL.so.1`, `libGL.so.1`, `libOpenGL.so.0`) | GL dispatch | host requirement of the AppImage (excluded from the bundle, per WP-04) | app does not start; the launcher prints the package name |
+| libpipewire, libpulse, libwayland-client | audio, capture frames, Wayland | on the AppImage excludelist (host-provided, ABI-stable), never bundled | audio/capture features off |
 | ffmpeg libs (libavcodec/format/filter, openh264) | recording, media tools, GIF | bundled | recorder/media off |
 | Tesseract + Leptonica + `eng` tessdata | OCR | bundled; more languages downloaded on demand | OCR off |
 | zxing-cpp | QR | bundled static | QR off |
@@ -441,7 +467,7 @@ No dependency is added beyond this table without a line here first.
 
 | Phase | Content | Exit gate |
 |---|---|---|
-| 0 Spikes | WP-00 to WP-04: Swift core on Linux, toolkit bake-off, portal capture, input relay, packaging | Written go/no-go per spike; § 4 decisions confirmed or revised |
+| 0 Spikes | WP-00 to WP-04: Swift core on Linux, toolkit bake-off, portal capture, input relay, packaging | **Passed 2026-09-12.** Five spike reports under `docs/linux-port/spikes/`, each QA-verified; § 4 decisions confirmed with the outcomes recorded inline |
 | 1 Shared core | Package split, file moves, Platform protocols, Combine shim, settings store, catalog flags, `swift test` on both platforms, Linux CI leg | Core builds and tests on both; macOS app behaviour unchanged (selftest + ui-smoke) |
 | 2 Linux shell | Executable, tray, panel, settings/hub/onboarding, shortcuts, capabilities page, notifications/autostart, icons, theming, overlays, helper, AppImage, Flatpak, headless CI | AppImage launches on clean Ubuntu, Fedora and Arch/KDE; tray, panel, settings, shortcut recording, autostart and hub install/uninstall work |
 | 3 Wave A | Monitor, power, GPU, temps, mixer, keep awake, bluetooth sleep, clipboard, scratchpad, launcher, kill process, quick toggles, cleaner, DE setting writers, readouts | First public preview: green smoke matrix on GNOME, KDE, Sway |

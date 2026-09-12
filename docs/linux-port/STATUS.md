@@ -42,7 +42,9 @@ downloads. Consequences for Phase 0:
 | WP-01 | merged | plan branch | Qt 6 Quick confirmed (45 % of GTK's RSS, tray in 12 lines); Ubuntu 24.04 ships layer-shell only for Qt 5 and GTK 3 |
 | WP-02 | merged | plan branch | full chain proven on headless sway (29.5 fps, 1.1 ms latency, audio verified); stock xdg-desktop-portal-wlr needs a one-line patch on the pixman renderer; WINDOW requests are mis-served on wlr |
 | WP-03 | merged | plan branch | QA found a grab-release defect, fixed with a mutation-tested regression test; real uinput still needs hardware (WP-S1) |
-| WP-04 | in progress | worktree → plan branch (CI) | packaging proof, Qt Quick candidate; executor resumed after an API rate limit |
+| WP-04 | merged | plan branch | AppImage green on 4 distros × 2 modes, Qt-free chroot proof; Flatpak cannot open /dev/uinput even with --device=all; QA approved |
+
+**Phase 0 gate: passed 2026-09-12.** Outcomes recorded in `PLAN.md` § 4 and § 8.
 
 ## Phase 1 board
 
