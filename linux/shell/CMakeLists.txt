@@ -48,7 +48,11 @@ if(VORSSAINT_REAL_BRIDGE)
     endif()
     # Swift's runtime is what the archive needs behind it; swiftc is the only
     # thing that knows where it lives, so the caller passes the flags it
-    # printed rather than this file guessing at a path.
+    # printed rather than this file guessing at a path. Those flags must
+    # include `swiftrt.o` as well as the `-l` flags: it is what registers the
+    # executable's protocol-conformance sections with the Swift runtime, and
+    # a link that leaves it out crashes in `swift_getWitnessTable` on the
+    # first dynamic conformance lookup rather than failing to link.
     add_library(corebridge INTERFACE)
     target_include_directories(corebridge INTERFACE "${VORSSAINT_BRIDGE_HEADER_DIR}")
     separate_arguments(VORSSAINT_SWIFT_RUNTIME_FLAGS_LIST NATIVE_COMMAND

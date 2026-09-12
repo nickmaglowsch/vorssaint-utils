@@ -409,10 +409,21 @@ jobs:
           swift-autolink-extract $(cat /tmp/objects.txt) -o /tmp/autolink.args
           swiftlib=$(dirname "$(find /usr/lib/swift /usr/local/lib -name 'libswiftCore.so' 2>/dev/null | head -1)")
           echo "swift runtime: $swiftlib"
+          # swiftrt.o is not optional. swiftc links it into every Swift binary;
+          # it is what registers the image's `swift5_protocol_conformances`
+          # section with the runtime. Link with clang++ and leave it out, and
+          # the binary builds and starts and then dies in
+          # `swift_getWitnessTable` the first time a conformance is looked up
+          # dynamically -- for us, OpenCombine's `Publishers.Drop` inside
+          # `L10nBridgeService.startObserving()`, on the first `vs_snapshot`
+          # (run 34722760530).
+          swiftrt=$(find "$swiftlib" -name 'swiftrt.o' | head -1)
+          test -n "$swiftrt"
+          echo "swiftrt: $swiftrt"
           # -lstdc++ because OpenCombine's lock is a C++ file; the rpath so the
           # binary can find the Swift runtime before it is bundled.
           {
-            echo "VORSSAINT_SWIFT_FLAGS=-L$swiftlib -Wl,-rpath,$swiftlib -lstdc++ $(tr '\n' ' ' < /tmp/autolink.args)"
+            echo "VORSSAINT_SWIFT_FLAGS=$swiftrt -L$swiftlib -Wl,-rpath,$swiftlib -lstdc++ $(tr '\n' ' ' < /tmp/autolink.args)"
           } >> "$GITHUB_ENV"
           tr '\n' ' ' < /tmp/autolink.args; echo
 
