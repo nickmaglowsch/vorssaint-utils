@@ -8,13 +8,23 @@
   <vendor_url>https://github.com/vorssaint/vorssaint-utils</vendor_url>
 
   <!--
-    Six actions, because they are six different powers, and a user who wants
-    a quieter fan should not have to grant a keylogger to get one.
+    Seven actions, because they are seven different powers, and a user who
+    wants a quieter fan should not have to grant a keylogger to get one.
 
     enable and set-rules turn the helper into a device that can see and forge
     every keystroke in the session. fan-control can damage hardware silently.
     ddc drives a general-purpose bus. All four are auth_admin_keep: one
     administrator prompt per session, not one per adjustment.
+
+    set-context is its own action because it is its own trade-off. It carries
+    one string, which application has focus, and changes no rule; it
+    cannot make the relay rewrite a key that it was not already rewriting.
+    But it is called every time the user changes window, so making it share
+    set-rules' identity would either make the relay's rules re-validate on
+    every focus change or make the recorded audit line meaningless. Separated,
+    an administrator can allow the frequent, low-consequence one on its own.
+    It is still auth_admin_keep by default: the app has no business telling a
+    root daemon anything until the user has said the relay may run.
 
     get-devices and get-capabilities only report; both are allowed without a
     prompt, so the capabilities page can show what *would* happen without
@@ -70,6 +80,19 @@
     <message>Authentication is required to let Vorssaint adjust external monitors over the display data channel.</message>
     <message xml:lang="de">Zum Einstellen externer Monitore über den Display-Datenkanal durch Vorssaint ist eine Authentifizierung erforderlich.</message>
     <icon_name>video-display</icon_name>
+    <defaults>
+      <allow_any>no</allow_any>
+      <allow_inactive>no</allow_inactive>
+      <allow_active>auth_admin_keep</allow_active>
+    </defaults>
+  </action>
+
+  <action id="org.vorssaint.helper.set-context">
+    <description>Tell the input relay which application has focus</description>
+    <description xml:lang="de">Der Eingabeweiterleitung mitteilen, welche Anwendung den Fokus hat</description>
+    <message>Authentication is required to let Vorssaint apply per-application input rules.</message>
+    <message xml:lang="de">Zum Anwenden anwendungsbezogener Eingaberegeln von Vorssaint ist eine Authentifizierung erforderlich.</message>
+    <icon_name>input-keyboard</icon_name>
     <defaults>
       <allow_any>no</allow_any>
       <allow_inactive>no</allow_inactive>

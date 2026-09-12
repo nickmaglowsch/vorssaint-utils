@@ -137,13 +137,20 @@ static int run_bench(input_backend *b, size_t n_events, const char *write_to,
         return 1;
     }
 
-    /* A synthetic stream shaped like real typing: press/release pairs 12 ms
-     * apart on rotating keycodes, so both rules run on every iteration but
-     * neither suppresses anything (the measurement is of the common path). */
+    /* A synthetic stream shaped like real use: press/release pairs 12 ms
+     * apart on rotating keycodes, with a mouse-wheel notch every sixteenth
+     * event so the scroll rules are on the measured path too. Every rule runs
+     * on every iteration; none of them suppresses anything, because the
+     * number wanted is the cost of the common path, not of the rare one. */
     for (size_t i = 0; i < n_events; i++) {
-        uint16_t code = (uint16_t)(KEY_A + (i / 2) % 26);
-        int32_t val = (i % 2 == 0) ? 1 : 0;
-        device_fake_push(b, EV_KEY, code, val, base + (uint64_t)i * 12000000ULL);
+        uint64_t ts = base + (uint64_t)i * 12000000ULL;
+        if (i % 16 == 15) {
+            device_fake_push_dev(b, RULES_DEV_MOUSE, 1, EV_REL, REL_WHEEL, 1, ts);
+        } else {
+            uint16_t code = (uint16_t)(KEY_A + (i / 2) % 26);
+            int32_t val = (i % 2 == 0) ? 1 : 0;
+            device_fake_push(b, EV_KEY, code, val, ts);
+        }
     }
 
     while (n < n_events) {
@@ -230,7 +237,7 @@ static int run_replay(input_backend *b, const char *path, bool verbose,
     while (fread(&ie, sizeof(ie), 1, f) == 1) {
         uint64_t ts = (uint64_t)ie.input_event_sec * 1000000000ULL +
                       (uint64_t)ie.input_event_usec * 1000ULL;
-        rules_event in = {ie.type, ie.code, ie.value};
+        rules_event in = {ie.type, ie.code, ie.value, 0, RULES_DEV_UNKNOWN};
         rules_event out[RULES_MAX_OUT];
         int m;
 
@@ -242,16 +249,22 @@ static int run_replay(input_backend *b, const char *path, bool verbose,
          * and this one; without it a hold only resolves on the next keypress.
          * It is run at its own deadline, not at this event's timestamp, so the
          * printed time matches what the live loop's poll timeout would give. */
-        uint64_t deadline = rules_deadline_ns(&st);
-        uint64_t timer_ns = (deadline != 0 && deadline < ts) ? deadline : ts;
-        m = rules_timer(&st, timer_ns, out, RULES_MAX_OUT);
-        for (int k = 0; k < m; k++) {
-            b->write(b, &out[k]);
-            if (verbose)
-                print_event("TIM>", timer_ns - base, &out[k]);
+        for (;;) {
+            uint64_t deadline = rules_deadline_ns(&st);
+            if (deadline == 0 || deadline > ts)
+                break;
+            m = rules_timer(&st, deadline, out, RULES_MAX_OUT);
+            for (int k = 0; k < m; k++) {
+                b->write(b, &out[k]);
+                if (verbose)
+                    print_event("TIM>", deadline - base, &out[k]);
+            }
+            if (m > 0)
+                b->sync(b);
+            if (m == 0)
+                break; /* a deadline that produced nothing cannot make progress */
+            print_notices(&st, base);
         }
-        if (m > 0)
-            b->sync(b);
 
         if (verbose && in.type != EV_SYN)
             print_event("in  ", ts - base, &in);
@@ -263,11 +276,35 @@ static int run_replay(input_backend *b, const char *path, bool verbose,
         }
         if (m > 0)
             b->sync(b);
+        print_notices(&st, base);
     }
     fclose(f);
 
+    /* The stream ended; a glide or a held quit-protection press may not have.
+     * Finish them, so the fixture records the whole of what the relay does
+     * rather than whatever happened to be in flight when the file ran out. */
+    for (int guard = 0; guard < 100000; guard++) {
+        rules_event out[RULES_MAX_OUT];
+        uint64_t deadline = rules_deadline_ns(&st);
+        int m;
+
+        if (deadline == 0)
+            break;
+        m = rules_timer(&st, deadline, out, RULES_MAX_OUT);
+        for (int k = 0; k < m; k++) {
+            b->write(b, &out[k]);
+            if (verbose)
+                print_event("TIM>", deadline - base, &out[k]);
+        }
+        if (m > 0)
+            b->sync(b);
+        print_notices(&st, base);
+        if (m == 0)
+            break;
+    }
+
     {
-        char json[512];
+        char json[2048];
         rules_state_to_json(&st, json, sizeof(json));
         printf("replayed %zu raw events\n", n_in);
         printf("emitted  %zu events to the output device\n", device_fake_sink_count(b));

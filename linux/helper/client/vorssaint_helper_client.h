@@ -61,6 +61,12 @@ int vh_get_capabilities(vh_client *c, char *json, size_t cap, vh_error *err);
 int vh_enable(vh_client *c, bool enable, vh_error *err);
 int vh_set_rules(vh_client *c, const char *rules_json, vh_error *err);
 
+/* The focused application, which the relay cannot see for itself: a grabbed
+ * input device says nothing about which window has focus. Cheap and called
+ * often, which is exactly why it is not part of the rules document -- see
+ * docs/linux-port/PRIVILEGES.md § 4.1. */
+int vh_set_context(vh_client *c, const char *context_json, vh_error *err);
+
 /* --- fans ----------------------------------------------------------------- */
 
 /* The caller must keep calling vh_fan_heartbeat() at least every
@@ -85,8 +91,16 @@ int vh_ddc_read(vh_client *c, const char *bus, uint8_t vcp, uint16_t *current, u
 /* name is one of "Rules", "Backend", "Authorization", "Fan", "Owner". */
 int vh_get_property(vh_client *c, const char *name, char *value, size_t cap, vh_error *err);
 
-typedef void (*vh_event_fn)(uint64_t ts_ns, uint16_t type, uint16_t code, int32_t value,
-                            void *user);
+/* One Event signal. kind is "input", "rule" or "hotplug"; see
+ * docs/linux-port/PRIVILEGES.md § 4.1 for the payload schema.
+ *
+ * For "input", device is the source index, the evdev triple is filled in and
+ * detail is empty. For "rule", detail is a JSON object naming the rule and
+ * what it decided, and the triple is zero. For "hotplug", detail is the
+ * human-readable device line. kind and detail point into the message and are
+ * valid only for the duration of the callback. */
+typedef void (*vh_event_fn)(uint64_t ts_ns, const char *kind, uint32_t device, uint16_t type,
+                            uint16_t code, int32_t value, const char *detail, void *user);
 
 int vh_subscribe_events(vh_client *c, vh_event_fn fn, void *user, vh_error *err);
 

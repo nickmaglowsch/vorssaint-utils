@@ -318,12 +318,12 @@ the triage matrix update for its feature(s).
 
 | ID | Feature(s) | Size | after | Status |
 |---|---|---|---|---|
-| WP-D1 | `InputRelay` in the helper: device discovery (udev), grab/re-emit, rule engine API over D-Bus, latency budget test (largely delivered by WP-S1; remaining: Event schema, SetContext, timer source) | L | WP-S1, WP-03 | in progress |
-| WP-D2 | keyboardDebounce, mouseClickDebounce, scrollInverter, smoothScroll rules (plus superKey, mouseButton and quitProtection rules pulled forward from D3/D5/D6 into the same helper package) | M | WP-D1 | in progress |
-| WP-D3 | superKey (tap/hold, LED, layout tap action) | M | WP-D1 | todo |
+| WP-D1 | `InputRelay` in the helper: device discovery (udev), grab/re-emit, rule engine API over D-Bus, latency budget test (Event schema, SetContext, timerfd source and the all-rules latency re-run delivered; see `RELAY_RULES.md`) | L | WP-S1, WP-03 | review |
+| WP-D2 | keyboardDebounce, mouseClickDebounce, scrollInverter, smoothScroll rules (plus superKey, mouseButton and quitProtection rules pulled forward from D3/D5/D6 into the same helper package) | M | WP-D1 | review |
+| WP-D3 | superKey (tap/hold, LED, layout tap action) — the helper-side rule, its `EV_LED` handling and the `SuperKeyMappingGuard` safety rules landed with WP-D2; what remains is the app half: settings page, source picker, and binding the tap key to the desktop's input-source switch | M | WP-D1 | todo |
 | WP-D4 | textSnippets trigger + expansion (typing and paste paths) and snippet quick menu | L | WP-D1, WP-A8 | todo |
-| WP-D5 | mouseButtonShortcuts, mouseNavigation remaps, app exceptions via focused `app_id` | M | WP-D1, WP-C1 | todo |
-| WP-D6 | quitWindowProtection (Ctrl+Q / Ctrl+W hold, double press, modifier) | S | WP-D1, WP-C1 | todo |
+| WP-D5 | mouseButtonShortcuts, mouseNavigation remaps, app exceptions via focused `app_id` — the helper-side rule and the hold-and-drag tracker landed with WP-D2 and raise an `Event`; what remains is the app half: settings, and acting on the workspace notice through WP-C1 | M | WP-D1, WP-C1 | todo |
+| WP-D6 | quitWindowProtection (Ctrl+Q / Ctrl+W hold, double press, modifier) — the helper-side rule landed with WP-D2, gated by `SetContext`; what remains is the app half: settings, the HUD, and pushing the focused `app_id` from WP-C1 | S | WP-D1, WP-C1 | todo |
 | WP-D7 | cleaningMode (grab all keyboards + blackout overlay) | S | WP-D1, WP-29 | todo |
 | WP-D8 | Relay fallback for global shortcuts where the portal is missing | S | WP-D1, WP-24 | todo |
 

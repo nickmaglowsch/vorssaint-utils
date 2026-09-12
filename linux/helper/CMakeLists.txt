@@ -136,6 +136,7 @@ add_test(NAME replay
          COMMAND ${CMAKE_COMMAND}
                  -DGEN=$<TARGET_FILE:gen-stream>
                  -DRELAY=$<TARGET_FILE:vorssaint-relay>
+                 -DRULES=${CMAKE_CURRENT_SOURCE_DIR}/tests/replay_rules.json
                  -DEXPECTED=${CMAKE_CURRENT_SOURCE_DIR}/tests/replay_expected.txt
                  -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/run_replay.cmake)
 

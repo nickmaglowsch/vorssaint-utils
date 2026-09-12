@@ -152,10 +152,20 @@ c get Owner
 c enable
 c get Owner
 c get-devices
-c set-rules '{"tap_hold":true,"tap_threshold_ms":150,"chatter":true,"chatter_ms":25}'
+c set-rules '{"keyboard_debounce":{"enabled":true,"window_ms":25},"super_key":{"enabled":true,"source":58,"modifiers":[29,56],"tap_action":"escape"},"quit_protection":{"enabled":true,"quit":{"enabled":true,"mode":"hold","hold_ms":800,"scope":"all_except_selected","exceptions":["org.gnome.Terminal"]}}}'
 c get Rules
+echo "-- SetContext: the focused app, which the relay cannot see for itself --"
+c set-context '{"focused_app_id":"org.gnome.Terminal"}'
+c get Rules
+echo "-- set-context with a quote in the id (must be rejected, never escaped) --"
+as "$UNPRIV" "$BUILD/vorssaint-helperctl" set-context '{"focused_app_id":"a\"b"}' 2>&1 |
+  sed 's/^/  /'
 echo "-- set-rules with a malformed document (must be rejected) --"
-as "$UNPRIV" "$BUILD/vorssaint-helperctl" set-rules '{"tap_threshold_ms":"whenever"}' 2>&1 |
+as "$UNPRIV" "$BUILD/vorssaint-helperctl" set-rules '{"smooth_scroll":{"step":"whenever"}}' 2>&1 |
+  sed 's/^/  /'
+echo "-- set-rules claiming a super key source another rule owns (must be rejected) --"
+as "$UNPRIV" "$BUILD/vorssaint-helperctl" set-rules \
+  '{"super_key":{"enabled":true,"source":16},"quit_protection":{"enabled":true,"quit":{"enabled":true}}}' 2>&1 |
   sed 's/^/  /'
 echo "-- set-rules with a 64 KiB + 1 document (must be rejected on length alone) --"
 # The hand-written reader restarts from the start of the string for each of
@@ -171,7 +181,8 @@ say "7. the session binding: only the seat that enabled it may change it"
 # binding would be decorative.
 c2 get Owner
 c2 disable
-c2 set-rules '{"tap_hold":false}'
+c2 set-rules '{"keyboard_debounce":{"enabled":false}}'
+c2 set-context '{"focused_app_id":"firefox"}'
 echo "-- but seat 2 may still read, which needs no ownership --"
 c2 get-devices
 c2 get-capabilities
@@ -247,7 +258,8 @@ say "13. the authorization gate actually gates, on every method"
 DENY=$!
 sleep 1
 c enable
-c set-rules '{"tap_hold":false}'
+c set-rules '{"keyboard_debounce":{"enabled":false}}'
+c set-context '{"focused_app_id":"firefox"}'
 c get-devices
 c get-capabilities
 c fan-pwm hwmon0 1 200

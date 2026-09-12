@@ -1,57 +1,114 @@
-in            0.000000000 EV_KEY KEY_CAPSLOCK         1
-in            0.045000000 EV_KEY KEY_CAPSLOCK         0
-  >>          0.045000000 EV_KEY KEY_ESC              1
-  >>          0.045000000 EV_KEY KEY_ESC              0
-in            0.345000000 EV_KEY KEY_H                1
-  >>          0.345000000 EV_KEY KEY_H                1
-in            0.385000000 EV_KEY KEY_H                0
-  >>          0.385000000 EV_KEY KEY_H                0
-in            0.475000000 EV_KEY KEY_I                1
-  >>          0.475000000 EV_KEY KEY_I                1
-in            0.530000000 EV_KEY KEY_I                0
-  >>          0.530000000 EV_KEY KEY_I                0
-in            0.780000000 EV_KEY KEY_CAPSLOCK         1
-TIM>          0.980000000 EV_KEY KEY_LEFTCTRL         1
-in            1.180000000 EV_KEY KEY_CAPSLOCK         0
-  >>          1.180000000 EV_KEY KEY_LEFTCTRL         0
-in            1.480000000 EV_KEY KEY_CAPSLOCK         1
-in            1.560000000 EV_KEY KEY_C                1
-  >>          1.560000000 EV_KEY KEY_LEFTCTRL         1
-  >>          1.560000000 EV_KEY KEY_C                1
-in            1.620000000 EV_KEY KEY_C                0
-  >>          1.620000000 EV_KEY KEY_C                0
-in            1.690000000 EV_KEY KEY_CAPSLOCK         0
-  >>          1.690000000 EV_KEY KEY_LEFTCTRL         0
-in            2.090000000 EV_KEY KEY_E                1
-  >>          2.090000000 EV_KEY KEY_E                1
-in            2.120000000 EV_KEY KEY_E                0
-  >>          2.120000000 EV_KEY KEY_E                0
-in            2.128000000 EV_KEY KEY_E                1
-in            2.134000000 EV_KEY KEY_E                0
-in            2.145000000 EV_KEY KEY_E                1
-in            2.154000000 EV_KEY KEY_E                0
-in            2.214000000 EV_KEY KEY_E                1
-  >>          2.214000000 EV_KEY KEY_E                1
-in            2.249000000 EV_KEY KEY_E                0
-  >>          2.249000000 EV_KEY KEY_E                0
-in            2.749000000 EV_KEY KEY_DOWN             1
-  >>          2.749000000 EV_KEY KEY_DOWN             1
-in            2.999000000 EV_KEY KEY_DOWN             2
-  >>          2.999000000 EV_KEY KEY_DOWN             2
-in            3.032000000 EV_KEY KEY_DOWN             2
-  >>          3.032000000 EV_KEY KEY_DOWN             2
-in            3.065000000 EV_KEY KEY_DOWN             2
-  >>          3.065000000 EV_KEY KEY_DOWN             2
-in            3.098000000 EV_KEY KEY_DOWN             0
-  >>          3.098000000 EV_KEY KEY_DOWN             0
-in            3.498000000 EV_KEY KEY_CAPSLOCK         1
-in            3.518000000 EV_REL REL_X                7
-  >>          3.518000000 EV_REL REL_X                7
-in            3.518000000 EV_REL REL_Y                -3
-  >>          3.518000000 EV_REL REL_Y                -3
-in            3.548000000 EV_KEY KEY_CAPSLOCK         0
-  >>          3.548000000 EV_KEY KEY_ESC              1
-  >>          3.548000000 EV_KEY KEY_ESC              0
-replayed 57 raw events
-emitted  25 events to the output device
-state: {"tap_hold":true,"tap_threshold_ms":200,"chatter":true,"chatter_ms":40,"tap_source":58,"tap_output":1,"hold_output":29,"tap_state":"idle","in":29,"out":25,"chatter_dropped":4,"taps":2,"holds":2}
+in            0.000000000 EV_KEY KEY_H                1
+  >>          0.000000000 EV_KEY KEY_H                1
+in            0.040000000 EV_KEY KEY_H                0
+  >>          0.040000000 EV_KEY KEY_H                0
+in            0.130000000 EV_KEY KEY_I                1
+  >>          0.130000000 EV_KEY KEY_I                1
+in            0.185000000 EV_KEY KEY_I                0
+  >>          0.185000000 EV_KEY KEY_I                0
+in            0.585000000 EV_KEY KEY_E                1
+  >>          0.585000000 EV_KEY KEY_E                1
+in            0.615000000 EV_KEY KEY_E                0
+  >>          0.615000000 EV_KEY KEY_E                0
+in            0.623000000 EV_KEY KEY_E                1
+in            0.629000000 EV_KEY KEY_E                0
+  >>          0.629000000 EV_KEY KEY_E                0
+in            0.640000000 EV_KEY KEY_E                1
+in            0.649000000 EV_KEY KEY_E                0
+  >>          0.649000000 EV_KEY KEY_E                0
+in            0.709000000 EV_KEY KEY_E                1
+  >>          0.709000000 EV_KEY KEY_E                1
+in            0.744000000 EV_KEY KEY_E                0
+  >>          0.744000000 EV_KEY KEY_E                0
+in            1.244000000 EV_KEY KEY_DOWN             1
+  >>          1.244000000 EV_KEY KEY_DOWN             1
+in            1.494000000 EV_KEY KEY_DOWN             2
+  >>          1.494000000 EV_KEY KEY_DOWN             2
+in            1.527000000 EV_KEY KEY_DOWN             2
+  >>          1.527000000 EV_KEY KEY_DOWN             2
+in            1.560000000 EV_KEY KEY_DOWN             0
+  >>          1.560000000 EV_KEY KEY_DOWN             0
+in            1.960000000 EV_KEY BTN_LEFT             1
+  >>          1.960000000 EV_KEY BTN_LEFT             1
+in            2.020000000 EV_KEY BTN_LEFT             0
+  >>          2.020000000 EV_KEY BTN_LEFT             0
+in            2.030000000 EV_KEY BTN_LEFT             1
+in            2.038000000 EV_KEY BTN_LEFT             0
+in            2.338000000 EV_KEY BTN_LEFT             1
+  >>          2.338000000 EV_KEY BTN_LEFT             1
+in            2.398000000 EV_KEY BTN_LEFT             0
+  >>          2.398000000 EV_KEY BTN_LEFT             0
+in            2.798000000 EV_KEY KEY_CAPSLOCK         1
+in            2.843000000 EV_KEY KEY_CAPSLOCK         0
+  >>          2.843000000 EV_KEY KEY_ESC              1
+  >>          2.843000000 EV_KEY KEY_ESC              0
+in            3.143000000 EV_KEY KEY_CAPSLOCK         1
+in            3.743000000 EV_KEY KEY_CAPSLOCK         0
+  >>          3.743000000 EV_KEY KEY_ESC              1
+  >>          3.743000000 EV_KEY KEY_ESC              0
+in            4.043000000 EV_KEY KEY_CAPSLOCK         1
+in            4.123000000 EV_KEY KEY_C                1
+  >>          4.123000000 EV_KEY KEY_LEFTCTRL         1
+  >>          4.123000000 EV_KEY KEY_LEFTALT          1
+  >>          4.123000000 EV_KEY KEY_C                1
+in            4.183000000 EV_KEY KEY_C                0
+  >>          4.183000000 EV_KEY KEY_C                0
+in            4.253000000 EV_KEY KEY_CAPSLOCK         0
+  >>          4.253000000 EV_KEY KEY_LEFTALT          0
+  >>          4.253000000 EV_KEY KEY_LEFTCTRL         0
+in            4.653000000 EV_KEY KEY_LEFTCTRL         1
+  >>          4.653000000 EV_KEY KEY_LEFTCTRL         1
+in            4.713000000 EV_KEY KEY_Q                1
+NOTE          4.713000000 {"rule":"quit_protection","shortcut":"quit","outcome":"holding","app_id":"","native_quit":true}
+in            4.913000000 EV_KEY KEY_Q                0
+NOTE          4.913000000 {"rule":"quit_protection","shortcut":"quit","outcome":"blocked","app_id":"","native_quit":true}
+in            5.213000000 EV_KEY KEY_Q                1
+NOTE          5.213000000 {"rule":"quit_protection","shortcut":"quit","outcome":"holding","app_id":"","native_quit":true}
+TIM>          6.013000000 EV_KEY KEY_Q                1
+TIM>          6.013000000 EV_KEY KEY_Q                0
+NOTE          6.013000000 {"rule":"quit_protection","shortcut":"quit","outcome":"confirmed","app_id":"","native_quit":true}
+in            6.413000000 EV_KEY KEY_Q                0
+in            6.453000000 EV_KEY KEY_LEFTCTRL         0
+  >>          6.453000000 EV_KEY KEY_LEFTCTRL         0
+in            6.853000000 EV_KEY BTN_SIDE             1
+  >>          6.853000000 EV_KEY KEY_LEFTCTRL         1
+  >>          6.853000000 EV_KEY KEY_TAB              1
+in            6.943000000 EV_KEY BTN_SIDE             0
+  >>          6.943000000 EV_KEY KEY_TAB              0
+  >>          6.943000000 EV_KEY KEY_LEFTCTRL         0
+in            7.343000000 EV_REL REL_WHEEL            1
+TIM>          7.359666666 EV_REL REL_WHEEL_HI_RES     -22
+in            7.363000000 EV_REL REL_WHEEL            1
+TIM>          7.376333332 EV_REL REL_WHEEL_HI_RES     -40
+TIM>          7.392999998 EV_REL REL_WHEEL_HI_RES     -32
+TIM>          7.409666664 EV_REL REL_WHEEL_HI_RES     -27
+TIM>          7.409666664 EV_REL REL_WHEEL            -1
+TIM>          7.426333330 EV_REL REL_WHEEL_HI_RES     -22
+TIM>          7.442999996 EV_REL REL_WHEEL_HI_RES     -18
+TIM>          7.459666662 EV_REL REL_WHEEL_HI_RES     -14
+TIM>          7.476333328 EV_REL REL_WHEEL_HI_RES     -12
+TIM>          7.492999994 EV_REL REL_WHEEL_HI_RES     -10
+TIM>          7.509666660 EV_REL REL_WHEEL_HI_RES     -8
+TIM>          7.526333326 EV_REL REL_WHEEL_HI_RES     -6
+TIM>          7.542999992 EV_REL REL_WHEEL_HI_RES     -5
+TIM>          7.559666658 EV_REL REL_WHEEL_HI_RES     -4
+TIM>          7.576333324 EV_REL REL_WHEEL_HI_RES     -4
+TIM>          7.592999990 EV_REL REL_WHEEL_HI_RES     -3
+TIM>          7.609666656 EV_REL REL_WHEEL_HI_RES     -2
+TIM>          7.626333322 EV_REL REL_WHEEL_HI_RES     -2
+TIM>          7.642999988 EV_REL REL_WHEEL_HI_RES     -2
+TIM>          7.659666654 EV_REL REL_WHEEL_HI_RES     -1
+TIM>          7.676333320 EV_REL REL_WHEEL_HI_RES     -1
+TIM>          7.692999986 EV_REL REL_WHEEL_HI_RES     -1
+TIM>          7.709666652 EV_REL REL_WHEEL_HI_RES     -1
+TIM>          7.726333318 EV_REL REL_WHEEL_HI_RES     -1
+TIM>          7.742999984 EV_REL REL_WHEEL_HI_RES     -1
+TIM>          7.759666650 EV_REL REL_WHEEL_HI_RES     -1
+TIM>          7.759666650 EV_REL REL_WHEEL            -1
+in            7.963000000 EV_REL REL_X                7
+  >>          7.963000000 EV_REL REL_X                7
+in            7.963000000 EV_REL REL_Y                -3
+  >>          7.963000000 EV_REL REL_Y                -3
+replayed 83 raw events
+emitted  65 events to the output device
+state: {"keyboard_debounce":{"enabled":true,"window_ms":40,"key_windows":""},"mouse_click_debounce":{"enabled":true,"window_ms":25},"scroll_invert":{"enabled":true,"vertical":true,"horizontal":false,"mouse":true,"touchpad":false},"smooth_scroll":{"enabled":true,"step":40,"response":65},"super_key":{"enabled":true,"source":58,"tap_action":"escape","state":"idle"},"mouse_button_shortcut":{"enabled":true,"bindings":1,"gesture_button":276},"quit_protection":{"enabled":true,"quit_mode":"hold","close_mode":"double_press"},"context":{"focused_app_id":""},"counters":{"in":42,"out":65,"keyboard_debounce_dropped":2,"click_debounce_dropped":2,"taps":1,"holds":2,"smooth_frames":25,"quit_blocked":1,"notices_dropped":0}}

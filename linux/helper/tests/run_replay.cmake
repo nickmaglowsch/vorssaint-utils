@@ -6,7 +6,8 @@ if(NOT rc EQUAL 0)
 endif()
 
 execute_process(
-  COMMAND ${RELAY} --backend fake --replay ${CMAKE_CURRENT_BINARY_DIR}/replay_stream.bin -v
+  COMMAND ${RELAY} --backend fake --replay ${CMAKE_CURRENT_BINARY_DIR}/replay_stream.bin
+          --rules-file ${RULES} -v
   OUTPUT_VARIABLE out
   RESULT_VARIABLE rc)
 if(NOT rc EQUAL 0)

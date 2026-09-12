@@ -390,7 +390,10 @@ static bool safe_identifier(const char *s)
     for (const char *p = s; *p; p++) {
         if ((*p >= 'a' && *p <= 'z') || (*p >= 'A' && *p <= 'Z') || (*p >= '0' && *p <= '9'))
             continue;
-        if (*p == '.' || *p == '-' || *p == '_' || *p == '+' || *p == ':')
+        /* Enough for a reverse-DNS app id, a Flatpak id, an AppImage name and
+         * the "code:ms,code:ms" per-key window string, and nothing that could
+         * end a JSON string or start an escape. */
+        if (*p == '.' || *p == '-' || *p == '_' || *p == '+' || *p == ':' || *p == ',')
             continue;
         return false;
     }

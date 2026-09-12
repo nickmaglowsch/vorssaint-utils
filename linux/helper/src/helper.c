@@ -5,6 +5,7 @@
  *
  *   Enable(b)                     polkit: org.vorssaint.helper.enable
  *   SetRules(s json)              polkit: org.vorssaint.helper.set-rules
+ *   SetContext(s json)            polkit: org.vorssaint.helper.set-context
  *   GetDevices() -> s             polkit: org.vorssaint.helper.get-devices
  *   GetCapabilities() -> s        polkit: org.vorssaint.helper.get-capabilities
  *   SetFanPwm(s hwmon, u ch, y v) polkit: org.vorssaint.helper.fan-control
@@ -12,7 +13,7 @@
  *   FanHeartbeat()                polkit: org.vorssaint.helper.fan-control
  *   DdcWrite(s bus, y vcp, q val) polkit: org.vorssaint.helper.ddc
  *   DdcRead(s bus, y vcp) -> qq   polkit: org.vorssaint.helper.ddc
- *   Event(t ts, q type, q code, i value)                      signal
+ *   Event(t ts, s kind, u device, q type, q code, i value, s detail)  signal
  *   Rules, Backend, Authorization, Fan, Owner                  properties
  *
  * Three invariants hold across all of it:
@@ -52,6 +53,7 @@
 #define ERROR_NOT_OWNER "org.vorssaint.Helper1.Error.NotOwner"
 
 #define ACTION_SETRULES "org.vorssaint.helper.set-rules"
+#define ACTION_SETCONTEXT "org.vorssaint.helper.set-context"
 #define ACTION_ENABLE "org.vorssaint.helper.enable"
 #define ACTION_GETDEVICES "org.vorssaint.helper.get-devices"
 #define ACTION_GETCAPS "org.vorssaint.helper.get-capabilities"
@@ -60,11 +62,22 @@
 
 #define RING_CAP 1024
 
+/* The Event signal is rate-limited, because --tap mode is the one place the
+ * helper hands raw keystrokes to a session process and a stuck key or a
+ * gaming mouse reporting at 1 kHz would otherwise turn the shortcut recorder
+ * into an unbounded D-Bus sender. The cap is generous for what the recorder
+ * and the snippet trigger actually need -- no human produces 400 key
+ * transitions a second -- and every dropped event is counted, so a client
+ * that hits it learns that it did. */
+#define EVENT_RATE_MAX 400
+#define EVENT_RATE_WINDOW_NS 1000000000ULL
+
 typedef struct {
     uint64_t ts;
     uint16_t type;
     uint16_t code;
     int32_t value;
+    uint16_t dev_id;
 } tap_ev;
 
 static struct {
@@ -97,6 +110,12 @@ static struct {
 
     tap_ev ring[RING_CAP];
     size_t ring_head, ring_tail;
+    uint64_t ring_dropped;
+
+    /* Event rate limiter, drained by the main loop only. */
+    uint64_t rate_window_start;
+    unsigned rate_count;
+    uint64_t rate_dropped;
 } H;
 
 static volatile sig_atomic_t g_quit;
@@ -183,13 +202,33 @@ static int authorize_owner(sd_bus_message *m, sd_bus_error *ret_error)
 static void ring_push(uint64_t ts, const rules_event *e)
 {
     size_t next = (H.ring_tail + 1) % RING_CAP;
-    if (next == H.ring_head)
-        return; /* full: drop rather than block the relay */
+    if (next == H.ring_head) {
+        H.ring_dropped++; /* full: drop rather than block the relay */
+        return;
+    }
     H.ring[H.ring_tail].ts = ts;
     H.ring[H.ring_tail].type = e->type;
     H.ring[H.ring_tail].code = e->code;
     H.ring[H.ring_tail].value = e->value;
+    H.ring[H.ring_tail].dev_id = e->dev_id;
     H.ring_tail = next;
+}
+
+/* True while this second still has room for another Event. The window is
+ * sampled rather than slid, which is enough to bound the sender and costs one
+ * comparison per event. */
+static bool rate_allow(uint64_t now)
+{
+    if (now - H.rate_window_start >= EVENT_RATE_WINDOW_NS) {
+        H.rate_window_start = now;
+        H.rate_count = 0;
+    }
+    if (H.rate_count >= EVENT_RATE_MAX) {
+        H.rate_dropped++;
+        return false;
+    }
+    H.rate_count++;
+    return true;
 }
 
 static void *relay_thread(void *arg)
@@ -231,7 +270,10 @@ static void *relay_thread(void *arg)
             int t = rules_timer(&H.rules, ts, out, RULES_MAX_OUT);
             for (int k = 0; k < t; k++)
                 b->write(b, &out[k]);
-            if (H.tap_mode)
+            /* Only what a shortcut recorder or the snippet trigger can use:
+             * key and button transitions, never pointer motion or the wheel,
+             * which are a continuous stream with nothing to record. */
+            if (H.tap_mode && in.type == EV_KEY)
                 ring_push(ts, &in);
             m = rules_process(&H.rules, &in, ts, out, RULES_MAX_OUT);
         }
@@ -327,6 +369,54 @@ static int method_set_rules(sd_bus_message *m, void *userdata, sd_bus_error *ret
     pthread_mutex_unlock(&H.lock);
 
     fprintf(stderr, "helper: SetRules applied: %s\n", json);
+    return sd_bus_reply_method_return(m, "");
+}
+
+/* SetContext is its own method rather than a field of the rules document, and
+ * the reason is the reconfigure it would otherwise cause. The focused app id
+ * changes every time the user moves between windows -- many times a minute,
+ * sometimes several times a second -- while the rules change when a person
+ * opens a settings page. Riding the rules document would mean re-validating
+ * the whole schema and calling rules_reconfigure() on every focus change, and
+ * rules_reconfigure() deliberately releases anything the engine is holding
+ * down: a super key held across an alt-tab would drop its modifiers mid-chord
+ * every single time. A separate method writes one field and touches no rule
+ * state.
+ *
+ * It carries the same authorisation as SetRules -- the same polkit action
+ * class and the same session-ownership check -- because it is the same
+ * privilege: telling the relay how to treat the keys it has already claimed.
+ * It gets its own polkit action id so an administrator can allow the
+ * high-frequency, low-consequence one without allowing the other. */
+static int method_set_context(sd_bus_message *m, void *userdata, sd_bus_error *ret_error)
+{
+    const char *json;
+    rules_context ctx;
+    char err[256];
+    int r;
+
+    (void)userdata;
+    r = authorize(m, ACTION_SETCONTEXT, ret_error);
+    if (r < 0)
+        return r;
+    r = authorize_owner(m, ret_error);
+    if (r < 0)
+        return r;
+
+    r = sd_bus_message_read(m, "s", &json);
+    if (r < 0)
+        return r;
+
+    if (strnlen(json, RULES_JSON_MAX + 1) > RULES_JSON_MAX)
+        return sd_bus_error_setf(ret_error, SD_BUS_ERROR_INVALID_ARGS,
+                                 "bad context: document is longer than the %d byte limit",
+                                 RULES_JSON_MAX);
+    if (rules_context_from_json(json, &ctx, err, sizeof(err)) < 0)
+        return sd_bus_error_setf(ret_error, SD_BUS_ERROR_INVALID_ARGS, "bad context: %s", err);
+
+    pthread_mutex_lock(&H.lock);
+    rules_set_context(&H.rules, &ctx);
+    pthread_mutex_unlock(&H.lock);
     return sd_bus_reply_method_return(m, "");
 }
 
@@ -599,7 +689,7 @@ static int method_ddc_read(sd_bus_message *m, void *userdata, sd_bus_error *ret_
 static int prop_rules(sd_bus *bus, const char *path, const char *iface, const char *prop,
                       sd_bus_message *reply, void *userdata, sd_bus_error *ret_error)
 {
-    char json[512];
+    char json[2048];
     (void)bus; (void)path; (void)iface; (void)prop; (void)userdata; (void)ret_error;
     pthread_mutex_lock(&H.lock);
     rules_state_to_json(&H.rules, json, sizeof(json));
@@ -650,6 +740,7 @@ static int prop_owner(sd_bus *bus, const char *path, const char *iface, const ch
 static const sd_bus_vtable helper_vtable[] = {
     SD_BUS_VTABLE_START(0),
     SD_BUS_METHOD("SetRules", "s", "", method_set_rules, SD_BUS_VTABLE_UNPRIVILEGED),
+    SD_BUS_METHOD("SetContext", "s", "", method_set_context, SD_BUS_VTABLE_UNPRIVILEGED),
     SD_BUS_METHOD("GetDevices", "", "s", method_get_devices, SD_BUS_VTABLE_UNPRIVILEGED),
     SD_BUS_METHOD("GetCapabilities", "", "s", method_get_capabilities, SD_BUS_VTABLE_UNPRIVILEGED),
     SD_BUS_METHOD("Enable", "b", "", method_enable, SD_BUS_VTABLE_UNPRIVILEGED),
@@ -658,7 +749,14 @@ static const sd_bus_vtable helper_vtable[] = {
     SD_BUS_METHOD("FanHeartbeat", "", "", method_fan_heartbeat, SD_BUS_VTABLE_UNPRIVILEGED),
     SD_BUS_METHOD("DdcWrite", "syq", "", method_ddc_write, SD_BUS_VTABLE_UNPRIVILEGED),
     SD_BUS_METHOD("DdcRead", "sy", "qq", method_ddc_read, SD_BUS_VTABLE_UNPRIVILEGED),
-    SD_BUS_SIGNAL("Event", "tqqi", 0),
+    /* t  timestamp_ns  CLOCK_MONOTONIC, the same clock the rules run on
+     * s  kind          "input" | "rule" | "hotplug"
+     * u  device        source device index, 0 for a rule or a hot-plug
+     * q  type, q code, i value   the evdev triple; 0/0/0 when kind != "input"
+     * s  detail        JSON object for "rule", plain text for "hotplug",
+     *                  empty for "input"
+     * See docs/linux-port/PRIVILEGES.md § 4.1 for the payload schema. */
+    SD_BUS_SIGNAL("Event", "tsuqqis", 0),
     SD_BUS_PROPERTY("Rules", "s", prop_rules, 0, SD_BUS_VTABLE_PROPERTY_EMITS_CHANGE),
     SD_BUS_PROPERTY("Backend", "s", prop_backend, 0, SD_BUS_VTABLE_PROPERTY_CONST),
     SD_BUS_PROPERTY("Authorization", "s", prop_authz, 0, SD_BUS_VTABLE_PROPERTY_CONST),
@@ -842,6 +940,9 @@ int main(int argc, char **argv)
                 H.backend->describe(H.backend, devs, sizeof(devs));
                 fprintf(stderr, "helper: hot-plug: %s; sources now %s\n",
                         H.backend->last_hotplug(H.backend), devs);
+                sd_bus_emit_signal(bus, BUS_PATH, IFACE, "Event", "tsuqqis", now_monotonic_ns(),
+                                   "hotplug", 0u, (uint16_t)0, (uint16_t)0, 0,
+                                   H.backend->last_hotplug(H.backend));
             }
             pthread_mutex_unlock(&H.lock);
         }
@@ -864,10 +965,20 @@ int main(int argc, char **argv)
          * timestamps stay monotonic. */
         if (H.fake && H.enabled && H.backend && device_fake_pending(H.backend) == 0)
             seed_fake_source(H.backend);
+        /* Rule notices first: they are low-frequency and are what the app
+         * has to act on (a workspace gesture, a blocked quit), so a flood of
+         * tap events must never be able to crowd one out. */
+        {
+            rules_notice nt;
+            while (rules_notice_pop(&H.rules, &nt))
+                sd_bus_emit_signal(bus, BUS_PATH, IFACE, "Event", "tsuqqis", nt.ts, "rule", 0u,
+                                   (uint16_t)0, (uint16_t)0, 0, nt.detail);
+        }
         while (H.ring_head != H.ring_tail) {
             tap_ev *e = &H.ring[H.ring_head];
-            sd_bus_emit_signal(bus, BUS_PATH, IFACE, "Event", "tqqi", e->ts, e->type, e->code,
-                               e->value);
+            if (rate_allow(e->ts))
+                sd_bus_emit_signal(bus, BUS_PATH, IFACE, "Event", "tsuqqis", e->ts, "input",
+                                   (unsigned)e->dev_id, e->type, e->code, e->value, "");
             H.ring_head = (H.ring_head + 1) % RING_CAP;
         }
         pthread_mutex_unlock(&H.lock);

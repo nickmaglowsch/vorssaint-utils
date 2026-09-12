@@ -12,10 +12,21 @@ code have been proven and which have only been argued. Grown from
 `spikes/wp03-input-relay`, which is left untouched as the record of the
 Phase 0 gate decision.
 
+**Then `docs/linux-port/RELAY_RULES.md`** for the rules engine: which macOS
+`…Support.swift` each rule is a port of, what the C does differently and why,
+how many of the Swift test vectors were carried over, and the latency numbers
+with every rule enabled.
+
 ```
 src/          the daemon
   helper.c        the D-Bus service: methods, properties, the relay thread
-  rules.c/.h      the rules engine: pure logic, no syscalls
+  rules.c/.h      the rules engine: defaults, dispatch, the SetRules and
+                  SetContext readers, the Rules property, the notice ring
+  rules_debounce.c  keyboard_debounce, mouse_click_debounce
+  rules_scroll.c    scroll_invert, smooth_scroll
+  rules_super.c     super_key
+  rules_mouse.c     mouse_button_shortcut and the hold-and-drag gesture
+  rules_quit.c      quit_protection
   device.h        the device layer interface
   device_evdev.c  libudev discovery, EVIOCGRAB, uinput, udev_monitor hot-plug
   device_fake.c   in-process queues, for a machine with no uinput
@@ -25,7 +36,8 @@ src/          the daemon
   caps.c/.h       GetCapabilities: what this machine can actually do
   grabholder.c/.h who is holding a device open, for a refused EVIOCGRAB
   polkit_check.c  the authorisation gate
-  relay.c         a CLI for the device layer: --replay, --bench, --tap
+  relay.c         a CLI for the device layer: --replay, --bench, --tap,
+                  --rules-file
 client/       the client library the platform layer links, and its CLI
 dist/         everything that gets installed, and install.sh/uninstall.sh
 tests/        ctest suites; `bash tests/test_install.sh` needs two env vars
@@ -88,10 +100,12 @@ The parts this container cannot run (see `PRIVILEGES.md` § 8):
 
 ```sh
 sudo build/vorssaint-relay --backend evdev --tap     # listen only, no grab
-sudo build/vorssaint-relay --backend evdev           # grab + relay
+sudo build/vorssaint-relay --backend evdev \
+     --rules-file linux/helper/tests/bench_rules.json # grab + relay, all rules
 evtest                                               # shows "Vorssaint Relay"
 sudo build/vorssaint-relay --backend evdev --tap --record capture.bin
-build/vorssaint-relay --backend fake --replay capture.bin -v
+build/vorssaint-relay --backend fake --replay capture.bin -v \
+     --rules-file linux/helper/tests/replay_rules.json
 
 sudo pkexec linux/helper/dist/install.sh
 systemd-analyze security vorssaint-helper.service
