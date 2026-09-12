@@ -19,6 +19,7 @@ CFG="$STATE/config"
 OUTPUT_NAME=${VS_CAPTURE_OUTPUT:-HEADLESS-1}
 OUTPUT_MODE=${VS_CAPTURE_MODE:-1280x720@60Hz}
 SINK_NAME=${VS_CAPTURE_SINK:-vorssaint-null-sink}
+SOURCE_NAME=${VS_CAPTURE_SOURCE:-vorssaint-virtual-mic}
 HERE=$(cd "$(dirname "$0")" && pwd)
 
 # Two things this container forces on us, both documented in docs/linux-port/CAPTURE_ENGINE.md:
@@ -61,17 +62,40 @@ write_configs() {
   # A null sink, so there is a playback device and -- the point here -- a
   # *monitor* source to capture "system audio" from. object.linger keeps it
   # alive after the creating client goes away.
-  cat > "$CFG/pipewire/pipewire.conf.d/10-vorssaint-null-sink.conf" <<EOF
+  cat > "$CFG/pipewire/pipewire.conf.d/10-vorssaint-capture-audio.conf" <<EOF
 context.objects = [
   { factory = adapter
     args = {
       factory.name            = support.null-audio-sink
       node.name               = "$SINK_NAME"
-      node.description        = "WP02 Null Sink"
+      node.description        = "Vorssaint capture test sink"
       media.class             = Audio/Sink
       object.linger           = true
       audio.position          = [ FL FR ]
       monitor.channel-volumes = true
+    }
+  }
+]
+
+# A real Audio/Source, so the microphone path is tested against a source node
+# rather than assumed. A loopback from the null sink's monitor makes it carry
+# whatever the tone player plays, so one tone exercises both audio paths and a
+# silent microphone capture is a failure rather than the expected result.
+context.modules = [
+  { name = libpipewire-module-loopback
+    args = {
+      node.description = "Vorssaint capture test microphone"
+      capture.props = {
+        node.name           = "${SOURCE_NAME}-capture"
+        node.target         = "$SINK_NAME"
+        stream.capture.sink = true
+        node.passive        = true
+      }
+      playback.props = {
+        node.name        = "$SOURCE_NAME"
+        media.class      = Audio/Source
+        node.description = "Vorssaint capture test microphone"
+      }
     }
   }
 ]
@@ -145,7 +169,9 @@ start() {
   }
   wait_for 100 sh -c "pw-dump 2>/dev/null | grep -q '$SINK_NAME'" \
     || log "WARNING: null sink '$SINK_NAME' not yet visible in pw-dump"
-  log "pipewire up, sink '$SINK_NAME'"
+  wait_for 100 sh -c "pw-dump 2>/dev/null | grep -q '$SOURCE_NAME'" \
+    || log "WARNING: virtual source '$SOURCE_NAME' not yet visible in pw-dump"
+  log "pipewire up, sink '$SINK_NAME', source '$SOURCE_NAME'"
 
   # 3. sway, headless ------------------------------------------------------
   if pgrep -x sway >/dev/null 2>&1 && [ -S "$RUNTIME/wayland-1" ]; then
@@ -231,6 +257,7 @@ export XDG_SESSION_TYPE=wayland
 export SWAYSOCK=$SWAYSOCK
 export VS_CAPTURE_OUTPUT=$OUTPUT_NAME
 export VS_CAPTURE_SINK=$SINK_NAME
+export VS_CAPTURE_SOURCE=$SOURCE_NAME
 EOF
   log "wrote $STATE/env.sh -- source it to use the stack"
 }
@@ -244,7 +271,7 @@ paint() {
   swaymsg -- output "$OUTPUT_NAME" background '#1e5fb4' solid_color >/dev/null
   pgrep -x foot >/dev/null 2>&1 || {
     foot -f 'monospace:size=28' \
-      sh -c 'while :; do date "+%H:%M:%S.%N"; sleep 0.2; done' \
+      sh -c 'while :; do date "+%H:%M:%S.%N"; sleep 0.01; done' \
       >"$LOGS/foot.log" 2>&1 &
     echo $! > "$STATE/foot.pid"
     sleep 2

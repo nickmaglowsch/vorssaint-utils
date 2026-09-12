@@ -663,7 +663,8 @@ enum RadialMenuSupport {
                 item.payload = normalized
             }
             if let customData = item.customIconData {
-                if customData.count > RadialMenuFaviconFetcher.maxStoredIconBytes || NSImage(data: customData) == nil {
+                if customData.count > RadialMenuFaviconFetcher.maxStoredIconBytes
+                    || !ImageDataValidation.current.isValidImageData(customData) {
                     item.customIconData = nil
                 }
             }

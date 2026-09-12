@@ -17,17 +17,22 @@
  *     wlroots delivers frames on damage, so the rate varies between zero and
  *     the compositor's cap within a single recording.
  *
- * Delivery has two shapes because the two consumers want different things. The
- * recorder (WP-B5) installs a callback and encodes in place: zero copies, one
- * thread. The screenshot selector and the tests want one frame now and would
- * rather not write a callback to get it, so without a callback frames are
- * copied into a small ring that `vs_capture_stream_next_frame` drains.
+ * Delivery keeps the contract in linux/platform/README.md: buffers are copied
+ * into a small ring, an eventfd is made readable, and the caller's callbacks
+ * run only inside `vs_capture_stream_dispatch`, on the caller's own thread.
+ * `vs_capture_stream_next_frame` drains the same ring for a caller that wants
+ * the buffer rather than a callback -- the screenshot path and the tests.
+ *
+ * `direct_callbacks` is the documented exception, and exists for one consumer:
+ * WP-B5's encoder wants the mapped buffer with no copy at all, and is willing
+ * to run on the PipeWire thread to get it. Nothing else should use it.
  */
 
 #include <errno.h>
 #include <fcntl.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/eventfd.h>
 #include <unistd.h>
 
 #include <spa/param/audio/format-utils.h>
@@ -39,6 +44,17 @@
 #define DEFAULT_QUEUE_DEPTH 4
 #define DEFAULT_AUDIO_RATE 48000
 #define DEFAULT_AUDIO_CHANNELS 2
+
+/* Called with the lock held, right after something lands in a queue. The
+ * counter is only ever cleared at the top of dispatch, so an item queued during
+ * a dispatch still leaves the descriptor readable afterwards. */
+static void notify(vs_capture_stream *stream)
+{
+    if (stream->event_fd < 0) return;
+    uint64_t one = 1;
+    ssize_t written = write(stream->event_fd, &one, sizeof(one));
+    (void)written;   /* EAGAIN only at 2^64 pending, and the count is a hint */
+}
 
 static void timespec_in(struct timespec *ts, int timeout_ms)
 {
@@ -122,6 +138,7 @@ static void queue_frame(vs_capture_stream *stream, const vs_capture_frame *frame
     slot->frame = *frame;
     slot->frame.data = slot->data;
     stream->frame_count++;
+    notify(stream);
     pthread_cond_signal(&stream->frame_ready);
 }
 
@@ -222,7 +239,7 @@ static void on_video_process(void *data)
     if (frame.sequence == 0) stream->stats.video_timeline_first_ns = frame.timeline_ns;
     stream->stats.video_timeline_last_ns = frame.timeline_ns;
 
-    if (stream->frame_cb) {
+    if (stream->config.direct_callbacks && stream->frame_cb) {
         callback = stream->frame_cb;
         callback_user = stream->frame_cb_user;
         deliver = true;
@@ -233,7 +250,9 @@ static void on_video_process(void *data)
 
     /* Outside the lock: the callback is the consumer's code and may call back
      * into this stream (pause, stats) without deadlocking. The buffer is still
-     * ours until it is requeued below, so `frame.data` stays valid. */
+     * ours until it is requeued below, so `frame.data` stays valid. This only
+     * happens under `direct_callbacks`; otherwise the frame was copied into the
+     * queue above and nothing of the caller's runs on this thread. */
     if (deliver) callback(&frame, callback_user);
     pw_stream_queue_buffer(stream->video, pw_buffer);
 }
@@ -289,7 +308,7 @@ static void on_audio_param_changed(void *data, uint32_t id, const struct spa_pod
 static void queue_audio(vs_capture_stream *stream, const vs_capture_audio_buffer *buffer)
 {
     if (stream->audio_count == stream->audio_capacity) {
-        stream->stats.frames_dropped_queue++;
+        stream->stats.audio_dropped_queue++;
         return;
     }
     uint32_t index = (stream->audio_head + stream->audio_count) % stream->audio_capacity;
@@ -298,7 +317,7 @@ static void queue_audio(vs_capture_stream *stream, const vs_capture_audio_buffer
     if (slot->capacity_floats < floats) {
         float *grown = realloc(slot->samples, floats * sizeof(float));
         if (!grown) {
-            stream->stats.frames_dropped_queue++;
+            stream->stats.audio_dropped_queue++;
             return;
         }
         slot->samples = grown;
@@ -308,6 +327,7 @@ static void queue_audio(vs_capture_stream *stream, const vs_capture_audio_buffer
     slot->buffer = *buffer;
     slot->buffer.samples = slot->samples;
     stream->audio_count++;
+    notify(stream);
     pthread_cond_signal(&stream->audio_ready);
 }
 
@@ -372,7 +392,7 @@ static void on_audio_process(void *data)
     if (out.sequence == 0) stream->stats.audio_timeline_first_ns = out.timeline_ns;
     stream->stats.audio_timeline_last_ns = out.timeline_ns;
 
-    if (stream->audio_cb) {
+    if (stream->config.direct_callbacks && stream->audio_cb) {
         callback = stream->audio_cb;
         callback_user = stream->audio_cb_user;
     } else {
@@ -453,6 +473,7 @@ static int connect_audio(vs_capture_stream *stream, struct vs_audio_source *sour
 static void stream_free(vs_capture_stream *stream)
 {
     if (!stream) return;
+    if (stream->event_fd >= 0) close(stream->event_fd);
     for (uint32_t i = 0; i < stream->frame_capacity; i++) free(stream->frames[i].data);
     free(stream->frames);
     for (uint32_t i = 0; i < stream->audio_capacity; i++) free(stream->audio[i].samples);
@@ -475,6 +496,13 @@ int vs_capture_stream_start(vs_capture_engine *engine,
     stream->engine = engine;
     stream->config = *config;
     stream->session.pw_fd = -1;
+    stream->event_fd = config->direct_callbacks
+                           ? -1
+                           : eventfd(0, EFD_CLOEXEC | EFD_NONBLOCK);
+    if (!config->direct_callbacks && stream->event_fd < 0) {
+        free(stream);
+        return VS_ERR_NO_MEM;
+    }
 
     pthread_mutexattr_t attr;
     pthread_mutexattr_init(&attr);
@@ -514,11 +542,18 @@ int vs_capture_stream_start(vs_capture_engine *engine,
     }
     if (stream->session.granted_source_type &&
         !(stream->session.granted_source_type & source_types)) {
-        /* Not an error -- the session is real and usable -- but the caller must
-         * be able to see it, because "record this window" that silently records
-         * the screen is a privacy bug (WP-02, section 7). */
+        /* The request was acknowledged and the session did something else: on
+         * xdg-desktop-portal-wlr 0.7.1 a WINDOW request comes back as a whole
+         * MONITOR (WP-02, section 7). A caller that offers "record this window"
+         * sets require_source_type and gets a refusal, because recording the
+         * whole screen instead is a privacy bug, not a degraded result. */
         VS_LOG("requested source types %u, granted %u", source_types,
                stream->session.granted_source_type);
+        if (config->require_source_type) {
+            vs_portal_session_close(engine, &stream->session);
+            stream_free(stream);
+            return VS_ERR_NOT_APPLIED;
+        }
     }
 
     stream->loop = pw_thread_loop_new("vorssaint-capture", NULL);
@@ -653,6 +688,59 @@ void vs_capture_stream_set_audio_callback(vs_capture_stream *stream,
     stream->audio_cb = callback;
     stream->audio_cb_user = user_data;
     pthread_mutex_unlock(&stream->lock);
+}
+
+int vs_capture_stream_event_fd(const vs_capture_stream *stream)
+{
+    return stream ? stream->event_fd : -1;
+}
+
+int vs_capture_stream_dispatch(vs_capture_stream *stream)
+{
+    if (!stream) return VS_ERR_INVALID;
+    if (stream->event_fd >= 0) {
+        /* Cleared before the queues are read, never after: an item that arrives
+         * mid-dispatch writes its own token and the descriptor stays readable,
+         * so the caller comes back for it instead of sleeping through it. */
+        uint64_t drained;
+        ssize_t got = read(stream->event_fd, &drained, sizeof(drained));
+        (void)got;
+    }
+
+    int delivered = 0;
+    for (;;) {
+        vs_capture_frame frame;
+        vs_capture_frame_cb frame_cb = NULL;
+        vs_capture_audio_buffer audio;
+        vs_capture_audio_cb audio_cb = NULL;
+        void *user_data = NULL;
+
+        pthread_mutex_lock(&stream->lock);
+        if (stream->frame_count && !stream->frame_held && stream->frame_cb) {
+            frame = stream->frames[stream->frame_head].frame;
+            frame_cb = stream->frame_cb;
+            user_data = stream->frame_cb_user;
+            stream->frame_held = true;
+        } else if (stream->audio_count && !stream->audio_held && stream->audio_cb) {
+            audio = stream->audio[stream->audio_head].buffer;
+            audio_cb = stream->audio_cb;
+            user_data = stream->audio_cb_user;
+            stream->audio_held = true;
+        }
+        pthread_mutex_unlock(&stream->lock);
+
+        if (frame_cb) {
+            frame_cb(&frame, user_data);
+            vs_capture_stream_release_frame(stream);
+        } else if (audio_cb) {
+            audio_cb(&audio, user_data);
+            vs_capture_stream_release_audio(stream);
+        } else {
+            break;
+        }
+        delivered++;
+    }
+    return delivered;
 }
 
 int vs_capture_stream_next_frame(vs_capture_stream *stream, vs_capture_frame *frame_out,

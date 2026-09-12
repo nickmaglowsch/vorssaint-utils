@@ -13,6 +13,7 @@
  */
 
 #include <inttypes.h>
+#include <poll.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -62,6 +63,55 @@ static double self_cpu_seconds(void)
     long hz = sysconf(_SC_CLK_TCK);
     if (hz <= 0) hz = 100;
     return (double)(utime + stime) / (double)hz;
+}
+
+/*
+ * How many distinct colours an image contains, and its mean luma.
+ *
+ * This is the check that a capture is a picture rather than a blank buffer, and
+ * it is computed here rather than shelled out to ImageMagick so the test suite
+ * needs nothing but this binary. A 2 MB bitset over the 24-bit colour space is
+ * exact and costs one pass.
+ */
+static void image_content(const vs_capture_image *image, uint64_t *colours_out,
+                          double *mean_out)
+{
+    static uint8_t seen[1u << 21];   /* one bit per 24-bit RGB value */
+    memset(seen, 0, sizeof(seen));
+    uint64_t colours = 0;
+    double luma_sum = 0;
+    bool bgr = image->format == VS_CAPTURE_PIXEL_BGRX ||
+               image->format == VS_CAPTURE_PIXEL_BGRA;
+    for (uint32_t y = 0; y < image->height; y++) {
+        const uint8_t *row = image->data + (size_t)image->stride * y;
+        for (uint32_t x = 0; x < image->width; x++) {
+            const uint8_t *pixel = row + (size_t)x * 4;
+            uint32_t r = bgr ? pixel[2] : pixel[0];
+            uint32_t g = pixel[1];
+            uint32_t b = bgr ? pixel[0] : pixel[2];
+            uint32_t key = (r << 16) | (g << 8) | b;
+            if (!(seen[key >> 3] & (1u << (key & 7)))) {
+                seen[key >> 3] |= (uint8_t)(1u << (key & 7));
+                colours++;
+            }
+            luma_sum += 0.2126 * r + 0.7152 * g + 0.0722 * b;
+        }
+    }
+    uint64_t pixels = (uint64_t)image->width * image->height;
+    *colours_out = colours;
+    *mean_out = pixels ? luma_sum / (double)pixels : 0.0;
+}
+
+static void report_image(const char *prefix, const vs_capture_image *image)
+{
+    uint64_t colours = 0;
+    double mean = 0;
+    image_content(image, &colours, &mean);
+    STAT("%s_size=%ux%u stride=%u format=%s bytes=%zu", prefix, image->width,
+         image->height, image->stride,
+         vs_capture_pixel_format_name(image->format), image->byte_length);
+    STAT("%s_unique_colours=%" PRIu64 " mean_luma=%.1f blank=%s", prefix, colours,
+         mean, colours <= 1 ? "yes" : "no");
 }
 
 static void print_capabilities(uint32_t capabilities)
@@ -209,8 +259,7 @@ static int cmd_shot(vs_capture_engine *engine, const char *out, vs_capture_shot_
         return 1;
     }
     STAT("shot_method=%s", used == VS_CAPTURE_SHOT_PORTAL ? "portal" : "screencast");
-    STAT("shot_size=%ux%u stride=%u format=%s bytes=%zu", image.width, image.height,
-         image.stride, vs_capture_pixel_format_name(image.format), image.byte_length);
+    report_image("shot", &image);
     if (token_out) {
         STAT("restore_token_received=%s", token_out);
         write_token_file(token_path, token_out);
@@ -283,6 +332,8 @@ static void on_audio(const vs_capture_audio_buffer *buffer, void *user_data)
 typedef struct {
     int seconds;
     bool pull;
+    bool direct;
+    bool require_source_type;
     uint32_t max_fps;
     uint32_t source_types;
     const vs_rect *region;
@@ -310,6 +361,8 @@ static int cmd_stream(vs_capture_engine *engine, const stream_options *options)
     config.audio_source = options->audio_source;
     config.persist = options->persist;
     config.queue_depth = 8;
+    config.direct_callbacks = options->direct;
+    config.require_source_type = options->require_source_type;
     if (options->region) {
         config.region = *options->region;
         config.region_enabled = true;
@@ -356,6 +409,9 @@ static int cmd_stream(vs_capture_engine *engine, const stream_options *options)
         if (pause_at && !paused && now >= pause_at) {
             vs_capture_stream_pause(stream);
             paused = true;
+            /* Disarm, or the next turn of the loop pauses again the moment the
+             * resume clears the flag, and the recording never restarts. */
+            pause_at = 0;
             pause_began = now_ns();
             STAT("paused_at_ms=%.1f", (double)(pause_began - started) / 1e6);
         }
@@ -380,8 +436,17 @@ static int cmd_stream(vs_capture_engine *engine, const stream_options *options)
                 vs_capture_stream_release_audio(stream);
             }
         } else {
-            struct timespec sleep_for = { .tv_sec = 0, .tv_nsec = 20000000L };
-            nanosleep(&sleep_for, NULL);
+            /* The contract's own shape: wait on the stream's descriptor, then
+             * deliver on this thread. Nothing of ours runs on the engine's. */
+            int fd = vs_capture_stream_event_fd(stream);
+            if (fd >= 0) {
+                struct pollfd pfd = { .fd = fd, .events = POLLIN, .revents = 0 };
+                poll(&pfd, 1, 20);
+                vs_capture_stream_dispatch(stream);
+            } else {
+                struct timespec sleep_for = { .tv_sec = 0, .tv_nsec = 20000000L };
+                nanosleep(&sleep_for, NULL);
+            }
         }
     }
     double wall_seconds = (double)(now_ns() - started) / 1e9;
@@ -394,7 +459,9 @@ static int cmd_stream(vs_capture_engine *engine, const stream_options *options)
     vs_capture_pixel_format format = vs_capture_stream_format(stream);
     vs_capture_stream_stop(stream);
 
-    STAT("api=%s", options->pull ? "pull" : "callback");
+    STAT("api=%s", options->pull ? "pull"
+                                 : (options->direct ? "callback-direct"
+                                                    : "callback-dispatch"));
     STAT("negotiated=%ux%u format=%s", width, height,
          vs_capture_pixel_format_name(format));
     STAT("wall_seconds=%.3f", wall_seconds);
@@ -440,12 +507,21 @@ static int cmd_stream(vs_capture_engine *engine, const stream_options *options)
          (double)stats.audio_timeline_first_ns / 1e6,
          (double)stats.audio_timeline_last_ns / 1e6, audio_span_ms);
     if (stats.audio_buffers_system || stats.audio_buffers_microphone) {
-        double skew_ms = (double)(stats.video_timeline_last_ns -
-                                  stats.audio_timeline_last_ns) / 1e6;
-        if (skew_ms < 0) skew_ms = -skew_ms;
+        /* Three numbers, because they bound different things. The start and
+         * end skews are how far apart the two timelines are at one instant,
+         * and each is bounded by one frame interval -- the two kinds simply do
+         * not arrive at the same moment. The span skew accumulates both edges,
+         * so its natural bound is two. */
+        double start_skew_ms = (double)(stats.video_timeline_first_ns -
+                                        stats.audio_timeline_first_ns) / 1e6;
+        if (start_skew_ms < 0) start_skew_ms = -start_skew_ms;
+        double end_skew_ms = (double)(stats.video_timeline_last_ns -
+                                      stats.audio_timeline_last_ns) / 1e6;
+        if (end_skew_ms < 0) end_skew_ms = -end_skew_ms;
         double span_skew_ms = video_span_ms - audio_span_ms;
         if (span_skew_ms < 0) span_skew_ms = -span_skew_ms;
-        STAT("alignment_end_skew_ms=%.1f alignment_span_skew_ms=%.1f", skew_ms,
+        STAT("alignment_start_skew_ms=%.1f", start_skew_ms);
+        STAT("alignment_end_skew_ms=%.1f alignment_span_skew_ms=%.1f", end_skew_ms,
              span_skew_ms);
     }
     STAT("cpu_seconds=%.3f cpu_percent_of_one_core=%.1f", cpu_seconds,
@@ -454,9 +530,8 @@ static int cmd_stream(vs_capture_engine *engine, const stream_options *options)
     int exit_code = tally.frames > 0 ? 0 : 1;
     if (tally.saved && options->save_path) {
         int write_rc = vs_capture_image_write_png(&tally.saved_image, options->save_path);
-        STAT("saved_frame=%s write=%s size=%ux%u", options->save_path,
-             vs_result_string(write_rc), tally.saved_image.width,
-             tally.saved_image.height);
+        STAT("saved_frame=%s write=%s", options->save_path, vs_result_string(write_rc));
+        report_image("saved_frame", &tally.saved_image);
         if (write_rc != VS_OK) exit_code = 1;
     }
     vs_capture_image_free(&tally.saved_image);
@@ -472,7 +547,8 @@ static void usage(void)
       "  vs-capture shot -o FILE.png [--method auto|portal|screencast]\n"
       "                  [--region X,Y,W,H] [--cursor] [--restore-token FILE]\n"
       "                  [--timeout-ms N] [--source-type monitor|window|both]\n"
-      "  vs-capture stream -d SECONDS [--api callback|pull] [--max-fps N]\n"
+      "  vs-capture stream -d SECONDS [--api callback|pull] [--direct]\n"
+      "                    [--max-fps N] [--require-source-type]\n"
       "                    [--region X,Y,W,H] [--source-type ...] [--cursor]\n"
       "                    [--audio-sink NAME] [--system-audio] [--mic [NAME]]\n"
       "                    [--restore-token FILE] [--no-persist]\n"
@@ -495,6 +571,7 @@ int main(int argc, char **argv)
     vs_capture_shot_method method = VS_CAPTURE_SHOT_AUTO;
     vs_rect region = { 0, 0, 0, 0 };
     bool has_region = false, cursor = false, pull = false, persist = true;
+    bool direct = false, require_source_type = false;
     bool system_audio = false, microphone = false;
     int seconds = 5;
     uint32_t max_fps = 0, source_types = 0, timeout_ms = 0;
@@ -517,6 +594,8 @@ int main(int argc, char **argv)
             microphone = true;
             if (has_next && argv[i + 1][0] != '-') audio_source = argv[++i];
         } else if (!strcmp(arg, "--cursor")) cursor = true;
+        else if (!strcmp(arg, "--direct")) direct = true;
+        else if (!strcmp(arg, "--require-source-type")) require_source_type = true;
         else if (!strcmp(arg, "--no-persist")) persist = false;
         else if (!strcmp(arg, "--pause-at") && has_next) pause_at = atof(argv[++i]);
         else if (!strcmp(arg, "--pause-for") && has_next) pause_for = atof(argv[++i]);
@@ -573,6 +652,8 @@ int main(int argc, char **argv)
         stream_options options = {
             .seconds = seconds,
             .pull = pull,
+            .direct = direct,
+            .require_source_type = require_source_type,
             .max_fps = max_fps,
             .source_types = source_types,
             .region = has_region ? &region : NULL,

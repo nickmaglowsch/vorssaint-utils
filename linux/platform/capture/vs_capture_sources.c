@@ -34,6 +34,7 @@ typedef struct {
     char description[VS_CAPTURE_DESC_MAX];
     int32_t x, y, width, height, refresh_mhz, scale;
     bool have_mode;
+    bool have_scale;
 } output_entry;
 
 typedef struct {
@@ -79,7 +80,9 @@ static void handle_done(void *data, struct wl_output *output)
 static void handle_scale(void *data, struct wl_output *output, int32_t factor)
 {
     (void)output;
-    ((output_entry *)data)->scale = factor;
+    output_entry *entry = data;
+    entry->scale = factor;
+    entry->have_scale = true;
 }
 
 static void handle_name(void *data, struct wl_output *output, const char *name)
@@ -120,7 +123,6 @@ static void handle_global(void *data, struct wl_registry *registry, uint32_t nam
     }
     output_entry *entry = &scan->entries[scan->count];
     memset(entry, 0, sizeof(*entry));
-    entry->scale = 1;
     entry->global_name = name;
     /* Version 4 is where `name` and `description` arrive; anything older still
      * gives geometry and mode, and the source simply has no connector name. */
@@ -179,8 +181,10 @@ static int enumerate_monitors(vs_capture_source **sources_out, size_t *count_out
         source->bounds.width = entry->width;
         source->bounds.height = entry->height;
         source->bounds_valid = entry->have_mode;
-        source->refresh_mhz = entry->refresh_mhz;
-        source->scale = entry->scale ? entry->scale : 1;
+        /* -1, not 0: an output that never sent a mode has no refresh rate, and
+         * 0 Hz would read as one. Same for the scale. */
+        source->refresh_mhz = entry->have_mode ? entry->refresh_mhz : -1;
+        source->scale = entry->have_scale ? entry->scale : -1.0;
         wl_output_destroy(entry->output);
     }
     free(scan.entries);

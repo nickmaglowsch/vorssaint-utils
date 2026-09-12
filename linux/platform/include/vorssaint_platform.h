@@ -8,10 +8,9 @@
  *
  * The window (WP-C1) and capture (WP-B1) sections exist so far. Clipboard,
  * audio, sensors, power, input and session sections are added by their own
- * work packages, each as another vtable or handle type in this header.
- *
- * Sections are separated by a banner comment and are independent: a consumer
- * that needs only one links only that library (`vs_window`, `vs_capture`).
+ * work packages, each as another section in this header. Sections are
+ * independent: a consumer that needs one links one library (`vs_window`,
+ * `vs_capture`).
  *
  * Conventions every section follows:
  *   - Every call returns `int`: 0 (VS_OK) or a negative `vs_result`.
@@ -20,6 +19,17 @@
  *   - Nothing in this header allocates with anything but malloc/free; every
  *     `*_out` array returned by a backend is released by its `free_*` member.
  *   - No call blocks for longer than its documented budget.
+ *
+ * Threading: every vtable in this header is single-threaded. One instance
+ * belongs to one thread; two threads must not call into the same instance, even
+ * for two different members, and none of these calls is reentrant. Backends
+ * start no threads of their own, so events never arrive out of the blue: a
+ * backend only ever calls the event callback from inside that instance's own
+ * `dispatch`, on the thread that called it. Separate instances are independent
+ * and may be used from different threads. The capture section is the one place
+ * a backend owns a thread of its own, because PipeWire hands buffers over on
+ * its loop and a frame not taken is a frame lost; it still delivers only from
+ * its own `dispatch`, and its banner says exactly what that costs.
  */
 
 #ifndef VORSSAINT_PLATFORM_H
@@ -178,7 +188,10 @@ typedef enum vs_window_event_type {
     VS_WINDOW_EVENT_CHANGED,
     VS_WINDOW_EVENT_ACTIVATED,
     VS_WINDOW_EVENT_WORKSPACE_CHANGED,
-    /** The backend lost its connection; the caller must recreate it. */
+    /** The backend lost the channel its control verbs rode on. `capabilities`
+     *  has already shrunk to what still works — often listing alone — so the
+     *  caller re-reads it, and recreates the backend when it wants the rest
+     *  back. */
     VS_WINDOW_EVENT_BACKEND_LOST,
 } vs_window_event_type;
 
@@ -202,15 +215,21 @@ struct vs_window_system {
     /** Backend identity, for logs and the capabilities page: "x11", "wlr",
      *  "hyprland", "kwin", "gnome". */
     const char *name;
-    /** Bitmask of `vs_window_capability`, fixed for the life of the instance.
-     *  A member whose capability bit is clear still exists and returns
-     *  VS_ERR_UNSUPPORTED. */
+    /** Bitmask of `vs_window_capability`. A member whose capability bit is
+     *  clear still exists and returns VS_ERR_UNSUPPORTED.
+     *
+     *  Capabilities only ever shrink, and only when the channel that carried
+     *  them goes away — a compositor withdrawing a global, a bridge leaving the
+     *  bus. That is reported as VS_WINDOW_EVENT_BACKEND_LOST, so a caller that
+     *  cached this field re-reads it on that event; nothing else changes it. */
     uint32_t capabilities;
     /** Backend-private state. */
     void *impl;
 
     /** Snapshot of every toplevel, bottom-most first. The caller owns the array
-     *  until it passes it to `free_list`. Budget: 100 ms. */
+     *  until it passes it to `free_list`. Budget: 100 ms. May run the backend's
+     *  connection, so queued events can be delivered by a later `dispatch`
+     *  rather than by this call. */
     int (*list)(vs_window_system *self, vs_window_info **windows_out, size_t *count_out);
     void (*free_list)(vs_window_system *self, vs_window_info *windows, size_t count);
 
@@ -231,14 +250,16 @@ struct vs_window_system {
     int (*current_workspace)(vs_window_system *self, int32_t *workspace_out);
     int (*set_workspace)(vs_window_system *self, int32_t workspace);
 
-    /** Install the event sink. Pass NULL to remove it. Events are delivered
-     *  from `dispatch`, never from another thread. */
+    /** Install the event sink. Pass NULL to remove it. The callback runs inside
+     *  `dispatch`, on the calling thread, and may call back into this same
+     *  instance only after `dispatch` returns. */
     int (*set_event_callback)(vs_window_system *self, vs_window_event_cb callback, void *user_data);
     /** Pollable descriptor that becomes readable when events are pending, or -1
      *  when the backend has none (`VS_WINDOW_HAS_LIVE_EVENTS` clear). */
     int (*event_fd)(vs_window_system *self);
-    /** Drain what is pending and deliver it to the callback. Never blocks.
-     *  Returns the number of events delivered, or a negative `vs_result`. */
+    /** Drain what is pending and deliver it to the callback. Never blocks. The
+     *  only place the callback runs. Returns the number of events delivered, or
+     *  a negative `vs_result`. */
     int (*dispatch)(vs_window_system *self);
 
     void (*destroy)(vs_window_system *self);
@@ -283,22 +304,39 @@ const char *const *vs_window_backend_names(void);
  * a privacy bug or a drifting file (see docs/linux-port/CAPTURE_ENGINE.md):
  *
  *   - Source selection belongs to the compositor, not to us. The portal shows
- *     its own chooser; the engine reports what came back and never pretends it
- *     asked for something else. `vs_capture_stream_source_type()` is the type
- *     the session actually granted, which is not always the type requested.
+ *     its own chooser, and what comes back is not always what was asked for:
+ *     xdg-desktop-portal-wlr 0.7.1 answers a WINDOW request with a whole
+ *     MONITOR. So the start call reads back what was granted, and
+ *     `require_source_type` turns that read-back into a refusal -- the capture
+ *     form of the VS_ERR_NOT_APPLIED rule the window section follows.
  *   - The portal has no region source. `region` in the stream config is a crop
  *     the engine performs, and `VS_CAPTURE_HAS_REGION` is therefore always
  *     clear: it reports the portal's capability, not ours.
  *   - Frame delivery is damage-driven on wlroots. `max_fps` is a ceiling, not
  *     a cadence, and a still screen delivers nothing at all. Timelines come
  *     from `pts_ns`, never from a frame counter times a nominal rate.
+ *
+ * Threading. The engine follows this header's rule: one instance, one thread,
+ * events delivered only from `vs_capture_stream_dispatch`, on the thread that
+ * calls it, with `vs_capture_stream_event_fd` to poll. A capture stream does
+ * own a PipeWire thread internally, because PipeWire hands buffers over on its
+ * own loop and a frame not taken is a frame lost; that thread is invisible by
+ * default -- it copies into the stream's queue and makes the event fd readable,
+ * and nothing of the caller's runs on it. `direct_callbacks` is the one way to
+ * opt out, and it exists for one caller: WP-B5's encoder, which wants the
+ * mapped buffer with no copy and is willing to run on that thread to get it.
+ * Independently of which mode is chosen, every `vs_capture_stream_*` call is
+ * safe from any thread and from inside a callback, since a recorder's stop and
+ * pause arrive from the UI thread while frames are arriving.
  */
 
 typedef struct vs_capture_engine vs_capture_engine;
 typedef struct vs_capture_stream vs_capture_stream;
 
 /** Capabilities of a capture backend. A feature reads these and hides or
- *  explains what the running session cannot do; see FEATURE_TRIAGE.md. */
+ *  explains what the running session cannot do; see FEATURE_TRIAGE.md. Fixed
+ *  for the life of the engine: the portal is a bus name that either answers or
+ *  does not, so there is no channel to lose halfway through. */
 typedef enum vs_capture_capability {
     /** `org.freedesktop.portal.Screenshot` exists on this session. Absent on a
      *  bare wlroots session, which has no `impl.portal.Access` backend; the
@@ -363,9 +401,10 @@ typedef struct vs_capture_source {
     /** Layout position and pixel size, valid only when `bounds_valid`. */
     vs_rect bounds;
     bool bounds_valid;
-    /** Refresh rate in mHz (60000 == 60 Hz), 0 when unknown. */
+    /** Refresh rate in mHz (60000 == 60 Hz), or -1 when unknown: 0 Hz is not a
+     *  refresh rate a caller should ever be handed as if it were one. */
     int32_t refresh_mhz;
-    /** Fractional scale, 0 when unknown. */
+    /** Fractional scale, or -1 when unknown. */
     double scale;
 } vs_capture_source;
 
@@ -383,9 +422,10 @@ typedef enum vs_capture_pixel_format {
 uint32_t vs_capture_pixel_bytes(vs_capture_pixel_format format);
 const char *vs_capture_pixel_format_name(vs_capture_pixel_format format);
 
-/** A still image the caller owns. `data` is `height * stride` bytes; `stride`
- *  may exceed `width` times bytes-per-pixel when it came straight off a
- *  capture buffer, so never assume the two are equal. */
+/** A still image the caller owns and releases with `vs_capture_image_free`.
+ *  `data` is `height * stride` bytes; `stride` may exceed `width` times
+ *  bytes-per-pixel when it came straight off a capture buffer, so never assume
+ *  the two are equal. */
 typedef struct vs_capture_image {
     uint8_t *data;
     uint32_t width;
@@ -400,8 +440,9 @@ void vs_capture_image_free(vs_capture_image *image);
  *  nothing here depends on an image library. */
 int vs_capture_image_write_png(const vs_capture_image *image, const char *path);
 
-/** One delivered frame. Every pointer is valid only for the duration of the
- *  callback, or until `vs_capture_stream_release_frame` for the pull API. */
+/** One delivered frame. Every pointer in it is borrowed: it is valid for the
+ *  duration of the callback, or until `vs_capture_stream_release_frame` for the
+ *  pull API. `vs_capture_image_from_frame` is how a caller keeps one. */
 typedef struct vs_capture_frame {
     const uint8_t *data;
     uint32_t width;
@@ -428,7 +469,7 @@ typedef struct vs_capture_frame {
  *  keep after the callback returns. `region` NULL copies the whole frame; a
  *  region entirely outside it is VS_ERR_INVALID rather than an empty image. The
  *  result is packed (`stride == width * bytes-per-pixel`) even when the source
- *  was padded. */
+ *  was padded, and is released with `vs_capture_image_free`. */
 int vs_capture_image_from_frame(const uint8_t *data, uint32_t width, uint32_t height,
                                 uint32_t stride, vs_capture_pixel_format format,
                                 const vs_rect *region, vs_capture_image *image_out);
@@ -439,7 +480,8 @@ typedef enum vs_capture_audio_kind {
 } vs_capture_audio_kind;
 
 /** One delivered PCM buffer, interleaved 32-bit float, on the same timeline as
- *  the frames. WP-B5 feeds this straight to its encoder. */
+ *  the frames, and borrowed on the same terms. WP-B5 feeds this straight to its
+ *  encoder; nothing in this layer knows what a codec is. */
 typedef struct vs_capture_audio_buffer {
     vs_capture_audio_kind kind;
     const float *samples;
@@ -455,11 +497,17 @@ typedef struct vs_capture_audio_buffer {
 } vs_capture_audio_buffer;
 
 /** What to capture and how. Zeroed and then filled member by member, so adding
- *  a member later never changes an existing caller's meaning. */
+ *  a member later never changes an existing caller's meaning; every zero is a
+ *  documented default. */
 typedef struct vs_capture_stream_config {
-    /** Bits of `vs_capture_source_type` to ask for. The engine still checks
-     *  what was granted and reports it. */
+    /** Bits of `vs_capture_source_type` to ask for; 0 means MONITOR. What is
+     *  granted is read back and may differ -- see `require_source_type`. */
     uint32_t source_types;
+    /** Refuse the session when the granted source type is not among the
+     *  requested ones, returning VS_ERR_NOT_APPLIED and closing it, rather than
+     *  handing back a stream of something else. Every caller that offers
+     *  "record this window" sets this. */
+    bool require_source_type;
     /** One `vs_capture_cursor_mode` bit; 0 means HIDDEN. */
     uint32_t cursor_mode;
     /** Token from a previous session, or NULL. */
@@ -473,9 +521,13 @@ typedef struct vs_capture_stream_config {
     /** Ceiling on delivered frames per second; 0 leaves the compositor's own
      *  rate alone. Frames above it are dropped, not queued. */
     uint32_t max_fps;
-    /** Frames the pull API may hold; 0 means 4. Ignored for a kind that has a
-     *  callback installed, which is zero-copy and never queues. */
+    /** Frames and audio buffers the engine may hold for the caller; 0 means 4.
+     *  Overflow is dropped and counted, never blocked on. */
     uint32_t queue_depth;
+    /** Deliver callbacks from the engine's PipeWire thread the moment a buffer
+     *  arrives, with no copy, instead of queueing for `dispatch`. See the
+     *  threading note above: this is WP-B5's mode, not the default. */
+    bool direct_callbacks;
     bool capture_system_audio;
     /** PipeWire sink whose monitor to record, or NULL for the default sink. */
     const char *audio_sink;
@@ -487,8 +539,9 @@ typedef struct vs_capture_stream_config {
     uint32_t audio_channels;
 } vs_capture_stream_config;
 
-/** Delivered from the engine's own PipeWire thread, never from the caller's.
- *  The frame is valid for the duration of the call only. */
+/** Delivered from `vs_capture_stream_dispatch`, on the thread that called it --
+ *  or, with `direct_callbacks`, from the engine's PipeWire thread. The frame is
+ *  valid for the duration of the call only. */
 typedef void (*vs_capture_frame_cb)(const vs_capture_frame *frame, void *user_data);
 typedef void (*vs_capture_audio_cb)(const vs_capture_audio_buffer *buffer, void *user_data);
 
@@ -499,7 +552,7 @@ typedef struct vs_capture_stats {
     uint64_t frames_dropped_rate;
     /** Arrived while paused. */
     uint64_t frames_dropped_paused;
-    /** The pull queue was full and the caller had not drained it. */
+    /** The queue was full because the caller had not dispatched or pulled. */
     uint64_t frames_dropped_queue;
     /** `pw_stream_dequeue_buffer` returned NULL: PipeWire itself had none. */
     uint64_t buffers_missed;
@@ -508,6 +561,7 @@ typedef struct vs_capture_stats {
     uint64_t audio_buffers_microphone;
     uint64_t audio_frames_microphone;
     uint64_t audio_dropped_paused;
+    uint64_t audio_dropped_queue;
     /** `arrival_ns - pts_ns` over the frames that carried a pts. */
     double latency_avg_ms;
     double latency_min_ms;
@@ -523,11 +577,13 @@ typedef struct vs_capture_stats {
     int64_t audio_timeline_last_ns;
 } vs_capture_stats;
 
-/** Build the capture engine for this session. `preferred` names a backend
- *  ("portal" is the only one so far) or is NULL to probe. Probing needs a
- *  session bus carrying `org.freedesktop.portal.Desktop`. Returns NULL and
- *  sets `*result_out` (optional) when nothing is usable. */
+/** Probe the session and build the capture engine for it. `preferred` names a
+ *  backend ("portal" is the only one so far) or is NULL to probe. Probing needs
+ *  a session bus carrying `org.freedesktop.portal.Desktop` with a ScreenCast
+ *  interface on it. Returns NULL and sets `*result_out` (optional) when nothing
+ *  is usable. */
 vs_capture_engine *vs_capture_engine_create(const char *preferred, int *result_out);
+/** Releases the engine. Every stream it opened must be stopped first. */
 void vs_capture_engine_destroy(vs_capture_engine *engine);
 
 const char *vs_capture_engine_name(const vs_capture_engine *engine);
@@ -567,42 +623,57 @@ typedef struct vs_capture_shot_request {
     bool persist;
     /** Milliseconds to wait for the first frame on the ScreenCast path; 0 means
      *  5000. A damage-driven session delivers nothing until something repaints,
-     *  so this is a real timeout, not a formality. */
+     *  so this is a real timeout, not a formality, and it is the one call in
+     *  this section whose budget is the caller's to set. */
     uint32_t timeout_ms;
 } vs_capture_shot_request;
 
 /** One frame of whatever the session grants. `image_out` is filled on success
  *  and released with `vs_capture_image_free`. `method_used_out` (optional) says
  *  which path answered, and `token_out` (optional) receives a malloc'd restore
- *  token the caller must free, or NULL when none was minted. */
+ *  token the caller frees, or NULL when none was minted. */
 int vs_capture_screenshot(vs_capture_engine *engine,
                           const vs_capture_shot_request *request,
                           vs_capture_image *image_out,
                           vs_capture_shot_method *method_used_out,
                           char **token_out);
 
-/** Negotiate a session and start delivering. On success the stream is running:
- *  frames reach the callback if one is installed before the first frame, and
- *  are queued for `vs_capture_stream_next_frame` otherwise. */
+/** Negotiate a session and start delivering. Returns VS_ERR_NOT_APPLIED when
+ *  `require_source_type` is set and the session granted a different type --
+ *  the capture form of "the request was acknowledged and did something else".
+ *  Budget: the portal's own, which includes a user picking a source, so this is
+ *  the one blocking call here and callers run it off their UI thread. */
 int vs_capture_stream_start(vs_capture_engine *engine,
                             const vs_capture_stream_config *config,
                             vs_capture_stream **stream_out);
 /** Stop delivering, close the portal session and release the stream. Blocks
- *  until no callback is running, so the caller's encoder can finalise knowing
- *  nothing is in flight. */
+ *  only until the engine's own thread has joined, so once it returns no
+ *  callback is running or can start and the caller's encoder can finalise. */
 void vs_capture_stream_stop(vs_capture_stream *stream);
 
-/** Install or remove (NULL) the sinks. Callbacks run on the engine's PipeWire
- *  thread; installing one turns off the pull queue for that kind. */
+/** Install or remove (NULL) the sinks. Safe at any time, including from inside
+ *  a callback. */
 void vs_capture_stream_set_frame_callback(vs_capture_stream *stream,
                                           vs_capture_frame_cb callback, void *user_data);
 void vs_capture_stream_set_audio_callback(vs_capture_stream *stream,
                                           vs_capture_audio_cb callback, void *user_data);
 
-/** Pull API. Waits up to `timeout_ms` (0 polls, negative waits forever) for a
- *  frame. Returns VS_OK with `frame_out` filled, or VS_ERR_TIMEOUT when nothing
- *  arrived. Every VS_OK must be matched by `vs_capture_stream_release_frame`
- *  before the next call. */
+/** Pollable descriptor that becomes readable when a frame or an audio buffer is
+ *  waiting, or -1 under `direct_callbacks`, where there is nothing to wait for.
+ *  Owned by the stream; never closed by the caller. */
+int vs_capture_stream_event_fd(const vs_capture_stream *stream);
+/** Deliver everything queued to the installed callbacks, on this thread, and
+ *  return how many buffers were delivered, or a negative `vs_result`. Never
+ *  blocks: a caller that has nothing to do gets 0. */
+int vs_capture_stream_dispatch(vs_capture_stream *stream);
+
+/** Pull API, for a caller that wants the buffer rather than a callback -- the
+ *  screenshot path and the tests. Waits up to `timeout_ms` (0 polls, negative
+ *  waits until a frame or the stream's stop). Returns VS_OK with `frame_out`
+ *  filled, or VS_ERR_TIMEOUT. Every VS_OK is matched by
+ *  `vs_capture_stream_release_frame` before the next call; the frame is
+ *  borrowed until then. It draws from the same queue as `dispatch`, so a stream
+ *  uses one style or the other, not both. */
 int vs_capture_stream_next_frame(vs_capture_stream *stream, vs_capture_frame *frame_out,
                                  int timeout_ms);
 void vs_capture_stream_release_frame(vs_capture_stream *stream);
@@ -620,18 +691,20 @@ void vs_capture_stream_resume(vs_capture_stream *stream);
 bool vs_capture_stream_is_paused(const vs_capture_stream *stream);
 
 /** The source type the session actually granted, which is what a "record this
- *  window" feature must check: xdg-desktop-portal-wlr 0.7.1 answers a WINDOW
- *  request with a MONITOR stream. */
+ *  window" feature must check when it did not set `require_source_type`:
+ *  xdg-desktop-portal-wlr 0.7.1 answers a WINDOW request with a MONITOR
+ *  stream. */
 uint32_t vs_capture_stream_source_type(const vs_capture_stream *stream);
 /** True when the granted type is not among the requested ones. */
 bool vs_capture_stream_source_mismatch(const vs_capture_stream *stream);
-/** Negotiated frame geometry, before the engine's crop. */
+/** Negotiated frame geometry, before the engine's crop. VS_ERR_TIMEOUT until
+ *  the format has been negotiated, which is a round trip after the start. */
 int vs_capture_stream_size(const vs_capture_stream *stream,
                            uint32_t *width_out, uint32_t *height_out);
 vs_capture_pixel_format vs_capture_stream_format(const vs_capture_stream *stream);
-/** Token minted by this session, or NULL. The consumer persists it and hands
- *  it back in `vs_capture_stream_config.restore_token`; the engine stores
- *  nothing itself. Valid until the stream is stopped. */
+/** Token minted by this session, or NULL. The consumer persists it and hands it
+ *  back in `vs_capture_stream_config.restore_token`; the engine stores nothing
+ *  itself. Borrowed, and valid until the stream is stopped. */
 const char *vs_capture_stream_restore_token(const vs_capture_stream *stream);
 void vs_capture_stream_stats(const vs_capture_stream *stream, vs_capture_stats *stats_out);
 

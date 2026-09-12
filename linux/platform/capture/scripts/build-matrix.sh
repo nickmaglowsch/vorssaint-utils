@@ -11,11 +11,15 @@
 # never reported. With -Werror, a warning in any of them is a build failure
 # for whoever hits it first.
 #
-# usage: scripts/build-matrix.sh [build-root]      (default /tmp/vorssaint-matrix)
+# Configures linux/platform as a whole -- every concern's library, harness and
+# ctest suite -- so a warning any of them introduces is caught here.
+#
+# usage: capture/scripts/build-matrix.sh [build-root]
+#        (default /tmp/vorssaint-platform-matrix)
 set -u
 
-HERE=$(cd "$(dirname "$0")/.." && pwd)
-ROOT=${1:-/tmp/vorssaint-matrix}
+HERE=$(cd "$(dirname "$0")/../.." && pwd)
+ROOT=${1:-/tmp/vorssaint-platform-matrix}
 GEN=${GENERATOR:-Ninja}
 command -v ninja >/dev/null 2>&1 || GEN="Unix Makefiles"
 mkdir -p "$ROOT"
@@ -60,8 +64,14 @@ for cfg in default Debug Release RelWithDebInfo; do
         echo "  build: clean, no compiler warnings"
     fi
 
+    # The stack suites bring up one shared headless session and must not be
+    # run concurrently with each other; ctest's RUN_SERIAL handles that. Tests
+    # that need a compositor this machine has not got return 77 and are
+    # reported as "not run" rather than failing.
     if (cd "$dir" && ctest --output-on-failure > "$dir.ctest.log" 2>&1); then
         echo "  ctest: $(grep -E '^[0-9]+% tests passed' "$dir.ctest.log")"
+        skipped=$(grep -c 'Skipped' "$dir.ctest.log" || true)
+        [ "${skipped:-0}" -gt 0 ] && echo "  ctest: $skipped test(s) skipped"
     else
         echo "  CTEST FAILED"
         tail -25 "$dir.ctest.log" | sed 's/^/    /'

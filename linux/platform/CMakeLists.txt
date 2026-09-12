@@ -15,9 +15,9 @@ add_compile_options(
 
 # A bare `cmake -S . -B build` must produce what ships. "No build type" is its
 # own configuration -- GCC inlines less without optimisation and so reasons
-# differently about -Wmaybe-uninitialized and -Wformat-truncation -- and with
-# -Werror a warning that only one configuration sees is a build failure for
-# whoever hits it first. scripts/build-matrix.sh checks all four.
+# differently about -Wmaybe-uninitialized and -Wformat-truncation -- and under
+# -Werror a warning only one configuration sees is a build failure for whoever
+# hits it first. capture/scripts/build-matrix.sh checks all four.
 if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
     set(CMAKE_BUILD_TYPE RelWithDebInfo CACHE STRING
         "Build type; RelWithDebInfo is what is installed" FORCE)
@@ -31,17 +31,10 @@ target_include_directories(vorssaint_platform_headers INTERFACE
     ${CMAKE_CURRENT_SOURCE_DIR}/include)
 
 # The few contract symbols that belong to no single concern. Linked as objects
-# into each backend library so a binary using two of them still has exactly one
-# definition.
+# into each backend library, so a binary using two of them still has exactly one
+# definition of each.
 add_library(vorssaint_platform_common OBJECT vs_result.c)
 target_link_libraries(vorssaint_platform_common PUBLIC vorssaint_platform_headers)
 
-# One directory per concern, each an independent library plus CLI harness.
-# They are added when present rather than listed unconditionally, so a work
-# package can build and test its own concern on a branch where the others have
-# not landed yet.
-foreach(concern IN ITEMS window capture)
-    if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/${concern}/CMakeLists.txt)
-        add_subdirectory(${concern})
-    endif()
-endforeach()
+add_subdirectory(window)
+add_subdirectory(capture)

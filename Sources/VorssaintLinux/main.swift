@@ -13,4 +13,18 @@ import VorssaintCore
 
 print(VorssaintCoreVersion.banner)
 print("VorssaintLinux \(VorssaintCoreVersion.string) placeholder — no UI yet")
+
+// WP-12 probe: does swift-corelibs-foundation's ICU actually carry the
+// Mandarin-Latin transliterator `CommandBarSearch.pinyinKeywords` needs, or
+// must the Linux build declare that capability off? Printed, not asserted, so
+// the answer is recorded in the CI log of every run.
+let transliterator = FoundationTransliterator()
+print("transliterator: \(transliterator.capabilities)")
+print("transliterator mandarinLatin(\"\u{4e2d}\u{6587}\") = "
+      + String(describing: transliterator.mandarinLatin("\u{4e2d}\u{6587}")))
+print("transliterator StringTransform(\"Any-Latin\") = "
+      + String(describing: "\u{4e2d}\u{6587}".applyingTransform(StringTransform("Any-Latin"), reverse: false)))
+print("transliterator StringTransform(\"Mandarin-Latin\") = "
+      + String(describing: "\u{4e2d}\u{6587}".applyingTransform(StringTransform("Mandarin-Latin"), reverse: false)))
+print("platform window id width: \(MemoryLayout<PlatformWindowID>.size * 8) bits")
 #endif

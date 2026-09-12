@@ -69,13 +69,31 @@ jobs:
       - name: Unit tests
         shell: bash
         run: |
-          # `swift test` fails when the package declares no test target, so
-          # only run it once one exists (WP-16 adds it).
-          if grep -q 'testTarget' Package.swift; then
-            swift test
-          else
-            echo "no SwiftPM test target in Package.swift yet — skipping swift test"
+          # The pure checks of the macOS `build.sh --test` harness, selected by
+          # Tools/linux-port/port-tests.py and committed under
+          # Tests/VorssaintCoreTests (WP-16, docs/linux-port/TESTS.md).
+          swift test --filter VorssaintCoreTests 2>&1 | tee /tmp/swift-test.out
+          grep -E "^Executed [0-9]+ tests?, with 0 failures" /tmp/swift-test.out
+
+      - name: The generated tests are what the generator produces
+        shell: bash
+        run: |
+          command -v python3 >/dev/null \
+            || (apt-get update -qq && apt-get install -y -qq python3)
+          # Hard gate: every emitted file resolves and is balanced.
+          python3 Tools/linux-port/port-tests.py --verify
+          # Drift is reported, not failed: every core move (WP-12 and the
+          # feature squads) legitimately enlarges the selection, and the file
+          # to regenerate belongs to whoever moves next, not to the push that
+          # happens to land after them. A hand edit shows up here too —
+          # the tool overwrites Generated*.swift on the next run.
+          python3 Tools/linux-port/port-tests.py
+          if ! git diff --quiet -- Tests/VorssaintCoreTests; then
+            echo "::warning::Tests/VorssaintCoreTests is stale — run" \
+                 "python3 Tools/linux-port/port-tests.py and commit the result"
+            git diff --stat -- Tests/VorssaintCoreTests
           fi
+          git checkout -- Tests/VorssaintCoreTests
 
   macos:
     name: macOS app (build.sh)

@@ -19,7 +19,7 @@ auto-approves, since nobody can click a dialog on a headless box.
   ./mock-screenshot-impl.py [--version N]
 
 Install alongside it a .portal file pointing at
-`org.freedesktop.impl.portal.desktop.wp02mock` and restart xdg-desktop-portal;
+`org.freedesktop.impl.portal.desktop.vsmock` and restart xdg-desktop-portal;
 `run-stack.sh` does exactly that when WP02_ACCESS_SHIM=1 (the default).
 """
 
@@ -34,7 +34,7 @@ import gi
 gi.require_version("Gio", "2.0")
 from gi.repository import Gio, GLib  # noqa: E402
 
-BUS_NAME = "org.freedesktop.impl.portal.desktop.wp02mock"
+BUS_NAME = "org.freedesktop.impl.portal.desktop.vsmock"
 OBJ_PATH = "/org/freedesktop/portal/desktop"
 
 NODE_XML = """
@@ -86,13 +86,13 @@ class Impl:
         if method == "AccessDialog":
             # Auto-approve: there is nobody to click a dialog on a headless box.
             handle, app_id, parent, title, subtitle, body, options = params.unpack()
-            print(f"[mock] AccessDialog {title!r} -> auto-allow", flush=True)
+            print(f"[shim] AccessDialog {title!r} -> auto-allow", flush=True)
             invocation.return_value(GLib.Variant("(ua{sv})", (0, {})))
         elif method == "Screenshot":
             handle, app_id, parent, options = params.unpack()
             interactive = bool(options.get("interactive", False))
             print(
-                f"[mock] Screenshot handle={handle} app_id={app_id!r} "
+                f"[shim] Screenshot handle={handle} app_id={app_id!r} "
                 f"interactive={interactive} options={options}",
                 flush=True,
             )
@@ -100,7 +100,7 @@ class Impl:
             os.close(fd)
             rc = subprocess.run(["grim", png], capture_output=True)
             if rc.returncode != 0:
-                print(f"[mock] grim failed: {rc.stderr!r}", flush=True)
+                print(f"[shim] grim failed: {rc.stderr!r}", flush=True)
                 invocation.return_value(GLib.Variant("(ua{sv})", (2, {})))
                 return
             uri = GLib.filename_to_uri(png, None)
@@ -135,7 +135,7 @@ class Impl:
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--version", type=int, default=2)
-    ap.add_argument("--outdir", default="/tmp/wp02/mock-shots")
+    ap.add_argument("--outdir", default="/tmp/vorssaint-capture/mock-shots")
     args = ap.parse_args()
 
     impl = Impl(args.version, args.outdir)
@@ -147,8 +147,8 @@ def main() -> int:
         bus,
         BUS_NAME,
         Gio.BusNameOwnerFlags.NONE,
-        lambda *a: print(f"[mock] took {BUS_NAME}, version={impl.version}", flush=True),
-        lambda *a: (print("[mock] lost name", flush=True), sys.exit(1)),
+        lambda *a: print(f"[shim] took {BUS_NAME}, version={impl.version}", flush=True),
+        lambda *a: (print("[shim] lost name", flush=True), sys.exit(1)),
     )
     GLib.MainLoop().run()
     return 0

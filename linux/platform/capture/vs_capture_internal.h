@@ -140,6 +140,10 @@ struct vs_capture_stream {
     vs_capture_clock clock;
     bool started;
     bool stopping;
+    /** Readable while anything is queued, so a caller can poll the stream
+     *  alongside its own descriptors instead of sleeping on it. -1 under
+     *  `direct_callbacks`, where nothing is ever queued. */
+    int event_fd;
 
     int64_t min_frame_interval_ns;
     int64_t last_delivered_pts_ns;
